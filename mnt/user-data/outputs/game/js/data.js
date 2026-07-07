@@ -1,0 +1,674 @@
+// ═══════════════════════════════════════════════════
+// DATA.JS — Constantes, sorts, formations, équipes
+// ═══════════════════════════════════════════════════
+
+window.onerror=function(msg,src,line,col,err){
+  if(msg&&msg.includes('not defined')){
+    console.error('GLOBAL ERROR:',msg,'at',src+':'+line+':'+col);
+    console.error('Stack:',err?.stack);
+  }
+  return false;
+};
+'use strict';
+// ═══════════════════════════════════════════════════════════
+// WORLD: 75m × 50m (7-a-side)
+// ═══════════════════════════════════════════════════════════
+const WW=75,WH=50;
+const PCX=WW/2,PCY=WH/2;
+const GY1=PCY-3.0,GY2=PCY+3.0;   // goal = 6m
+const PSX=9;                        // penalty spot distance
+const PA_W=12,PA_H=26;             // penalty area
+
+// Canvas scale helpers (set on resize)
+let _s=1,_ox=0,_oy=0;
+const wx=x=>x*_s+_ox, wy=y=>y*_s+_oy, ws=v=>v*_s;
+
+// ═══════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════
+const SPELLS=[
+  // Tirs offensifs
+  {id:'fire',    n:'Tir de Feu',        t:'fire',     pow:32, mp:20, prob:.12, col:'#e02030', pc:'#ff6060', desc:'Frappe enveloppée de flammes. Modérée en puissance mais fiable et précise.'},
+  {id:'fireball',n:'Boule de Feu',      t:'fire',     pow:48, mp:35, prob:.07, col:'#ff4500', pc:'#ffaa00', desc:'Boule de feu dévstatrice. Rare - mais quand elle part, le gardien ne peut rien faire.'},
+  {id:'ice',     n:'Frappe Glacée',     t:'ice',      pow:18, mp:15, prob:.09, col:'#1878e8', pc:'#80c0ff', desc:'Tir qui laisse une trainée de givre. Peu puissant mais ralentit les defenseurs.'},
+  {id:'thunder', n:'Frappe Éclair',     t:'thunder',  pow:26, mp:18, prob:.10, col:'#f0c028', pc:'#ffe060', desc:'Tir foudroyant a vitesse supersonique. Le gardien voit a peine la balle partir.'},
+  {id:'eldritch',n:'Eldritch Blast',    t:'eldritch', pow:40, mp:30, prob:.08, col:'#9b59b6', pc:'#d7aefb', desc:'Energie mystique concentree en tir. Puissant a courte portee avec onde de choc.'},
+  {id:'illusion',n:'Tir Illusoire',     t:'illusion', pow:28, mp:22, prob:.09, col:'#ff9800', pc:'#ffe0b2', desc:'La balle cree un double. Le gardien est trompe sur la vraie trajectoire.'},
+  {id:'mouton',  n:'Mouton Ball',       t:'mouton',   pow:20, mp:18, prob:.10, col:'#795548', pc:'#d7ccc8', desc:'Le ballon se couvre de laine et roule vers le but adverse. Simple mais deroutant.'},
+  {id:'tech',    n:'Dribble Magique',   t:'tech',     pow:22, mp:12, prob:.11, col:'#8840e0', pc:'#d090ff', desc:'Dribble enchanté - le porteur devient insaisissable le temps dun éclair.'},
+  // Soutien
+  {id:'pass',    n:'Passe Précise',     t:'pass',     pow:0,  mp:14, prob:.12, col:'#00bcd4', pc:'#b2ebf2', desc:'Passe télépathique vers le coéquipier le mieux placé, même à travers la défense.'},
+  {id:'heal',    n:'Soin Collectif',    t:'heal',     pow:0,  mp:22, prob:.07, col:'#18c860', pc:'#80ffb0', desc:'Soin collectif qui restaure les forces de toute léquipe en même temps.'},
+  {id:'soin',    n:'Soin',             t:'soin',     pow:0,  mp:28, prob:.07, col:'#69f0ae', pc:'#ccff90', desc:'Soin profond du porteur - endurance et PV entièrement restaurés.'},
+  {id:'amitie',  n:'Amitié',           t:'amitie',   pow:0,  mp:30, prob:.06, col:'#ff80ab', pc:'#fce4ec', desc:'Aura de camaraderie - toute léquipe joue au-dessus de son niveau 20 secondes.'},
+  {id:'shield',  n:'Mur Défensif',     t:'shield',   pow:0,  mp:10, prob:.08, col:'#4878a0', pc:'#a0c0e0', desc:'Un mur de force se matérialise devant le but - presque infranchissable.'},
+  {id:'tornado', n:'Tornade',          t:'tornado',  pow:0,  mp:26, prob:.07, col:'#80cbc4', pc:'#e0f2f1', desc:'Une mini-tornade surgit et éparpille les adversaires qui rodaient trop près.'},
+  // Debuffs
+  {id:'suggest', n:'Suggestion Mentale',t:'suggest',  pow:0,  mp:25, prob:.07, col:'#1abc9c', pc:'#aefde8', desc:'Suggere a un adversaire de fuir. Il se deplace loin du ballon sans savoir pourquoi.'},
+  {id:'charm',   n:'Charme',           t:'charm',    pow:0,  mp:20, prob:.08, col:'#e91e63', pc:'#f8bbd0', desc:'Un charme irrésistible - un adversaire reste cloué sur place quelques secondes.'},
+  {id:'ice2',    n:'Sol Glissant',     t:'ice2',     pow:0,  mp:28, prob:.06, col:'#4fc3f7', pc:'#e1f5fe', desc:'Le sol adverse devient une patinoire. Personne ne sprinte sur la glace.'},
+  {id:'pacif',   n:'Pacification',     t:'pacif',    pow:0,  mp:24, prob:.07, col:'#ce93d8', pc:'#f3e5f5', desc:'Pacification mentale - un adversaire joue à mi-régime pendant plusieurs secondes.'},
+  // Kraland offensif
+  {id:'cyclon',  n:'Cyclone',          t:'cyclon',   pow:38, mp:32, prob:.07, col:'#80deea', pc:'#e0f7fa', desc:'Un cyclone balaie les défenseurs, puis tir à pleine puissance dans lespace libéré.'},
+  {id:'telekib', n:'Coup Télékin.',    t:'telekib',  pow:45, mp:38, prob:.06, col:'#7e57c2', pc:'#ede7f6', desc:'La balle disparaît et réapparaît dans le but - le gardien réagit trop tard.'},
+  {id:'deluge',  n:'Déluge',           t:'deluge',   pow:30, mp:26, prob:.08, col:'#1565c0', pc:'#bbdefb', desc:'Déluge soudain - terrain en bourbier, adversaires ralentis, puis tir dans la foulée.'},
+  {id:'terreur', n:'Terreur',          t:'terreur',  pow:0,  mp:22, prob:.08, col:'#b71c1c', pc:'#ffcdd2', desc:'Terreur absolue - toute léquipe adverse est figée de peur quelques secondes.'},
+  {id:'folie',   n:'Folie',            t:'folie',    pow:0,  mp:28, prob:.07, col:'#e040fb', pc:'#f3e5f5', desc:'Folie pure - un adversaire perd le contrôle et court dans tous les sens.'},
+  // Kraland soutien
+  {id:'transe',  n:'Transe Chamanique',t:'transe',   pow:0,  mp:24, prob:.07, col:'#ff6f00', pc:'#fff3e0', desc:'Transe chamanique - toute léquipe entre en état second et dépasse ses limites.'},
+  {id:'invis',   n:'Invisibilité',     t:'invis',    pow:0,  mp:20, prob:.09, col:'#b0bec5', pc:'#eceff1', desc:'Le porteur disparaît aux yeux de tous - son prochain dribble est imparable.'},
+  {id:'peaupierre',n:'Peau de Pierre', t:'peaupierre',pow:0, mp:18, prob:.09, col:'#8d6e63', pc:'#d7ccc8', desc:'Peau dure comme la pierre - toute léquipe résiste bien mieux aux chocs.'},
+  {id:'divine',  n:'Puissance Divine', t:'divine',   pow:0,  mp:40, prob:.05, col:'#ffd700', pc:'#fffde7', desc:'Grâce divine - un coéquipier est transcendé : vitesse, tir, tout booste au max.'},
+  {id:'aura_divine', n:'Aura Divine', t:'aura_divine', pow:0, mp:0, prob:0, col:'#ffe066', pc:'#fffde7', desc:'Se déclenche automatiquement à la mi-temps ET aux prolongations : +12 sht/spd/def/tec pour toute la période.'},
+  {id:'aide_divine', n:'Aide Divine',  t:'aide_divine',  pow:0, mp:25, prob:.08, col:'#ffd700', pc:'#fff8e1', desc:'Self-buff : +5 dans 2 stats aléatoires jusqu\'à la fin de la mi-temps en cours.'},
+  {id:'cailloux',   n:'Cailloux dans la chaussure', t:'cailloux', pow:0, mp:5,  prob:.06, col:'#8d6e63', pc:'#efebe9', desc:'Ne fait absolument rien. Juste pour la vanne.'},
+  {id:'simulation', n:'Simulation',   t:'simulation', pow:0, mp:20, prob:.07, col:'#ff7043', pc:'#fbe9e7', desc:'Chute théâtrale : 25% coup franc, 10% pénalty si dans la surface.'},
+  {id:'plaisir', n:'Plaisir & Beauté', t:'plaisir',  pow:0,  mp:22, prob:.08, col:'#f48fb1', pc:'#fce4ec', desc:'Beauté époustouflante - un défenseur adverse est subjugué, léquipe récupère.'},
+  {id:'sylvestre',n:'Marche Sylvestre',t:'sylvestre',pow:0,  mp:20, prob:.09, col:'#43a047', pc:'#e8f5e9', desc:'La forêt prête ses forces - toute léquipe court comme si elle volait 12 secondes.'},
+  {id:'fleurs',  n:'Parterre de Fleurs',t:'fleurs',  pow:0,  mp:26, prob:.07, col:'#ab47bc', pc:'#f3e5f5', desc:'Fleurs magiques dans la zone adverse - jolies mais redoutables, personne navance vite.'},
+  {id:'sixsens', n:'Sixième Sens',     t:'sixsens',  pow:0,  mp:18, prob:.09, col:'#00acc1', pc:'#e0f7fa', desc:'Sixième sens - le gardien et les défenseurs voient chaque tir venir à lavance.'},
+  {id:'aile',    n:'Ailes',            t:'aile',     pow:0,  mp:32, prob:.06, col:'#29b6f6', pc:'#e1f5fe', desc:'Ailes de lumière - un attaquant file vers le but à une vitesse que personne ne suit.'},
+  {id:'esprit',  n:'Esprit-Oiseau',    t:'esprit',   pow:0,  mp:28, prob:.07, col:'#66bb6a', pc:'#e8f5e9', desc:'Lesprit de loiseau libre - toute léquipe devient insaisissable 8 secondes.'},
+  // Kraland malédictions
+  {id:'epuise',  n:'Épuisement',       t:'epuise',   pow:0,  mp:20, prob:.09, col:'#546e7a', pc:'#cfd8dc', desc:'Drain dénergie - les adversaires saffaiblissent, le lanceur se régénère.'},
+  {id:'maledic', n:'Malédiction',      t:'maledic',  pow:0,  mp:26, prob:.07, col:'#4a148c', pc:'#e1bee7', desc:'Malédiction ancienne - un adversaire est ralenti et affaibli pour toute laction.'},
+  {id:'chance',  n:'Chance',           t:'chance',   pow:0,  mp:16, prob:.10, col:'#f9a825', pc:'#fff9c4', desc:'Coup de dé - un sort aléatoire se déclenche. Le meilleur comme le pire.'},
+  {id:'hoquet',  n:'Hoquet',           t:'hoquet',   pow:0,  mp:14, prob:.11, col:'#a5d6a7', pc:'#e8f5e9', desc:'Hic ! Un adversaire a le hoquet - son prochain tir part complètement à côté.'},
+  // ── Nouveaux sorts ───────────────────────────────────────────────
+  {id:'spindash', n:'Spin Dash',            t:'spindash', pow:35, mp:22, prob:.10, col:'#2979ff', pc:'#82b1ff', desc:'Vrille fulgurante a travers la defense. Traverse tous les defenseurs et tire en sortie de roulade.'},
+  {id:'dragon',   n:'Dragon',               t:'dragon',   pow:0,  mp:45, prob:.05, col:'#e02030', pc:'#ff6060', desc:'Le joueur se transforme en dragon 15 secondes. Stats doublees, tirs enflammes, aura devastatrice.'},
+  {id:'tacle_mauvais',  n:'Tacle Malveillant',  t:'tacle_mauvais', pow:0, mp:15, prob:.08, col:'#e64a19', pc:'#fbe9e7', desc:'Tacle brutal : forte chance de blesser l\'adversaire, carton jaune automatique pour le lanceur.'},
+  {id:'tacle_malefique',n:'Tacle Maléfique',    t:'tacle_mauvais', pow:0, mp:28, prob:.06, col:'#bf360c', pc:'#fbe9e7', desc:'Version supérieure : blessure grave garantie, adversaire hors match.'},
+  {id:'atk_demo',       n:'Attaque Démoniaque', t:'atk_demo',      pow:55, mp:40, prob:.05, col:'#b71c1c', pc:'#ffebee', desc:'Frappe dévastatrice. Ignore en partie la défense, particules infernales.'},
+  {id:'subtilisation',  n:'Subtilisation',      t:'subtilisation', pow:0, mp:18, prob:.09, col:'#00897b', pc:'#e0f2f1', desc:'Vole instantanément le ballon au porteur adverse.'},
+  {id:'vol',            n:'Vol',                t:'subtilisation', pow:0, mp:30, prob:.06, col:'#004d40', pc:'#e0f2f1', desc:'Version supérieure : vol + stun prolongé + téléportation quasi instantanée.'},
+  {id:'main',           n:'Main',               t:'main',          pow:0, mp:10, prob:.10, col:'#7b1fa2', pc:'#f3e5f5', desc:'Frappe de la main. 85% d\'être sifflé — penalty ou coup franc adverse.'},
+  {id:'main_discrete',  n:'Main Discrète',      t:'main',          pow:0, mp:22, prob:.07, col:'#4a148c', pc:'#f3e5f5', desc:'Version subtile : seulement 40% de chances d\'être sifflé.'},
+  {id:'comedia',        n:'Comédia del Arte',   t:'simulation',    pow:0, mp:35, prob:.05, col:'#e64a19', pc:'#fbe9e7', desc:'Version supérieure de Simulation : 50% coup franc, 25% pénalty si dans la surface. L\'arbitre y croit toujours.'},
+  // ── Versions améliorées ──────────────────────────────────────────────
+  {id:'blizzard',       n:'Blizzard',           t:'ice',           pow:38, mp:32, prob:.07, col:'#0288d1', pc:'#e1f5fe', desc:'Version améliorée de Frappe Glacée : tir bien plus puissant qui gèle la surface de réparation entière.'},
+  {id:'seisme',         n:'Séisme',             t:'cyclon',        pow:50, mp:38, prob:.06, col:'#795548', pc:'#efebe9', desc:'Version supérieure du Cyclone : tremblement de terre qui renverse tous les défenseurs et ouvre une brèche béante.'},
+  {id:'domination',     n:'Domination Mentale', t:'pacif',         pow:0,  mp:36, prob:.05, col:'#6a1b9a', pc:'#f3e5f5', desc:'Version supérieure de Pacification : contrôle total d\'un adversaire qui joue pour ton équipe pendant 8 secondes.'},
+  {id:'stase',          n:'Stase',              t:'terreur',       pow:0,  mp:32, prob:.06, col:'#37474f', pc:'#eceff1', desc:'Version supérieure de Terreur : fige toute l\'équipe adverse dans le temps pendant 4 secondes. Personne ne bouge.'},
+  {id:'maledic2',       n:'Grande Malédiction', t:'maledic',       pow:0,  mp:38, prob:.05, col:'#1a0033', pc:'#e1bee7', desc:'Version supérieure de Malédiction : toute l\'équipe adverse est affaiblie et ralentie pour l\'action en cours.'},
+  {id:'epuise2',        n:'Drain Total',        t:'epuise',        pow:0,  mp:34, prob:.06, col:'#263238', pc:'#cfd8dc', desc:'Version supérieure d\'Épuisement : vide complètement les HP et MP de tous les adversaires proches.'},
+  {id:'trebuchement',   n:'Trébuchement',       t:'hoquet',        pow:0,  mp:14, prob:.10, col:'#a5d6a7', pc:'#e8f5e9', desc:'L\'adversaire trébuche sur rien et perd le ballon. Mystérieux mais efficace.'},
+  {id:'caillou_oeil',   n:'Caillou dans l\'Oeil',t:'cailloux',     pow:0,  mp:16, prob:.09, col:'#8d6e63', pc:'#efebe9', desc:'Un caillou magique aveugle brièvement un adversaire — il perd sa cible 2 secondes.'},
+  {id:'lien_chamanique', n:'Lien Chamanique',    t:'soin',          pow:0,  mp:28, prob:.07, col:'#ff6f00', pc:'#fff3e0', desc:'Lien spirituel entre deux coéquipiers — leur endurance est entièrement restaurée.'},
+  {id:'puissance_divine',n:'Puissance Divine',   t:'divine',        pow:0,  mp:35, prob:.06, col:'#ffd54f', pc:'#fffde7', desc:'Le joueur canalise la grâce divine — ses stats sont massivement boostées pendant une courte durée.'},
+  {id:'invoc_aleatoire', n:'Invocation Aléatoire',t:'chance',       pow:0,  mp:30, prob:.06, col:'#ab47bc', pc:'#f3e5f5', desc:'Pioche et déclenche un sort avancé au hasard parmi toutes les vocations.'},
+  {id:'contresort',     n:'Contresort',          t:'shield',        pow:0,  mp:20, prob:.09, col:'#5c6bc0', pc:'#e8eaf6', desc:'Annule le prochain sort adverse avant qu\'il ne prenne effet.'},
+  {id:'bannissement',   n:'Bannissement',         t:'terreur',       pow:0,  mp:38, prob:.05, col:'#4a148c', pc:'#f3e5f5', desc:'Exile temporairement un adversaire hors du terrain pendant 10 secondes.'},
+  {id:'carapace',       n:'Carapace',             t:'shield',        pow:0,  mp:18, prob:.10, col:'#78909c', pc:'#eceff1', desc:'Enveloppe le joueur d\'une armure temporaire — réduit massivement les dégâts reçus.'},
+  {id:'forme_bestiale', n:'Forme Bestiale',        t:'spindash',      pow:0,  mp:40, prob:.05, col:'#bf360c', pc:'#fbe9e7', desc:'Le joueur se transforme en bête — vitesse et force décuplées pendant 8 secondes.'},
+  {id:'champ_force',    n:'Champ de Force',        t:'shield',        pow:0,  mp:22, prob:.08, col:'#0288d1', pc:'#e1f5fe', desc:'Zone de ralentissement autour du lanceur — les adversaires proches sont freinés.'},
+  {id:'desintegration', n:'Désintégration',        t:'maledic',       pow:0,  mp:42, prob:.04, col:'#37474f', pc:'#eceff1', desc:'Réduit temporairement toutes les stats d\'un adversaire à zéro pendant 6 secondes.'},
+  {id:'drain_vital',    n:'Drain Vital',           t:'epuise',        pow:0,  mp:24, prob:.08, col:'#880e4f', pc:'#fce4ec', desc:'Aspire la vie d\'un adversaire pour se soigner soi-même.'},
+  {id:'resurrection',   n:'Résurrection',          t:'soin',          pow:0,  mp:45, prob:.04, col:'#f9a825', pc:'#fffde7', desc:'Ramène un coéquipier KO sur le terrain avec 50% de ses HP.'},
+  {id:'telekinesie_abs', n:'Télékinésie Absolue',  t:'telekib',       pow:60, mp:45, prob:.05, col:'#00838f', pc:'#e0f7fa', desc:'Tir télékinétique à puissance maximale. La défense du gardien est réduite à 40%. Difficile à arrêter.'},
+  {id:'vandalisme',      n:'Vandalisme de Terrain', t:'fleurs',        pow:0,  mp:22, prob:.08, col:'#558b2f', pc:'#f1f8e9', desc:'Détruit une portion du terrain : la zone devient impraticable, les défenseurs dans la zone sont stun et ne peuvent plus se repositionner.'},
+  {id:'hack',            n:'Hack',                  t:'suggest',       pow:0,  mp:28, prob:.07, col:'#0288d1', pc:'#e1f5fe', desc:'Pirate les stats d\'un adversaire et les redirige vers un allié pendant 8 secondes.'},
+  {id:'maztikal_rush',   n:'Maztikal Rush',         t:'spindash',      pow:0,  mp:32, prob:.07, col:'#ff6a00', pc:'#fbe9e7', desc:'Toute l\'équipe sprint vers le but à vitesse maximale pendant 6 secondes. Défense réduite à zéro.'},
+  {id:'maztikal_girlz',  n:'Transformation Maztikal Girlz', t:'spindash', pow:0, mp:0, prob:0, col:'#ff00ff', pc:'#fce4ec', desc:'Transformation automatique en prolongation : boost massif vitesse, attaque et technique.'},
+  {id:'dragon',          n:'Transformation Dragon',        t:'fire',      pow:0, mp:0, prob:0, col:'#ff4500', pc:'#fff3e0', desc:'Sort légendaire de Tear : toutes les stats doublées 15s, tir de feu automatique à chaque possession.'},
+  {id:'boing_boing',     n:'Boing Boing',                   t:'charm',     pow:0, mp:0, prob:.03, col:'#ff69b4', pc:'#fce4ec', desc:'Sort légendaire de Ruby/Saphyr : l\'équipe adverse, déconcentrée, marque un autobut garanti.'},
+  {id:'manif_ecolo',     n:'Manifestation Écolo',           t:'pacif',     pow:0,  mp:32, prob:.06, col:'#2e7d32', pc:'#e8f5e9', desc:'Des supporters envahissent le terrain. Match interrompu 15-20s. Le chrono tourne. Idéal pour gâcher le temps.'},
+  {id:'piege_elec',     n:'Piège Électrique',              t:'telekib',   pow:0,  mp:18, prob:.09, col:'#ffd600', pc:'#fffde7', desc:'Piège électrique stun + vol de balle sur le premier adversaire qui marche dessus.'},
+  {id:'flamme_noire',   n:'Flamme Noire',                  t:'fire',      pow:0,  mp:20, prob:.09, col:'#4a148c', pc:'#f3e5f5', desc:'Flamme sombre : ralentissement fort sur tous les défenseurs dans la zone.'},
+  {id:'explosion_sort', n:'The Explosion',                  t:'tirspe',    pow:55, mp:35, prob:.06, col:'#d32f2f', pc:'#ffebee', desc:'Tir explosif dévastateur. Gardien sonné même s\'il arrête.'},
+  {id:'lance_tenebres', n:'Lance des Ténèbres',             t:'tirspe',    pow:45, mp:30, prob:.07, col:'#311b92', pc:'#ede7f6', desc:'Aura sombre en forme de lance qui plonge vers le but depuis les airs.'},
+  {id:'attentat',       n:'Attentat',                       t:'tirspe',    pow:70, mp:0,  prob:0,   col:'#b71c1c', pc:'#ffebee', desc:'Légendaire Cheik Evara : canons d\'énergie surgissent du sol et fusent vers le but.'},
+  {id:'coup_bas',       n:'Coup Bas',                      t:'telekib',   pow:0,  mp:22, prob:.07, col:'#8d6e63', pc:'#efebe9', desc:'Feinte et frappe sournoise. Vol de balle garanti + stun 10 secondes.'},
+  {id:'haramball',      n:'Haramball',                     t:'defend',    pow:0,  mp:0,  prob:0,   col:'#c8a400', pc:'#fff8e1', desc:'Sort légendaire du Sultan : +15 Défense à toute l\'équipe pendant 15 secondes.'},
+  {id:'gaia',            n:'Frappe Universelle',            t:'seisme',    pow:65, mp:50, prob:.05, col:'#33691e', pc:'#f1f8e9', desc:'La terre propulse le ballon. Puissance 70, défense gardien à 30%, stun tous les défenseurs.'},
+  {id:'tir_pegase',      n:'Tir Pégase',                   t:'tirspe',    pow:35, mp:20, prob:.09, col:'#87ceeb', pc:'#e3f2fd', desc:'Saut retourné, énergie concentrée dans le pied, un pégase accompagne le ballon vers le but.'},
+  {id:'ballon_angelique',n:'Ballon Angélique',              t:'defend',    pow:0,  mp:10, prob:.09, col:'#fffde7', pc:'#fff9c4', desc:'Ballon envoyé en l\'air avec auréole et ailes, tourne autour de l\'adversaire et le contourne. Sort défensif.'},
+  {id:'monte_celeste',   n:'Monté Céleste',                 t:'pacif',     pow:0,  mp:9, prob:.09, col:'#e1f5fe', pc:'#b3e5fc', desc:'Colonne de lumière, le joueur monte au ciel et renvoie la balle à son utilisateur.'},
+  {id:'tir_licorne',     n:'Tir de la Licorne',             t:'tirspe',    pow:50, mp:35, prob:.07, col:'#9c27b0', pc:'#f3e5f5', desc:'Deux joueurs sautent et frappent simultanément. Licorne violette fonce vers le but.'},
+  {id:'tri_pegase',      n:'Tri-Pégase',                    t:'tirspe',    pow:60, mp:45, prob:.05, col:'#1565c0', pc:'#e3f2fd', desc:'Trois joueurs croisent leurs trajectoires, frappent à tour de rôle, pégase bleu accompagne le ballon.'},
+  {id:'tir_celeste',     n:'Tir Céleste / Éclat Divin',     t:'tirspe',    pow:50, mp:0,  prob:0,   col:'#ffd700', pc:'#fff8e1', desc:'Légendaire : nuages invoqués, escalier d\'or, le ballon descend en flèche. Tous les joueurs aveuglés.'},
+  {id:'voeux',           n:'Vœux',                          t:'charm',     pow:0,  mp:15, prob:.09, col:'#ce93d8', pc:'#f3e5f5', desc:'Exauce un vœu mystique : effet aléatoire bénéfique sur l\'équipe alliée.'},
+  {id:'vision',          n:'Vision',                        t:'suggest',   pow:0,  mp:18, prob:.09, col:'#b39ddb', pc:'#ede7f6', desc:'Prémonition du prochain tir adverse : +30% chance d\'arrêt du gardien pendant 15s.'},
+  {id:'eclipse',         n:'Éclipse',                       t:'pacif',     pow:0,  mp:20, prob:.08, col:'#37474f', pc:'#eceff1', desc:'Obscurcit le terrain, tous les adversaires sont désorientés 8-12s.'},
+  {id:'prophetie',       n:'Prophétie',                     t:'suggest',   pow:0,  mp:30, prob:.06, col:'#7e57c2', pc:'#ede7f6', desc:'Annule le prochain sort adverse. Le lanceur reçoit une vision de la prochaine action adverse.'},
+  // ── PALLADIUM CORPORATION ──────────────────────────────────
+  {id:'souffle_dragon',  n:'Souffle du Dragon',  t:'react',   pow:0,  mp:60, prob:0,   col:'#ff6600', pc:'#fff3e0', desc:'Légendaire Aurelthar : quand un adversaire lance un sort de tir, 25% de chance de réduire sa puissance de moitié.'},
+  {id:'produits_dopants',n:'Produits Dopants',   t:'support', pow:0,  mp:35, prob:.04,  col:'#00e5ff', pc:'#e0f7fa', desc:'Combo PC : stats aléatoires boostées pendant 10s, mais l\'endurance chute sévèrement.'},
+  {id:'corruption',      n:'Corruption',         t:'support', pow:0,  mp:50, prob:.01,  col:'#7b1fa2', pc:'#f3e5f5', desc:'Avancé PC : le porteur adverse effectue involontairement une passe vers un membre de la PC.'},
+  // ── SIBÉRIA ─────────────────────────────────────────────
+  {id:'main_celeste',    n:'Main Céleste',        t:'react',   pow:0,  mp:15, prob:0,   col:'#87ceeb', pc:'#e3f2fd', desc:'Base Mystique Sibéria : 50% de chance de réduire de 10% la puissance d\'un sort de tir adverse.'},
+  {id:'invoc_celeste',   n:'Invocation Céleste',             t:'charm',     pow:0,  mp:40, prob:.05, col:'#4a148c', pc:'#f3e5f5', desc:'Convoque un joueur fantôme allié pendant 10s. Joue comme un ATT supplémentaire.'},
+  // ── PACIFISTAS ──────────────────────────────────────────────
+  {id:'laser_oculaire',  n:'Laser Oculaire',      t:'tirspe',  pow:40, mp:30, prob:.07, col:'#00e5ff', pc:'#e0f7fa', desc:'Légendaire Pigeon Ronronldo : si le lanceur a le ballon, tir laser puissance 40 ; sinon, faisceau qui tacle et stun l\'adversaire le plus proche.'},
+  // ── THÉOCRATIE SEELIENNE ──────────────────────────────────
+  {id:'serre',           n:'Serre',                          t:'serre',     pow:22, mp:16, prob:.10, col:'#ffd700', pc:'#fff8e1', desc:'Le tireur utilise ses serres pour gripper le ballon et le propulser. Tir tranchant mais peu puissant — très difficile à lire pour le gardien.'},
+  {id:'concert_lumiere', n:'Concert de Lumière',             t:'concert_lumiere', pow:0, mp:0, prob:0, col:'#ffe066', pc:'#fffde7', desc:'Automatique a chaque periode : toutes les 15s, un allie au hasard gagne +5 a +20 dans une stat pendant 10s. Puise fortement dans lendurance du porteur.'},
+  // ── FIKRA — Sorts manquants ────────────────────────────────
+  {id:'chaos',        n:'Chaos',               t:'chaos',        pow:0, mp:20, prob:.08, col:'#7c4dff', pc:'#ede7f6', desc:'Effet imprévisible — selon lhumeur du hasard, déstabilise un adversaire ou transcende un allié.'},
+  {id:'theatre',      n:'Coup de Théâtre',     t:'theatre',      pow:0, mp:24, prob:.07, col:'#ff4081', pc:'#fce4ec', desc:'Rebondissement spectaculaire — une faute est toujours sifflée, et ladversaire le plus proche en reste bouche bée.'},
+  {id:'tactique',     n:'Désordre Tactique',   t:'tactique',     pow:0, mp:30, prob:.06, col:'#5d4037', pc:'#efebe9', desc:'Brouille les repères de toute léquipe adverse — plus personne ne sait où se placer.'},
+  {id:'intimid',      n:'Intimidation',        t:'intimid',      pow:0, mp:16, prob:.09, col:'#3e2723', pc:'#d7ccc8', desc:'Un regard noir suffit — un défenseur adverse recule, impressionné.'},
+  {id:'pierre_sacree',n:'Pierre Sacrée',       t:'pierre_sacree',pow:0, mp:26, prob:.07, col:'#fbc02d', pc:'#fff9c4', desc:'Bénédiction minérale — le lanceur et son équipe sont revigorés et protégés.'},
+  {id:'reveil_nature',n:'Réveil de la Nature', t:'sylvestre',    pow:0, mp:34, prob:.06, col:'#2e7d32', pc:'#e8f5e9', desc:'Version supérieure de Marche Sylvestre — toute la forêt sanime pour porter léquipe.'},
+  {id:'rot_cosmique', n:'Rot Cosmique',        t:'hoquet',       pow:0, mp:18, prob:.08, col:'#9ccc65', pc:'#f1f8e9', desc:'Un rot venu dun autre univers déstabilise deux adversaires dun coup.'},
+];
+
+// Spell classification — defined once at module scope
+const SUPPORT_SPELLS=new Set(['produits_dopants','corruption','heal','soin','amitie','shield','tornado','pass','transe','invis','peaupierre','chance','divine','plaisir','sylvestre','aile','esprit','sixsens','dragon','aura_divine','aide_divine','cailloux','simulation','comedia','subtilisation','vol','stase','domination','maledic2','epuise2','trebuchement','caillou_oeil','lien_chamanique','puissance_divine','invoc_aleatoire','vandalisme','hack','maztikal_rush','maztikal_girlz','contresort','bannissement','carapace','forme_bestiale','champ_force','drain_vital','resurrection','boing_boing','manif_ecolo','piege_elec','flamme_noire','coup_bas','haramball','ballon_angelique','monte_celeste','voeux','vision','eclipse','prophetie','invoc_celeste','concert_lumiere','chaos','theatre','pierre_sacree','reveil_nature']);
+const ATTACK_SPELLS=new Set(['desintegration','telekinesie_abs','gaia','tir_pegase','tir_licorne','tri_pegase','tir_celeste','explosion_sort','lance_tenebres','attentat','fire','fireball','ice','thunder','eldritch','illusion','mouton','suggest','charm','ice2','pacif','tech','cyclon','telekib','deluge','terreur','epuise','maledic','hoquet','folie','fleurs','spindash','tacle_mauvais','tacle_malefique','atk_demo','main','main_discrete','blizzard','seisme','serre','chaos','tactique','intimid','rot_cosmique','laser_oculaire']);
+
+const STRATS=[
+  // atk/def: combat multipliers for shots/duels
+  // press: where the defensive line sits (0=deep block, 1=high pressing)
+  // width: lateral spread of the block (0.7=narrow/compact, 1.3=wide)
+  // attDepth: how far forward attackers push when off the ball (-2 to +6 meters)
+  // midPush: how aggressively mids support the attack
+  // runFreq: how often off-the-ball runs trigger (multiplier)
+  {id:'321',  n:'3-2-1',          d:'Classique équilibré',          atk:1.00,def:1.00, press:.50, width:1.00, attDepth:0,  midPush:1.00, runFreq:1.00, col:'#1878e8'},
+  {id:'231',  n:'2-3-1 Offensif', d:'Milieu renforcé, pressing',    atk:1.18,def:.86,  press:.85, width:1.15, attDepth:2,  midPush:1.35, runFreq:1.35, col:'#f0c028'},
+  {id:'222',  n:'3-2-2 Direct',   d:'Gardien sweeper, 2 DC, 2 MO, 2 ATT', atk:1.25,def:.80,  press:.90, width:.85,  attDepth:4,  midPush:1.20, runFreq:1.50, col:'#e02030'},
+  {id:'133',  n:'1-3-3 Milieu', d:'3 défenseurs, 2 MDC, 1 MO — gardien sweeper',    atk:.78, def:1.30, press:.18, width:.80,  attDepth:-2, midPush:.55,  runFreq:.65, col:'#18c860'},
+];
+
+// formations: [pct_forward, pct_side] — 0=own goal, 1=opp goal
+// Ne servent plus qu'en DERNIER RECOURS (fallback) si un joueur n'a pas de
+// poste valide — voir POS_COORDS ci-dessous, qui pilote désormais le
+// placement RÉEL de chaque joueur selon SON PROPRE poste individuel, quelle
+// que soit la stratégie choisie (321/231/222/133 = juste des "bases").
+const FORMS={
+  '321': [[.08,.50],[.26,.20],[.26,.50],[.26,.80],[.52,.33],[.52,.67],[.76,.50]],
+  '231': [[.08,.50],[.26,.30],[.26,.70],[.48,.18],[.48,.50],[.48,.82],[.76,.50]],
+  '222': [[.14,.50],[.27,.35],[.27,.65],[.50,.28],[.50,.72],[.72,.28],[.72,.72]],
+  '133': [[.10,.50],[.28,.20],[.28,.50],[.28,.80],[.48,.30],[.48,.70],[.65,.50]],
+};
+// Coordonnées de base PAR POSTE INDIVIDUEL (indépendantes de la formation) :
+// [profondeur 0..1 (0=but propre, 1=but adverse), côté 0..1 (0=gauche,1=droite)]
+// C'est la fiche joueur ("Poste" dans l'éditeur) qui détermine où le joueur
+// se tient sur le terrain — modifier le poste d'UN joueur a maintenant un
+// effet réel et direct, au lieu d'être écrasé par la stratégie d'équipe.
+const POS_COORDS={
+  GB:  [.08,.50],
+  DC:  [.24,.50],
+  DD:  [.24,.82],
+  DG:  [.24,.18],
+  MDC: [.42,.50],
+  MC:  [.50,.50],
+  MOG: [.60,.20],
+  MOD: [.60,.80],
+  MO:  [.60,.50],
+  AG:  [.72,.16],
+  AD:  [.72,.84],
+  ATT: [.78,.50],
+};
+// ── Utilitaires image & stockage ────────────────────────────────────────────
+// Redimensionne/compresse une image uploadée (logo ou photo joueur) avant de
+// la convertir en base64, pour éviter de saturer le quota de localStorage
+// (~5-10 Mo) quand il y a beaucoup de logos/photos (surtout dans le pool PNJ).
+function _compressImage(file,maxDim,quality,cb){
+  const reader=new FileReader();
+  reader.onload=e=>{ _compressDataUrl(e.target.result,maxDim,quality,cb,()=>cb(e.target.result)); };
+  reader.onerror=()=>{};
+  reader.readAsDataURL(file);
+}
+// Recompresse une dataURL (ou URL d'image) déjà en mémoire — utile pour les
+// équipes importées depuis un JSON dont les images peuvent être énormes.
+function _compressDataUrl(dataUrl,maxDim,quality,cb,onFail){
+  if(!dataUrl||typeof dataUrl!=='string'||!dataUrl.startsWith('data:image')){cb(dataUrl||'');return;}
+  const img=new Image();
+  img.onload=()=>{
+    let w=img.width,h=img.height;
+    if(w>h){ if(w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;} }
+    else { if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;} }
+    try{
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const c2=canvas.getContext('2d');
+      c2.drawImage(img,0,0,w,h);
+      cb(canvas.toDataURL('image/jpeg',quality));
+    }catch(err){ (onFail||(()=>cb(dataUrl)))(); }
+  };
+  img.onerror=()=>{ (onFail||(()=>cb(dataUrl)))(); };
+  img.src=dataUrl;
+}
+// Compresse (de façon synchrone-optimiste) toutes les images d'une équipe
+// importée. Comme la compression via <canvas> est asynchrone, on lance les
+// compressions en parallèle et on appelle `done` quand tout est terminé.
+function _compressTeamImages(team,done){
+  const jobs=[];
+  const queue=(obj,maxDim)=>{
+    if(obj&&typeof obj.img==='string'&&obj.img.startsWith('data:image')){
+      jobs.push(new Promise(res=>{_compressDataUrl(obj.img,maxDim,0.72,u=>{obj.img=u;res();},()=>{obj.img='';res();});}));
+    }
+  };
+  queue(team,160);
+  [...(team.players||[]),...(team.bench||[]),...(team.reserves||[])].forEach(p=>queue(p,120));
+  if(!jobs.length){done();return;}
+  Promise.all(jobs).then(done).catch(done);
+}
+// Sauvegarde sécurisée dans localStorage : avertit visiblement l'utilisateur
+// (au lieu d'un simple warning console silencieux) si le quota est dépassé.
+function _safeLSSet(key,valueObj){
+  try{
+    localStorage.setItem(key,JSON.stringify(valueObj));
+    return true;
+  }catch(e){
+    if(e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014)){
+      logEvent('⚠️ Stockage plein : sauvegarde impossible. Supprimez quelques photos/logos ou équipes PNJ pour libérer de la place.','#e02030');
+    }else{
+      console.warn('LocalStorage save failed',e);
+    }
+    return false;
+  }
+}
+function teamIni(name){
+  name=String(name||'?').trim();
+  const stop=['le','la','les','de','du','des','l','d','fc','sc','as','club','olympique','union'];
+  const words=name.split(/\s+/).filter(w=>w&&!stop.includes(w.toLowerCase()));
+  if(words.length>=2) return (words[0][0]+words[1][0]).toUpperCase();
+  if(words.length===1) return words[0].slice(0,2).toUpperCase();
+  return name.slice(0,2).toUpperCase()||'??';
+}
+const ROLE=['GB','DC','DD','DG','MC','MC','ATT'];
+// Postes assignés par formation (7 joueurs, index 0-6)
+const FORM_ROLES={
+  '321': ['GB','DC','DD','DG','MC','MC','ATT'],
+  '231': ['GB','DC','DG','MC','MC','MO','ATT'],
+  '222': ['GB','DC','DC','MOG','MOD','ATT','ATT'],  // GB + 2DC + 2MO latéraux + 2ATT
+  '133': ['GB','DC','DD','DG','MDC','MDC','MO'],
+};
+
+function mkPlayers(ti){
+  const na=ti===0
+    ?['Renard','Moreau','Leblanc','Dupuis','Garnier','Martin','Gauthier']
+    :['Velasquez','Romero','Castro','Medina','Herrera','Suarez','Delgado'];
+  const pools=[
+    ['fire','eldritch'],['shield','ice'],['thunder','tornado'],
+    ['ice','soin'],['thunder','tech'],['tech','fireball'],['amitie','pass'],
+    ['cyclon','transe'],['telekib','invis'],['deluge','peaupierre'],
+    ['terreur','maledic'],['epuise','chance'],['hoquet','suggest'],
+    ['cyclon','eldritch']
+  ];
+  return na.map((name,i)=>({
+    id:`t${ti}p${i}`,name,pos:ROLE[i],img:'',ini:name.slice(0,2).toUpperCase(),
+    s:{spd:42+~~(Math.random()*52),sht:38+~~(Math.random()*58),def:38+~~(Math.random()*58),stam:55+~~(Math.random()*40),tec:42+~~(Math.random()*52),res:35+~~(Math.random()*60)},
+    spells:pools[i]||['tech'],
+    x:0,y:0,vx:0,vy:0,tx:0,ty:0,
+    hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
+    injLevel:0,injT:0,  // 0=sain 1=légère 2=sérieuse 3=grave
+    mG:0,mSh:0,mTk:0,mSp:0,_img:null,
+    _spdDebuff:0,_charmed:0,_atkBuff:0,_pacified:0,_invis:0,_folie:0,_aile:0,_sixsens:0,_sylvestre:0,
+    bobPhase:Math.random()*Math.PI*2,
+    // Movement realism: independent phases for organic wandering and timed runs
+    wPhaseX:Math.random()*Math.PI*2,
+    wPhaseY:Math.random()*Math.PI*2,
+    wSpeed:1.4+Math.random()*1.2,         // faster wandering = more visible motion
+    runT:0,runTx:0,runTy:0,runCool:Math.random()*2,  // off-the-ball run state
+    dribCurve:0,                          // dribbling carrier zig-zag bias
+    tackleCool:0,                         // cooldown between physical tackle attempts
+  }));
+}
+
+function mkBench(ti){
+  const na=ti===0
+    ?['Bertrand','Lefebvre','Fontaine','Renaud','Peltier']
+    :['Mendoza','Vargas','Ibarra','Salinas','Reyes'];
+  const pools=[['fireball','soin'],['shield','thunder'],['ice2','tech'],['mouton','fire'],['amitie','tech']];
+  const pos=['MC','ATT','DC','DD','MC'];
+  return na.map((name,i)=>({
+    id:`t${ti}b${i}`,name,pos:pos[i],img:'',ini:name.slice(0,2).toUpperCase(),
+    s:{spd:38+~~(Math.random()*52),sht:36+~~(Math.random()*55),def:36+~~(Math.random()*55),stam:62+~~(Math.random()*34),tec:38+~~(Math.random()*52),res:40+~~(Math.random()*55)},
+    spells:pools[i]||['tech'],
+    x:-10,y:PCY,vx:0,vy:0,tx:-10,ty:PCY,
+    hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
+    injLevel:0,injT:0,
+    mG:0,mSh:0,mTk:0,mSp:0,_img:null,onBench:true,
+    _spdDebuff:0,_charmed:0,_atkBuff:0,_pacified:0,_invis:0,_folie:0,_aile:0,_sixsens:0,_sylvestre:0,
+    bobPhase:Math.random()*Math.PI*2,
+    wPhaseX:Math.random()*Math.PI*2,
+    wPhaseY:Math.random()*Math.PI*2,
+    wSpeed:1.4+Math.random()*1.2,
+    runT:0,runTx:0,runTy:0,runCool:Math.random()*2,
+    dribCurve:0,
+    tackleCool:0,
+  }));
+}
+
+function mkReserves(ti){
+  const na=ti===0?['Blondel','Dupond','Marchand']:['Alvarado','Gimenez','Fuentes'];
+  const pos=['DC','ATT','MC'];
+  return na.map((name,i)=>({
+    id:`t${ti}r${i}`,name,pos:pos[i],img:'',ini:name.slice(0,2).toUpperCase(),
+    s:{spd:30+~~(Math.random()*45),sht:28+~~(Math.random()*45),def:28+~~(Math.random()*45),stam:55+~~(Math.random()*40),tec:30+~~(Math.random()*45),res:35+~~(Math.random()*50)},
+    spells:['tech'],
+    hp:100,mp:100,injLevel:0,
+    _img:null,isReserve:true,
+  }));
+}
+
+let teams=[
+  {name:'Les Rouges',color:'#e02030',strat:'321',players:mkPlayers(0),bench:mkBench(0),reserves:mkReserves(0)},
+  {name:'Les Bleus', color:'#1878e8',strat:'321',players:mkPlayers(1),bench:mkBench(1),reserves:mkReserves(1)},
+];
+
+// ═══════════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════════
+let G={
+  running:false,minute:0,half:1,
+  scores:[0,0],shots:[0,0],tackles:[0,0],corners:[0,0],fouls:[0,0],possT:[0,0],
+  ball:{x:PCX,y:PCY,vx:0,vy:0,trail:[],spin:0},
+  owner:null,atkTi:0,
+  phase:'KICKOFF',phTick:0,
+  minTick:0,aiTick:0,
+  ptcl:[],flash:0,flashCol:'#fff',
+  log:[],
+  leagueMode:false,careerMode:false,careerCupMode:false,_paused:false,_celebrating:false,penaltyWinner:undefined,
+  _kickoffTi:0,_firstHalfKickoffTi:0,matchEvents:[],_lastPasser:[null,null],
+  tacMode:[null,null],
+  tacSliders:[
+    {press:0.5,line:0,width:0,aggr:0,pressLine:0.5,style:'normal'},
+    {press:0.5,line:0,width:0,aggr:0,pressLine:0.5,style:'normal'}
+  ],
+  playerRoles:[[],[]], // per-player: 'def'|'normal'|'atk'
+  gegenT:[0,0],       // gegenpressing timer per team
+  gkCoolT:0,          // cooldown après dégagement — empêche le pressing immédiat (seconds after losing ball)
+  _pressNearest:[null,null], // cached nearest player per team for pressing
+};
+
+const PHASE_LABELS={
+  KICKOFF:"COUP D'ENVOI",BUILDUP:'CONSTRUCTION',ATTACK:'ATTAQUE',
+  TRANSITION:'CONTRE-ATTAQUE',CORNER:'CORNER',FREEKICK:'COUP FRANC',
+  GOALKICK:'DÉGAGEMENT',HALFTIME:'MI-TEMPS',END:'FIN DU MATCH',
+};
+
+let speedMult=3;
+let cvs,ctx,raf,lastTs=0;
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const dist2=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const rng=(a,b)=>a+Math.random()*(b-a);
+const irng=(a,b)=>Math.floor(rng(a,b+1));
+const pick=a=>a[~~(Math.random()*a.length)];
+const norm=(dx,dy)=>{const m=Math.hypot(dx,dy)||1;return{x:dx/m,y:dy/m};};
+const allP=()=>[teams[0],teams[1]].flatMap(T=>T.players);
+const actP=ti=>{
+  // Joueurs actifs de l'équipe ti : ses propres joueurs (hors dominés partis
+  // ailleurs) PLUS les adversaires actuellement dominés qui jouent pour elle.
+  const own=teams[ti].players.filter(p=>!p.red&&p.hp>0&&p.injLevel<3&&!(p._dominated>0));
+  const oti=1-ti;
+  const borrowed=teams[oti].players.filter(p=>!p.red&&p.hp>0&&p.injLevel<3&&p._dominated>0&&p._dominatedBy===ti);
+  return borrowed.length?own.concat(borrowed):own;
+};
+// Équipe pour laquelle un joueur joue actuellement (tient compte de la domination).
+const effTeam=p=>(p._dominated>0&&p._dominatedBy!=null)?p._dominatedBy:(teams[0].players.includes(p)?0:1);
+const hasRed=ti=>(teams[ti]?.players||[]).some(p=>p.red); // une équipe a-t-elle déjà un expulsé?
+
+// ── Deep-clone utilities (used by league to avoid reference sharing) ──
+function clonePlayer(p){
+  return Object.assign({},p,{
+    s:{...p.s},
+    spells:[...(p.spells||[])],
+    _img:null,
+    // Spell debuffs
+    _hm:p._hm!==undefined?p._hm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
+    _fm:p._fm!==undefined?p._fm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
+    _auraDivine:0, _auraDivineActive:false, _aideDivine:[],
+    _spdDebuff:p._spdDebuff||0,_charmed:p._charmed||0,_atkBuff:p._atkBuff||0,
+    _pacified:p._pacified||0,_invis:p._invis||0,_folie:p._folie||0,
+    _aile:p._aile||0,_sixsens:p._sixsens||0,_sylvestre:p._sylvestre||0,_dragon:p._dragon||0,
+    // Movement fields - ensure they exist (old saves may lack them)
+    bobPhase:p.bobPhase??Math.random()*Math.PI*2,
+    wPhaseX:p.wPhaseX??Math.random()*Math.PI*2,
+    wPhaseY:p.wPhaseY??Math.random()*Math.PI*2,
+    wSpeed:p.wSpeed??(1.4+Math.random()*1.2),
+    runT:p.runT||0,runTx:p.runTx||0,runTy:p.runTy||0,
+    runCool:p.runCool??Math.random()*2,
+    dribCurve:p.dribCurve||0,
+    tackleCool:p.tackleCool||0,
+  });
+}
+function deepCloneTeam(T){
+  if(!T)return null;
+  return{name:T.name,color:T.color,img:T.img||'',strat:T.strat||'321',
+    players:(T.players||[]).map(p=>p?clonePlayer(p):null).filter(Boolean),
+    bench:(T.bench||[]).map(p=>p?clonePlayer(p):null).filter(Boolean),
+    reserves:(T.reserves||[]).map(p=>({...p,s:{...p.s}}))};
+}
+function byR(ti,...r){const a=actP(ti);const f=a.filter(p=>r.includes(p.pos));return f.length?f:a;}
+const strat=ti=>{
+  const base={...(STRATS.find(s=>s.id===teams[ti].strat)||STRATS[0])};
+  const sl=G.tacSliders[ti];
+  if(sl){
+    // press slider: 0=bloc bas, 1=pressing maximal — overrides formation default
+    if(sl.press!==undefined&&sl.press!==0) base.press=Math.min(1.5,Math.max(0.05,sl.press*1.4));
+    if(sl.pressLine!==undefined&&sl.pressLine!==0) base.pressLine=sl.pressLine;
+    base.atk      =Math.min(2.0,Math.max(0.4, base.atk    +(sl.line||0)*0.15));
+    base.def      =Math.min(2.0,Math.max(0.4, base.def    -(sl.line||0)*0.12));
+    // lineDepth: valeur BRUTE du curseur "Ligne défensive" (-1..+1), conservée
+    // à part pour piloter la PROFONDEUR RÉELLE de la ligne défensive sur le
+    // terrain (roleTarget/lineAnchor) — avant, seul le pressing (press/pressLine)
+    // influençait la position géométrique, donc ce curseur ne faisait presque
+    // rien voir sur le terrain, seulement du atk/def "invisible".
+    base.lineDepth=(sl.line||0);
+    base.width    =Math.min(1.6,Math.max(0.4, (base.width||1)+(sl.width||0)*0.4));
+    base.runFreq  =Math.min(2.5,Math.max(0.3, (base.runFreq||1)+(sl.aggr||0)*0.5));
+    // pressLine: where on pitch pressing triggers. -1=own half, 0=halfway, +1=opponent third
+    base.pressLine=(sl.pressLine||0);
+    // style: 'normal'|'direct'|'possession'|'counter'
+    base.style    =sl.style||'normal';
+    // Style presets modify motor params directly
+    if(base.style==='possession'){ base.runFreq=Math.max(0.3,base.runFreq*.7); base.atk*=0.95; base.def*=1.05; }
+    if(base.style==='direct')    { base.runFreq=Math.min(2.5,base.runFreq*1.4); base.atk*=1.18; }
+    if(base.style==='counter')   { base.press=Math.max(0.05,base.press*.4); base.attDepth=(base.attDepth||0)+10; base.runFreq=Math.min(2.5,base.runFreq*1.6); base.atk*=1.25; base.def*=1.15; }
+
+    // ── SYNERGIES TACTIQUES : récompenser les réglages cohérents ────────
+    const lineSl=sl.line||0, widthSl=sl.width||0, pressSl=(sl.press!==undefined?sl.press:0.5);
+    const defRating=STRATS.find(s=>s.id===teams[ti].strat)?.def||1;
+
+    // BÉTONNAGE : bloc bas (line<0) + compact (width<0) + pressing bas.
+    // Plus la formation est déjà défensive (def élevé), plus le bonus est marqué.
+    // Un vrai bunker discipliné et resserré défend mieux qu'un bloc bas mal réglé.
+    if(lineSl<0 && widthSl<0){
+      const compactness=Math.min(1,(-lineSl)*(-widthSl)*1.6);   // 0..1 selon à quel point c'est bas ET serré
+      const lowPressBonus=pressSl<0.35?1:pressSl<0.55?0.5:0;    // récompense un vrai bloc bas (pas de pressing haut incohérent)
+      const defBonus=0.10+compactness*0.20+lowPressBonus*0.10;  // jusqu'à +40% def
+      base.def*=(1+defBonus*Math.min(1.2,defRating));           // amplifié pour une formation défensive (1-3-3)
+      base._bunker=true;
+    }
+
+    // JEU DE POSSESSION ÉTALÉ : bloc haut (line>0) + large (width>0) + style possession.
+    // Récompense un 3-2-2 gardien volant qui combine et étire le terrain :
+    // supériorité au milieu, circulation → plus d'occasions de qualité.
+    if(lineSl>0 && widthSl>0 && base.style==='possession'){
+      const spread=Math.min(1,lineSl*widthSl*1.6);
+      base.atk*=(1+0.12+spread*0.22);   // jusqu'à ~+34% atk
+      base.midPush=Math.min(2,(base.midPush||1)*(1+spread*0.35));
+      base.runFreq=Math.min(2.5,(base.runFreq||1)*(1+spread*0.2));
+      base._tikitaka=true;
+    }
+    // Variante sans le style possession : bloc haut + large tout court donne
+    // un bonus offensif plus modeste (étirer le terrain crée des espaces).
+    else if(lineSl>0 && widthSl>0){
+      const spread=Math.min(1,lineSl*widthSl*1.6);
+      base.atk*=(1+spread*0.14);
+    }
+
+    // ── 3-2-1 ÉQUILIBRÉ : récompense la POLYVALENCE ─────────────────────
+    // Le classique brille quand on ne force aucun extrême : réglages centrés
+    // (ligne, largeur, pressing médians) → petit bonus à la fois atk ET def.
+    // C'est le couteau suisse : solide partout tant qu'on reste équilibré.
+    if(teams[ti].strat==='321'){
+      const centered=(1-Math.min(1,Math.abs(lineSl)))*(1-Math.min(1,Math.abs(widthSl)))*(1-Math.min(1,Math.abs(pressSl-0.5)*2));
+      if(centered>0.3){
+        const bal=0.06+centered*0.12;   // jusqu'à ~+18%
+        base.atk*=(1+bal); base.def*=(1+bal);
+        base._balanced=true;
+      }
+    }
+
+    // ── 2-3-1 GEGENPRESSING : récompense le PRESSING HAUT ───────────────
+    // Formation de domination du milieu : pressing haut (press>0.6) + ligne
+    // haute (line>0) → étouffe l'adversaire, récupère haut, plus d'occasions.
+    if(teams[ti].strat==='231' && pressSl>0.6 && lineSl>0){
+      const intensity=Math.min(1,(pressSl-0.6)/0.4 * Math.min(1,lineSl*1.4));
+      base.atk*=(1+0.08+intensity*0.20);           // jusqu'à ~+28% atk
+      base.runFreq=Math.min(2.5,(base.runFreq||1)*(1+intensity*0.3));
+      base.press=Math.min(1.5,base.press+intensity*0.2); // pressing encore plus mordant
+      base._gegen=true;
+    }
+  }
+  // Gegen: if team just lost ball, boost pressing for 4s
+  if(G.gegenT&&G.gegenT[ti]>0){
+    base.press=Math.min(1.5,base.press+0.5);
+    base.runFreq=Math.min(2.5,(base.runFreq||1)+0.6);
+  }
+  const mode=G.tacMode[ti];
+  if(mode==='press') { base.press=Math.min(1.5,base.press+0.6); base.atk*=1.15; base.def*=0.85; }
+  if(mode==='defend'){ base.press=Math.max(0.1,base.press-0.4); base.def*=1.35; base.atk*=0.70; base.attDepth=(base.attDepth||0)-6; }
+  if(mode==='attack'){ base.atk*=1.40; base.def*=0.65; base.press=Math.min(1.5,base.press+0.3); base.attDepth=(base.attDepth||0)+8; base.runFreq=Math.min(2.5,(base.runFreq||1)+0.8); }
+  return base;
+};
+const ownerP=()=>G.owner?allP().find(p=>p.id===G.owner):null;
+// Fatigue multiplier: tired players (low HP) AND injured players perform worse in duels and shots.
+// Range: 0.55 (exhausted+seriously injured) → 1.00 (fresh and healthy).
+const fatMul=p=>{
+  if(!p)return 1;
+  const hpFactor=.65+.35*(p.hp/100);
+  const injFactor=[1,.92,.78,.55][p.injLevel||0];
+  const buffMul=p._atkBuff>0?1.30:1.0;
+  const debuffMul=p._pacified>0?0.50:p._charmed>0?0.40:p._folie>0?0.30:1.0;
+  const sixsensMul=p._sixsens>0?1.45:1.0;// sixième sens = meilleure défense
+  return hpFactor*injFactor*buffMul*debuffMul*sixsensMul;
+};
+
+// Rapport de force pour la CRÉATION d'occasions : la capacité de l'attaque à
+// se mettre en position (technique + vitesse + tir) contre la capacité de la
+// défense à l'en empêcher (défense + technique de placement). Une équipe qui
+// domine ce duel se crée plus d'occasions (et de meilleure qualité).
+function _attackEdge(ati,dti){
+  const aps=(teams[ati]?.players||[]);
+  const dps=(teams[dti]?.players||[]);
+  if(!aps.length||!dps.length)return 1;
+  // Attaque : pondère surtout les joueurs offensifs
+  const atkRaw=aps.reduce((s,p)=>{const st=p.s||{};const w=(p.pos==='ATT'||p.pos==='MO'||p.pos==='MOG'||p.pos==='MOD')?1.5:1;
+    return s+w*((st.tec||50)*1.1+(st.spd||50)*0.8+(st.sht||50)*0.6)/2.5;},0)/aps.reduce((s,p)=>s+((p.pos==='ATT'||p.pos==='MO'||p.pos==='MOG'||p.pos==='MOD')?1.5:1),0);
+  // Défense : pondère surtout les défenseurs
+  const defRaw=dps.reduce((s,p)=>{const st=p.s||{};const w=(p.pos==='DC'||p.pos==='DD'||p.pos==='DG'||p.pos==='MDC'||p.pos==='GB')?1.5:1;
+    return s+w*((st.def||50)*1.2+(st.tec||50)*0.6+(st.spd||50)*0.4)/2.2;},0)/dps.reduce((s,p)=>s+((p.pos==='DC'||p.pos==='DD'||p.pos==='DG'||p.pos==='MDC'||p.pos==='GB')?1.5:1),0);
+  const atkPow=atkRaw*(strat(ati).atk||1);
+  const defPow=defRaw*(strat(dti).def||1);
+  const ratio=atkPow/Math.max(1,defPow);
+  return Math.max(0.55,Math.min(1.9,Math.pow(ratio,1.4)));
+}
+
+// AVANT : réassignait le poste de CHAQUE joueur d'après un gabarit fixe par
+// stratégie (FORM_ROLES), en écrasant tout choix individuel fait dans la
+// fiche joueur (ex: "3 DC, 1 DD, 1 DG, 1 MDC" était systématiquement
+// retapé en DC/DD/DG/MC/MC/ATT du 3-2-1). Les formations ne sont que des
+// BASES tactiques (pressing/largeur/etc, voir strat()) : le placement réel
+// de chaque joueur doit venir de SON poste, choisi individuellement.
+// MAINTENANT : on ne touche plus aux postes choisis — on s'assure juste
+// qu'il existe UN SEUL gardien (sinon dégagements/arrêts n'ont plus de sens).
+function applyFormationRoles(ti){
+  const T=teams[ti];
+  if(!T||!T.players?.length) return;
+  const gbCount=T.players.filter(p=>p&&p.pos==='GB').length;
+  if(gbCount===0){
+    T.players[0].pos='GB'; // aucun gardien désigné → le 1er joueur en tient lieu
+  } else if(gbCount>1){
+    let seen=false;
+    T.players.forEach(p=>{
+      if(p&&p.pos==='GB'){
+        if(seen) p.pos='DC'; // gardiens en trop → replacés en défenseur central
+        seen=true;
+      }
+    });
+  }
+}
+
+function formBase(ti,pi){
+  const T=teams[ti];
+  const players=T?.players||[];
+  const p=players[pi];
+  let f;
+  if(p && p.pos && POS_COORDS[p.pos]){
+    const base=POS_COORDS[p.pos];
+    // Poste partagé par plusieurs joueurs (ex: 3 DC) → on les étale
+    // symétriquement en Y autour du point de base de ce poste, pour qu'ils
+    // ne se superposent pas tous exactement au même endroit.
+    const sameIdx=[];
+    for(let i=0;i<players.length;i++){ if(players[i]&&players[i].pos===p.pos) sameIdx.push(i); }
+    const n=sameIdx.length;
+    let fy=base[1];
+    if(n>1){
+      const k=sameIdx.indexOf(pi);
+      const spread=Math.min(0.34,0.12*n);           // largeur totale d'étalement
+      const t=(k-(n-1)/2)/Math.max(1,(n-1));        // -0.5..+0.5
+      fy=Math.max(.06,Math.min(.94, base[1]+t*spread*2));
+    }
+    f=[base[0],fy];
+  } else {
+    // Fallback : poste invalide/manquant → ancien comportement par slot fixe
+    f=(FORMS[T?.strat]||FORMS['321'])[pi]||[.5,.5];
+  }
+  const fx=ti===0?f[0]:1-f[0];
+  // Apply tactical 'width' multiplier: stretch or compress the formation around the midline
+  const w=strat(ti).width||1;
+  const fy2=PCY+(f[1]-.5)*WH*w;
+  return{x:fx*WW, y:clamp(fy2,2,WH-2)};
+}
+
+// ═══════════════════════════════════════════════════════════
+// BALL CONTROL
+// ═══════════════════════════════════════════════════════════
+function giveB(p){
+  if(!p)return;
+  // Tracker le dernier porteur par équipe (pour les passes décisives)
+  const inTeam=(T,pl)=>T.players.some(q=>q===pl||q.id===pl.id)||T.bench?.some(q=>q===pl||q.id===pl.id);
+  // Équipe effective : un joueur dominé joue pour l'équipe qui le contrôle.
+  const teamOf=pl=>(pl._dominated>0&&pl._dominatedBy!=null)?pl._dominatedBy:(inTeam(teams[0],pl)?0:1);
+  const ti=teamOf(p);
+  const prev=ownerP();
+  if(prev&&prev!==p){
+    if(!G._lastPasser) G._lastPasser=[null,null];
+    const prevTi=teamOf(prev);
+    if(prevTi===ti) G._lastPasser[ti]=prev; // passe dans la même équipe
+  }
+  allP().forEach(q=>q.hasBall=false);
+  G.owner=p.id;p.hasBall=true;
+  G.atkTi=ti;
+}
+function freeB(){allP().forEach(p=>p.hasBall=false);G.owner=null;}
+function kickTo(tx,ty,spd=2.2){
+  freeB();
+  const dx=tx-G.ball.x,dy=ty-G.ball.y,d=Math.hypot(dx,dy)||1;
+  G.ball.vx=(dx/d)*spd;G.ball.vy=(dy/d)*spd;
+  G.ball.spin=spd*3;
+}
+function kickToP(from,to,spd=1.8){
+  freeB();
+  const dx=to.x-G.ball.x,dy=to.y-G.ball.y,d=Math.hypot(dx,dy)||1;
+  G.ball.vx=(dx/d)*spd;G.ball.vy=(dy/d)*spd;
+  G.ball.spin=spd*2;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ROLE TARGETS
+// ═══════════════════════════════════════════════════════════
+// Predict where the ball will be ~timeAhead seconds from now (used by all players for anticipation)
+function ballPredict(timeAhead){
+  const b=G.ball;
+  if(G.owner){
+    // Carrier-controlled: predict from carrier velocity
+    const o=ownerP();
+    if(o)return{x:b.x+o.vx*timeAhead*.6,y:b.y+o.vy*timeAhead*.6};
+  }
+  // Free ball: integrate with friction decay
+  const decay=Math.pow(BALL_FRIC,timeAhead*60);
+  const meanV=(1-decay)/(1-BALL_FRIC)/60; // closed-form-ish integral approximation
+  return{x:b.x+b.vx*meanV,y:b.y+b.vy*meanV};
+}
