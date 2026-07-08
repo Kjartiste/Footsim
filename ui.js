@@ -5043,6 +5043,11 @@ function _renderDirectorOverview(){
   const played = ss.wins + ss.draws + ss.losses;
   const obj = club.board_objectives && club.board_objectives[0];
 
+  // Générer fixtures si manquantes
+  if(!C.fixtures || C.fixtures.length === 0){
+    _generateSeasonFixtures();
+    saveCareerV2();
+  }
   // Prochain match
   const nextFix = (C.fixtures||[]).find(function(f){ return !f.played; });
 
@@ -5352,6 +5357,10 @@ function renderCareerManager(el){
 // ── Actions carrière ──────────────────────────────────────────────────
 function advanceCareerWeek(){
   if(!careerV2) return;
+  // Générer les fixtures si elles manquent (carrière ancienne ou bug)
+  if(!careerV2.fixtures || careerV2.fixtures.length === 0){
+    _generateSeasonFixtures();
+  }
   careerV2.week++;
 
   // Gestion du mois/année
