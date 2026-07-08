@@ -8,7 +8,8 @@ function roleTarget(ti,p,pi){
   const fb=formBase(ti,pi);
 
   // ── Mode 11v11 : logique simplifiée comme la version épurée ──────────
-  if(window.gameMode === '11v11'){
+  // Désactivée par défaut : le 11v11 utilise le placement riche du 7v7.
+  if(window._legacy11v11 && window.gameMode === '11v11'){
     if(p.pos==='GB'){
       return{x:ti===0?1.5:WW-1.5, y:clamp(b.y, GY1+.8, GY2-.8)};
     }
@@ -469,7 +470,11 @@ function physStep(dt,rawDt){
   const now=Date.now()*.001;
 
   // ── Mode 11v11 : physique complète avec fonctionnalités 7v7 ──────────
-  if(window.gameMode === '11v11'){
+  // NOTE : le 11v11 utilise désormais le MÊME moteur riche que le 7v7
+  // (mouvement organique, tirs spatiaux, tacles, marquage). L'ancienne
+  // version « épurée » ci-dessous est conservée mais désactivée
+  // (window._legacy11v11 = true pour la réactiver).
+  if(window._legacy11v11 && window.gameMode === '11v11'){
     const SEP11=1.6, PICK11=1.4;
     if(!G._pressNearest)G._pressNearest=[null,null];
     if(!G._pressOrder)G._pressOrder=[[],[]];

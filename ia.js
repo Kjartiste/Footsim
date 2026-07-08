@@ -120,7 +120,8 @@ function aiDecide(dt=0.016){
   if(!ap.length||!dp.length)return;
 
   // ── IA 11v11 simplifiée (version épurée) ─────────────────────────
-  if(window.gameMode === '11v11'){
+  // Désactivée par défaut : le 11v11 utilise l'IA spatiale complète du 7v7.
+  if(window._legacy11v11 && window.gameMode === '11v11'){
     const ast11=strat(ati)||{atk:1,def:1};
     const dst11=strat(dti)||{atk:1,def:1};
     const allPlayers = teams.flatMap(T=>T.players);
