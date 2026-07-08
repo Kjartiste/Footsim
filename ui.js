@@ -1129,14 +1129,14 @@ function showPreMatch(onStart){
     // ── Sélecteur de mode 7v7 / 11v11 ──────────────────────────────────
     h+='<div style="display:flex;gap:6px;margin:4px 14px 8px">'
       +'<button onclick="setGameMode(\'7v7\');showPreMatch(window._prematchOnStart)" '
-      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';'
-      +'background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';'
-      +'color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
+      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';'
+      +'background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';'
+      +'color:'+(window.gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
       +'⚽ 7v7</button>'
       +'<button onclick="setGameMode(\'11v11\');showPreMatch(window._prematchOnStart)" '
-      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';'
-      +'background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';'
-      +'color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
+      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='11v11'?'#18c860':'var(--b1)')+';'
+      +'background:'+(window.gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';'
+      +'color:'+(window.gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
       +'⚽ 11v11</button>'
       +'</div>';
 
@@ -1189,7 +1189,7 @@ function startMatchFromPreMatch(){
   G._everStarted=true;
 
   // ── Adapter les équipes au mode sélectionné ──────────────────────
-  if(gameMode === '11v11'){
+  if(window.gameMode === '11v11'){
     [0,1].forEach(function(ti){
       _ensureTeamSize11v11(ti);
       // Assigner formation 11v11 si pas déjà fait
@@ -1259,14 +1259,14 @@ function updateModeBtns(){
   const btn7 = document.getElementById('mode-btn-7v7');
   const btn11 = document.getElementById('mode-btn-11v11');
   if(btn7){
-    btn7.style.borderColor = gameMode==='7v7' ? 'var(--gold)' : 'var(--b1)';
-    btn7.style.background  = gameMode==='7v7' ? 'rgba(240,192,40,.15)' : 'var(--dark)';
-    btn7.style.color       = gameMode==='7v7' ? 'var(--gold)' : 'var(--muted)';
+    btn7.style.borderColor = window.gameMode==='7v7' ? 'var(--gold)' : 'var(--b1)';
+    btn7.style.background  = window.gameMode==='7v7' ? 'rgba(240,192,40,.15)' : 'var(--dark)';
+    btn7.style.color       = window.gameMode==='7v7' ? 'var(--gold)' : 'var(--muted)';
   }
   if(btn11){
-    btn11.style.borderColor = gameMode==='11v11' ? '#18c860' : 'var(--b1)';
-    btn11.style.background  = gameMode==='11v11' ? 'rgba(24,200,96,.15)' : 'var(--dark)';
-    btn11.style.color       = gameMode==='11v11' ? '#18c860' : 'var(--muted)';
+    btn11.style.borderColor = window.gameMode==='11v11' ? '#18c860' : 'var(--b1)';
+    btn11.style.background  = window.gameMode==='11v11' ? 'rgba(24,200,96,.15)' : 'var(--dark)';
+    btn11.style.color       = window.gameMode==='11v11' ? '#18c860' : 'var(--muted)';
   }
 }
 function syncHUD(){
@@ -2364,17 +2364,17 @@ function renderLeague(){
     el.innerHTML='<div style="padding:2px">'+
       // ── Sélecteur de mode ──────────────────────────────────
       '<div style="display:flex;gap:6px;margin-bottom:10px">'+
-      '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
-      '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
+      '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(window.gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
+      '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(window.gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(window.gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(window.gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
       '</div>'+
       // ─────────────────────────────────────────────────────
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-      '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold)">🏆 NOUVELLE SAISON '+(gameMode==='11v11'?'<span style="color:#18c860;font-size:11px">11v11</span>':'<span style="color:var(--gold);font-size:11px">7v7</span>')+'</div>'+
+      '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold)">🏆 NOUVELLE SAISON '+(window.gameMode==='11v11'?'<span style="color:#18c860;font-size:11px">11v11</span>':'<span style="color:var(--gold);font-size:11px">7v7</span>')+'</div>'+
       '<div style="display:flex;gap:3px">'+
       '<button class="btn" style="padding:2px 7px;font-size:9px" onclick="exportData()" title="Exporter JSON">⬇ JSON</button>'+
       '<label class="btn" style="padding:2px 7px;font-size:9px;cursor:pointer" title="Importer JSON">⬆ Import<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label>'+
       '</div></div>'+
-      '<div style="font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">Championnat aller-simple · max '+(gameMode==='11v11'?'12':'12')+' équipes.<br>Sauvegarde tes équipes (onglet Équipes) pour les ajouter.</div>'+
+      '<div style="font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">Championnat aller-simple · max '+(window.gameMode==='11v11'?'12':'12')+' équipes.<br>Sauvegarde tes équipes (onglet Équipes) pour les ajouter.</div>'+
       '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Nombre d\'équipes</div>'+
       '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px" id="tc-btns">'+
       [4,6,8,10,12].map(n=>'<button class="btn'+(n===6?' btng':'')+'" id="tc'+n+'" style="flex:1;justify-content:center;min-width:32px;padding:5px 0;font-size:11px" onclick="selectTC('+n+')">'+n+'</button>').join('')+
@@ -2385,7 +2385,7 @@ function renderLeague(){
         '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;color:'+teams[i].color+'">'+teams[i].name+'</span>'+
         '<span style="font-size:9px;color:var(--gold);margin-left:auto">⭐ Toi</span></div>').join('')+
       roHTML+
-      '<button class="btn btng" style="width:100%;justify-content:center;margin-top:10px" onclick="confirmCreateLeague()">▶ Créer la ligue '+(gameMode==='11v11'?'11v11':'7v7')+'</button>'+
+      '<button class="btn btng" style="width:100%;justify-content:center;margin-top:10px" onclick="confirmCreateLeague()">▶ Créer la ligue '+(window.gameMode==='11v11'?'11v11':'7v7')+'</button>'+
       (leagueState?'<button class="btn" style="width:100%;justify-content:center;margin-top:4px;color:var(--muted);font-size:10px" onclick="leagueSetupMode=false;renderLeague()">← Retour</button>':'')+
       '</div>';
     window._selectedTC=window._selectedTC||6;return;
@@ -2398,8 +2398,8 @@ function renderLeague(){
   let h='<div>';
   // ── Sélecteur de mode ──────────────────────────────────────────────
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">'+
-    '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
-    '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
+    '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(window.gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
+    '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(window.gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(window.gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
     '</div>';
   if(!pending.length){
     const champ=leagueState.teams.find(t=>t.id===sorted[0].id);
@@ -3667,8 +3667,8 @@ function renderCup(){
   let h='<div style="padding:4px">';
   // ── Sélecteur de mode ────────────────────────────────────────────
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">'+
-    '<button onclick="setGameMode(\'7v7\');renderCup()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
-    '<button onclick="setGameMode(\'11v11\');renderCup()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
+    '<button onclick="setGameMode(\'7v7\');renderCup()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(window.gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
+    '<button onclick="setGameMode(\'11v11\');renderCup()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(window.gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(window.gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
     '</div>';
   if(cupState.phase!=='done') h+=`<button class="btn" style="font-size:10px;margin-bottom:6px;width:100%;justify-content:center" onclick="openCupTeamEditor()">✏️ Modifier les équipes</button>`;
   if(cupState.phase==='done'&&cupState.champion!==null){
