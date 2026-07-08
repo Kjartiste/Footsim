@@ -311,13 +311,13 @@ function aiDecide(dt=0.016){
     return;
   }
   // En 11v11, inclure les postes supplémentaires dans les sélections
-  const defRoles = gameMode==='11v11'
+  const defRoles = window.gameMode==='11v11'
     ? ['DD','DC','DG','MDC','MDC2','DCD','DCG','LB','RB']
     : ['DD','DC','DG','MDC'];
-  const midRoles = gameMode==='11v11'
+  const midRoles = window.gameMode==='11v11'
     ? ['MC','MDC','MO','MCD','MCG','MOG','MOD']
     : ['MC','MDC','MO','MOG','MOD'];
-  const attRoles = gameMode==='11v11'
+  const attRoles = window.gameMode==='11v11'
     ? ['ATT','MO','AG','AD','ATT2']
     : ['ATT','MO','MOG','MOD'];
   const opp=pick(byR(dti,...defRoles))||pick(dp);
@@ -419,7 +419,7 @@ function aiDecide(dt=0.016){
   // ── Substitutions IA en 11v11 ────────────────────────────────────────
   // L'IA gère ses 3 changements intelligemment : sort les joueurs épuisés
   // ou blessés si elle a encore des changements disponibles
-  if(gameMode==='11v11' && G.phase !== 'KICKOFF' && G.half >= 1 && G.minute > 20){
+  if(window.gameMode==='11v11' && G.phase !== 'KICKOFF' && G.half >= 1 && G.minute > 20){
     [0,1].forEach(function(ti){
       // IA seulement (pas l'équipe du joueur humain en mode carrière)
       if(!canSub11v11(ti)) return;
@@ -487,13 +487,13 @@ function aiDecide(dt=0.016){
       if(spell&&SUPPORT_SPELLS.has(spell.id)){doSpell(carrier,ati,dti,spell,oppGoalX);return;}
       const r=Math.random();
       if(r<.22){
-        const midPool = gameMode==='11v11'
+        const midPool = window.gameMode==='11v11'
           ? byR(ati,'MC','MDC','MO','MCD','MCG','MDC2').filter(p=>!p.hasBall&&!p.stunT)
           : byR(ati,'MC','MDC','MO','MOG','MOD').filter(p=>!p.hasBall&&!p.stunT);
         const mid=pick(midPool);
         if(mid){kickToP(carrier,mid,1.5);logEvent(`${carrier.name} → ${mid.name}`,teams[ati].color+'aa');}
       } else if(r<.38){
-        const fwdPool = gameMode==='11v11'
+        const fwdPool = window.gameMode==='11v11'
           ? byR(ati,'ATT','ATT2','MO','AG','AD')
           : byR(ati,'ATT','MO','MOG','MOD');
         const fwdP=pick(fwdPool);

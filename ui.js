@@ -765,15 +765,7 @@ function renderStars(n,col){
 
 function showPreMatch(onStart){
   try{
-    // Compléter les équipes à 11 si mode 11v11
-    if(window.gameMode === '11v11'){
-      [0,1].forEach(function(ti){
-        _ensureTeamSize11v11(ti);
-        if(!teams[ti].strat11) teams[ti].strat11 = '442';
-        applyFormationRoles(ti);
-      });
-      resetSubs11v11();
-    }
+    _prepareTeamsForMode();
     const T0=teams[0],T1=teams[1];
     if(!T0||!T1){if(onStart)onStart();else{G.running=true;G._paused=false;}return;}
     window._prematchOnStart=onStart||null;
@@ -1197,16 +1189,7 @@ function startMatchFromPreMatch(){
   showTacBtns(true);
   G._everStarted=true;
 
-  // ── Adapter les équipes au mode sélectionné ──────────────────────
-  if(window.gameMode === '11v11'){
-    [0,1].forEach(function(ti){
-      _ensureTeamSize11v11(ti);
-      // Assigner formation 11v11 si pas déjà fait
-      if(!teams[ti].strat11) teams[ti].strat11 = '442';
-      applyFormationRoles(ti);
-    });
-    resetSubs11v11();
-  }
+  _prepareTeamsForMode();
 
   // Appliquer un score de départ personnalisé
   if(G._customScore&&(G._customScore[0]||G._customScore[1])){
@@ -1234,6 +1217,19 @@ function startMatchFromPreMatch(){
 }
 
 // Compléter une équipe jusqu'à 11 joueurs pour le mode 11v11
+
+// ── S'assurer que les équipes sont prêtes pour le mode actif ─────────
+function _prepareTeamsForMode(){
+  if(window.gameMode === '11v11'){
+    [0,1].forEach(function(ti){
+      _ensureTeamSize11v11(ti);
+      if(!teams[ti].strat11) teams[ti].strat11 = '442';
+      applyFormationRoles(ti);
+    });
+    resetSubs11v11();
+  }
+}
+
 function _ensureTeamSize11v11(ti){
   const T = teams[ti];
   if(!T) return;
@@ -1258,15 +1254,7 @@ function _ensureTeamSize11v11(ti){
 
 function goMatch(){
   _lastNav='setup';
-  // Compléter les équipes à 11 avant de réinitialiser
-  if(window.gameMode === '11v11'){
-    [0,1].forEach(function(ti){
-      _ensureTeamSize11v11(ti);
-      if(!teams[ti].strat11) teams[ti].strat11 = '442';
-      applyFormationRoles(ti);
-    });
-    resetSubs11v11();
-  }
+  _prepareTeamsForMode();
   nav('match');
   resetMatch();
   syncHUD();renderTB(0);renderTB(1);
@@ -2166,7 +2154,7 @@ function playLeagueMatch(){
   _leagueUserTeamBackup=[teams[0],teams[1]];
   teams[0]=deepCloneTeam(hD);
   teams[1]=deepCloneTeam(aD);
-  _lastNav='league';resetMatch();G.leagueMode=true;
+  _lastNav='league';_prepareTeamsForMode();resetMatch();G.leagueMode=true;
   // Restaurer le mode de jeu de la ligue
   if(leagueState.window.gameMode && leagueState.window.gameMode !== window.gameMode){
     setGameMode(leagueState.window.gameMode);
@@ -3508,7 +3496,7 @@ function playCupMatch(){
   cupCurrentMatch={...cm,leg,swapped};
   _leagueUserTeamBackup=[teams[0],teams[1]];
   teams[0]=deepCloneTeam(hD);teams[1]=deepCloneTeam(aD);
-  _lastNav='cup';resetMatch();G.leagueMode=true;
+  _lastNav='cup';_prepareTeamsForMode();resetMatch();G.leagueMode=true;
   nav('match');syncHUD();renderTB(0);renderTB(1);
   const hN=cupState.teams.find(t=>t.id===fix.home)?.name||hD.name;
   const aN=cupState.teams.find(t=>t.id===fix.away)?.name||aD.name;
@@ -3540,7 +3528,7 @@ function playCupFixDirectly(cm){
   cupCurrentMatch={...cm,leg,swapped};
   _leagueUserTeamBackup=[teams[0],teams[1]];
   teams[0]=deepCloneTeam(hD);teams[1]=deepCloneTeam(aD);
-  _lastNav='cup';resetMatch();G.leagueMode=true;
+  _lastNav='cup';_prepareTeamsForMode();resetMatch();G.leagueMode=true;
   nav('match');syncHUD();renderTB(0);renderTB(1);
   const hN=cupState.teams.find(t=>t.id===fix.home)?.name||hD.name;
   const aN=cupState.teams.find(t=>t.id===fix.away)?.name||aD.name;

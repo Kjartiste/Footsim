@@ -386,9 +386,12 @@ function drawShadow(x,y,r){
 
 function drawPlayer(T,p){
   if(!p||p.red||p.hp<=0)return;
+  // Sécurité : ignorer les joueurs avec coordonnées invalides
+  if(!isFinite(p.x)||!isFinite(p.y)||p.x==null||p.y==null) return;
   const px=wx(p.x),py=wy(p.y);
+  if(!isFinite(px)||!isFinite(py))return;
   // Taille des joueurs adaptée au mode (11v11 = terrain plus grand = joueurs plus petits)
-  const r=ws(gameMode==='11v11' ? 1.1 : 1.55);
+  const r=ws(window.gameMode==='11v11' ? 1.1 : 1.55);
   if(r<=0)return;
 
   drawShadow(p.x,p.y,1.55);
@@ -681,7 +684,7 @@ function drawPlayer(T,p){
   if(p.yc===1){ctx.fillStyle='#f0c028';ctx.fillRect(px+r*.55,py+safeBob-r*1.5,ws(.32),ws(.44));}
 
   // Name tag (bigger, more legible)
-  const fontSize=ws(gameMode==='11v11'?.38:.52);
+  const fontSize=ws(window.gameMode==='11v11'?.38:.52);
   ctx.font=`700 ${fontSize}px Barlow Condensed,sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='top';
   // Drop shadow for readability
@@ -960,7 +963,7 @@ function doSub(ti,pi,bi,source='bench'){
 
   // ── Limite de 3 changements en 11v11 (sauf pré-match) ──────────────
   const preMatch=_isPreMatch();
-  if(gameMode==='11v11' && !preMatch){
+  if(window.gameMode==='11v11' && !preMatch){
     if(!canSub11v11(ti)){
       logEvent(`❌ ${teams[ti].name} a déjà utilisé ses 3 changements !`,'#e02030');
       return;
@@ -982,7 +985,7 @@ function doSub(ti,pi,bi,source='bench'){
   teams[ti].players[pi]=incoming;
   arr[bi]=outgoing;
   _handleGKMalusOnSwap(outgoing,incoming,preMatch);
-  if(gameMode!=='11v11'){
+  if(window.gameMode!=='11v11'){
     logEvent(preMatch?`🔧 ${incoming.name} entre à la place de ${outgoing.name} (compo)`:`🔄 ${incoming.name} remplace ${outgoing.name}`,teams[ti].color);
   }
   renderInjuryPanel();
