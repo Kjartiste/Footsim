@@ -765,6 +765,15 @@ function renderStars(n,col){
 
 function showPreMatch(onStart){
   try{
+    // Compléter les équipes à 11 si mode 11v11
+    if(window.gameMode === '11v11'){
+      [0,1].forEach(function(ti){
+        _ensureTeamSize11v11(ti);
+        if(!teams[ti].strat11) teams[ti].strat11 = '442';
+        applyFormationRoles(ti);
+      });
+      resetSubs11v11();
+    }
     const T0=teams[0],T1=teams[1];
     if(!T0||!T1){if(onStart)onStart();else{G.running=true;G._paused=false;}return;}
     window._prematchOnStart=onStart||null;
@@ -1248,7 +1257,17 @@ function _ensureTeamSize11v11(ti){
 }
 
 function goMatch(){
-  _lastNav='setup';nav('match');
+  _lastNav='setup';
+  // Compléter les équipes à 11 avant de réinitialiser
+  if(window.gameMode === '11v11'){
+    [0,1].forEach(function(ti){
+      _ensureTeamSize11v11(ti);
+      if(!teams[ti].strat11) teams[ti].strat11 = '442';
+      applyFormationRoles(ti);
+    });
+    resetSubs11v11();
+  }
+  nav('match');
   resetMatch();
   syncHUD();renderTB(0);renderTB(1);
   showPreMatch();
