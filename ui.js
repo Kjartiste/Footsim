@@ -1233,21 +1233,84 @@ function _prepareTeamsForMode(){
 function _ensureTeamSize11v11(ti){
   const T = teams[ti];
   if(!T) return;
+
   const nation = 'panthalassa';
-  const region = 'solgrath'; // région neutre pour les joueurs générés
-  const positions11 = ['DC','DD','DG','DC','MC','MC','MDC','MO','AG','AD','ATT'];
-  let idx = 0;
-  while(T.players.length < 11){
-    const pos = positions11[idx % positions11.length];
-    const p = WORLDS.generatePlayer(nation, region, pos, 'Joueur '+(T.players.length+1), 'dh');
-    if(p){ p.onBench=false; T.players.push(p); }
-    idx++;
+  const region = 'solgrath';
+
+  // Postes pour chaque slot de la formation 4-4-2 (défaut)
+  // Slot 0=GB, 1=DD, 2=DC, 3=DC, 4=DG, 5=MC, 6=MC, 7=MC, 8=MC, 9=ATT, 10=ATT
+  const slots442 = ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT'];
+
+  // Si l'équipe a moins de 11 joueurs, compléter en respectant les slots
+  if(T.players.length < 11){
+    // Identifier quels slots sont déjà occupés par les joueurs existants
+    // En mode 11v11, on réassigne les postes des joueurs existants selon les slots
+    const existing = [...T.players];
+
+    // Vider et reconstruire l'effectif dans l'ordre des slots
+    T.players = [];
+
+    // Slot 0 : GB
+    const gb = existing.find(p=>p.pos==='GB') || existing[0];
+    if(gb){ gb.pos='GB'; T.players.push(gb); existing.splice(existing.indexOf(gb),1); }
+    else {
+      const p = WORLDS.generatePlayer(nation, region, 'GB', 'Gardien', 'dh');
+      if(p) T.players.push(p);
+    }
+
+    // Slots 1-4 : défenseurs
+    const defPositions = ['DD','DC','DC','DG'];
+    defPositions.forEach(pos => {
+      const found = existing.find(p=>p.pos===pos||p.pos==='DC'||p.pos==='DD'||p.pos==='DG');
+      if(found){ found.pos=pos; T.players.push(found); existing.splice(existing.indexOf(found),1); }
+      else {
+        const p = WORLDS.generatePlayer(nation, region, pos, pos+'_'+T.players.length, 'dh');
+        if(p) T.players.push(p);
+      }
+    });
+
+    // Slots 5-8 : milieux
+    const midPositions = ['MC','MC','MC','MC'];
+    midPositions.forEach(pos => {
+      const found = existing.find(p=>p.pos==='MC'||p.pos==='MDC'||p.pos==='MO'||p.pos==='MOG'||p.pos==='MOD');
+      if(found){ found.pos=pos; T.players.push(found); existing.splice(existing.indexOf(found),1); }
+      else {
+        const p = WORLDS.generatePlayer(nation, region, pos, 'Milieu_'+T.players.length, 'dh');
+        if(p) T.players.push(p);
+      }
+    });
+
+    // Slots 9-10 : attaquants
+    const attPositions = ['ATT','ATT'];
+    attPositions.forEach(pos => {
+      const found = existing.find(p=>p.pos==='ATT'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD');
+      if(found){ found.pos=pos; T.players.push(found); existing.splice(existing.indexOf(found),1); }
+      else {
+        const p = WORLDS.generatePlayer(nation, region, pos, 'Attaquant_'+T.players.length, 'dh');
+        if(p) T.players.push(p);
+      }
+    });
+
+    // Placer les joueurs restants non assignés dans les slots manquants
+    while(T.players.length < 11 && existing.length > 0){
+      const p = existing.shift();
+      const slotPos = slots442[T.players.length] || 'MC';
+      p.pos = slotPos;
+      T.players.push(p);
+    }
+    // Compléter si toujours pas 11
+    while(T.players.length < 11){
+      const slotPos = slots442[T.players.length] || 'MC';
+      const p = WORLDS.generatePlayer(nation, region, slotPos, slotPos+'_fill_'+T.players.length, 'dh');
+      if(p) T.players.push(p);
+    }
   }
-  // S'assurer que le banc a au moins 3 joueurs
-  const benchPositions = ['GB','MC','ATT','DC','MO','DD','MC'];
-  while(T.bench.length < 3){
-    const pos = benchPositions[T.bench.length % benchPositions.length];
-    const p = WORLDS.generatePlayer(nation, region, pos, 'Rempl.'+(T.bench.length+1), 'dh');
+
+  // S'assurer que le banc a au moins 7 joueurs pour le 11v11
+  const benchSlots = ['GB','MC','ATT','DC','MO','DD','DG'];
+  while(T.bench.length < 7){
+    const pos = benchSlots[T.bench.length % benchSlots.length];
+    const p = WORLDS.generatePlayer(nation, region, pos, 'Banc_'+T.bench.length, 'dh');
     if(p){ p.onBench=true; T.bench.push(p); }
   }
 }
