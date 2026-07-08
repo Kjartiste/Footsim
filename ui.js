@@ -1450,24 +1450,40 @@ function updateCompoPitch(){
 }
 
 function renderTactics(){
+  const is11 = window.gameMode === '11v11';
+  const stratList = is11 ? STRATS_11V11 : STRATS;
+
   [0,1].forEach(ti=>{
     const T=teams[ti];
+    const curStrat = is11 ? (T.strat11||'442') : (T.strat||'321');
+    const stratItems = stratList.map(s=>`
+      <div class="sc${curStrat===s.id?' sel':''}" onclick="
+        ${is11 ? `teams[${ti}].strat11='${s.id}'` : `teams[${ti}].strat='${s.id}'`};
+        applyFormationRoles(${ti});renderTactics();updateCompoPitch();syncHUD()">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="width:7px;height:7px;border-radius:50%;background:${s.col}"></div>
+          <div class="st">${s.n}</div>
+        </div>
+        <div class="sd">${s.d}</div>
+        <div class="sbar-row">
+          <div class="sbar-w"><div class="sbar-lbl">ATK</div><div class="sbar-track"><div class="sbar-fill" style="width:${Math.round(s.atk/1.22*100)}%;background:var(--red)"></div></div></div>
+          <div class="sbar-w"><div class="sbar-lbl">DEF</div><div class="sbar-track"><div class="sbar-fill" style="width:${Math.round(s.def/1.30*100)}%;background:var(--blue)"></div></div></div>
+        </div>
+      </div>`).join('');
+
     document.getElementById(`tac${ti}`).innerHTML=`
     <div class="team-blk" style="margin-bottom:8px">
       <div class="team-hd"><div class="tdot2" style="background:${T.color}"></div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;letter-spacing:.8px;text-transform:uppercase">${T.name}</div>
+        <div style="font-size:9px;color:${is11?'#18c860':'var(--gold)'};margin-left:auto;font-weight:700">${is11?'11v11':'7v7'}</div>
       </div>
       <div style="padding:6px">
-        <div style="font-size:9px;color:var(--muted);background:var(--panel);border:1px solid var(--b1);border-radius:6px;padding:5px 7px;margin-bottom:6px;line-height:1.4">ℹ️ La stratégie règle le pressing/largeur/profondeur d'équipe. Le <b>placement sur le terrain</b> de chaque joueur vient de son <b>Poste</b> individuel (fiche joueur) — modifiable librement, plusieurs joueurs au même poste se répartissent automatiquement.</div>
-        ${STRATS.map(s=>`
-        <div class="sc${T.strat===s.id?' sel':''}" onclick="teams[${ti}].strat='${s.id}';applyFormationRoles(${ti});renderTactics();updateCompoPitch();syncHUD()">
-          <div style="display:flex;align-items:center;gap:5px"><div style="width:7px;height:7px;border-radius:50%;background:${s.col}"></div><div class="st">${s.n}</div></div>
-          <div class="sd">${s.d}</div>
-          <div class="sbar-row">
-            <div class="sbar-w"><div class="sbar-lbl">ATK</div><div class="sbar-track"><div class="sbar-fill" style="width:${Math.round(s.atk/1.22*100)}%;background:var(--red)"></div></div></div>
-            <div class="sbar-w"><div class="sbar-lbl">DEF</div><div class="sbar-track"><div class="sbar-fill" style="width:${Math.round(s.def/1.30*100)}%;background:var(--blue)"></div></div></div>
-          </div>
-        </div>`).join('')}
+        <div style="font-size:9px;color:var(--muted);background:var(--panel);border:1px solid var(--b1);border-radius:6px;padding:5px 7px;margin-bottom:6px;line-height:1.4">
+          ${is11
+            ? 'ℹ️ Formation 11v11 — les coordonnées de chaque slot sont fixes. Choisissez votre schéma tactique.'
+            : 'ℹ️ La stratégie règle le pressing/largeur/profondeur. Le <b>placement</b> vient du <b>Poste</b> individuel.'}
+        </div>
+        ${stratItems}
       </div>
     </div>`;
   });
@@ -1521,7 +1537,10 @@ function _renderPlayerEditor(p,T,source){
       <div class="frow"><span class="lbl">Nom</span><input class="inp" id="pn" value="${p.name}"></div>
       <div class="frow"><span class="lbl">Poste</span>
         <select class="inp" id="ppos" style="cursor:pointer">
-          ${['GB','DD','DC','DG','MDC','MC','MO','ATT','AG','AD'].map(po=>`<option${po===p.pos?' selected':''}>${po}</option>`).join('')}
+          ${(window.gameMode==='11v11'
+            ? ['GB','DD','DC','DG','DCD','DCG','LB','RB','MDC','MDC2','MC','MCD','MCG','MO','MOG','MOD','AG','AD','ATT','ATT2']
+            : ['GB','DD','DC','DG','MDC','MC','MO','ATT','AG','AD']
+          ).map(po=>`<option${po===p.pos?' selected':''}>${po}</option>`).join('')}
         </select>
       </div>
     </div>
