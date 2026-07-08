@@ -5038,47 +5038,95 @@ function renderCareerDirectorTab(tab){
 
 function _renderDirectorOverview(){
   const C = careerV2; const club = C.club;
-  const region = WORLDS.getRegion('panthalassa', club.region);
+  const region = WORLDS.getRegion(C.nation||'panthalassa', club.region);
   const ss = C.season_stats;
   const played = ss.wins + ss.draws + ss.losses;
   const obj = club.board_objectives && club.board_objectives[0];
+
+  // Prochain match
+  const nextFix = (C.fixtures||[]).find(function(f){ return !f.played; });
+
+  // Classement (top 5)
+  const standings = (C.standings||[]).slice().sort(function(a,b){
+    return b.Pts - a.Pts || (b.GF-b.GA)-(a.GF-a.GA);
+  });
+
   let h = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+
+  // Objectif
   h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🎯 Objectif du conseil</div>';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🎯 Objectif</div>';
   if(obj){
-    h += '<div style="font-size:11px;color:var(--fg);margin-bottom:4px">'+obj.desc+'</div>';
-    h += '<div style="font-size:9px;color:#18c860">Recompense : 🪙 '+_fmtMoney(obj.reward)+'</div>';
+    h += '<div style="font-size:10px;color:var(--fg);margin-bottom:4px">'+obj.desc+'</div>';
+    h += '<div style="font-size:9px;color:#18c860">🪙 Récompense : '+_fmtMoney(obj.reward)+'</div>';
   } else {
     h += '<div style="color:var(--muted);font-size:9px">Aucun objectif</div>';
   }
   h += '</div>';
+
+  // Stats saison
   h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📊 Saison en cours</div>';
-  h += '<div style="font-size:10px;color:var(--fg)">'+played+' matchs joues</div>';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📊 Saison</div>';
+  h += '<div style="font-size:10px;color:var(--fg)">'+played+' matchs</div>';
   h += '<div style="font-size:9px;color:var(--muted)">✅ '+ss.wins+'V 🟡 '+ss.draws+'N ❌ '+ss.losses+'D</div>';
   h += '<div style="font-size:9px;color:var(--muted)">⚽ '+ss.goals_for+' / '+ss.goals_against+'</div>';
-  h += '<div style="font-size:11px;font-weight:900;color:#18c860;margin-top:4px">'+ss.points+' pts</div>';
+  h += '<div style="font-size:12px;font-weight:900;color:#18c860;margin-top:4px">'+ss.points+' pts</div>';
   h += '</div>';
-  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">💰 Finances</div>';
-  h += '<div style="font-size:10px;color:var(--fg)">Budget : <b>'+_fmtMoney(club.budget)+'</b></div>';
-  h += '<div style="font-size:9px;color:var(--muted)">Mercato : '+_fmtMoney(club.transferBudget)+'</div>';
+
   h += '</div>';
-  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">⭐ Reputation</div>';
-  h += '<div style="background:var(--panel);border-radius:4px;height:8px;margin-bottom:4px">';
-  h += '<div style="background:'+(region ? region.color : '#8840e0')+';height:100%;border-radius:4px;width:'+club.reputation+'%"></div></div>';
-  h += '<div style="font-size:9px;color:var(--muted)">'+club.reputation+'/100 — '+_reputationLabel(club.reputation)+'</div>';
-  h += '<div style="font-size:9px;color:var(--muted);margin-top:4px">👥 '+club.fanbase+' supporters</div>';
-  h += '</div></div>';
-  if(region && region.traits && region.traits.positive_events){
-    h += '<div style="background:rgba(24,200,96,.1);border:1px solid #18c86044;border-radius:8px;padding:8px;margin-top:8px;font-size:9px;color:#18c860">🌊 Les Mers Benies — evenements positifs plus frequents.</div>';
+
+  // Prochain match
+  if(nextFix){
+    const isHome = nextFix.homeIsPlayer;
+    const opp = isHome ? nextFix.awayName : nextFix.homeName;
+    h += '<div style="background:var(--dark);border:1px solid '+(region?region.color:'var(--b1)')+';border-radius:8px;padding:10px;margin-top:8px">';
+    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px">⚽ Prochain match — J'+nextFix.week+'</div>';
+    h += '<div style="font-size:12px;font-weight:900;text-align:center;margin-bottom:8px">';
+    h += (isHome ? '<span style="color:'+(region?region.color:'#fff')+'">'+club.name+'</span> vs '+opp
+                 : opp+' vs <span style="color:'+(region?region.color:'#fff')+'">'+club.name+'</span>');
+    h += '</div>';
+    h += '<div style="font-size:9px;color:var(--muted);text-align:center;margin-bottom:8px">'+(isHome?'Domicile':'Extérieur')+'</div>';
+    h += '<div style="display:flex;gap:6px">';
+    h += '<button class="btn btng" onclick="playCareerMatch()" style="flex:1;font-size:10px">▶ Jouer le match</button>';
+    h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:9px;padding:3px 8px">⚡ Simuler</button>';
+    h += '</div></div>';
+  } else {
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-top:8px;font-size:9px;color:var(--muted);text-align:center">';
+    h += '🏁 Tous les matchs de la saison sont joués !<br>';
+    h += '<button class="btn btng" onclick="endCareerSeasonDirector()" style="margin-top:8px;font-size:10px">Passer à la saison suivante</button>';
+    h += '</div>';
   }
-  if(region && region.traits && region.traits.corruption_risk){
-    h += '<div style="background:rgba(224,96,48,.1);border:1px solid #e0602044;border-radius:8px;padding:8px;margin-top:8px;font-size:9px;color:#e06020">⚠️ Principaute de Mai — mefiez-vous des propositions douteuses.</div>';
+
+  // Classement
+  if(standings.length > 0){
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-top:8px">';
+    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🏆 Classement</div>';
+    h += '<div style="font-size:9px">';
+    standings.forEach(function(s, i){
+      const isMe = s.isPlayer;
+      const gd = s.GF - s.GA;
+      h += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;'+(isMe?'background:rgba(240,192,40,.1);border-radius:4px;padding:3px 4px':'')+'border-bottom:1px solid var(--b1)">';
+      h += '<div style="width:16px;color:var(--muted);text-align:right">'+(i+1)+'</div>';
+      h += '<div style="flex:1;font-weight:'+(isMe?'900':'400')+';color:'+(isMe?'var(--gold)':'var(--fg)')+'">'+s.name+'</div>';
+      h += '<div style="width:24px;text-align:center;color:var(--muted)">'+s.P+'</div>';
+      h += '<div style="width:24px;text-align:center;color:'+(gd>0?'#18c860':gd<0?'#e06060':'var(--muted)')+'">'+( gd>0?'+':'')+gd+'</div>';
+      h += '<div style="width:28px;text-align:center;font-weight:900;color:'+(isMe?'var(--gold)':'var(--fg)')+'">'+s.Pts+'</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
   }
+
+  // Finances rapides
+  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:8px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">';
+  h += '<div style="font-size:9px;color:var(--muted)">💰 Budget</div>';
+  h += '<div style="font-size:12px;font-weight:900;color:#18c860">'+_fmtMoney(club.budget)+'</div>';
+  h += '<div style="font-size:9px;color:var(--muted)">Semaine '+C.week+'</div>';
+  h += '<button class="btn btng" onclick="advanceCareerWeek()" style="font-size:9px;padding:3px 10px">⏩ Semaine suivante</button>';
+  h += '</div>';
+
   return h;
 }
+
 
 function _renderDirectorSquad(){
   const C = careerV2;
@@ -5201,22 +5249,64 @@ function _renderDirectorStaff(){
 
 function _renderDirectorCalendar(){
   const C = careerV2;
+  const club = C.club;
+  const fixtures = C.fixtures || [];
+  const played   = fixtures.filter(function(f){ return f.played; });
+  const upcoming = fixtures.filter(function(f){ return !f.played; });
+
   let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📅 Calendrier</div>';
-  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:10px">Semaine '+C.week+' · Saison '+C.season+'</div>';
-  if(!C.fixtures || C.fixtures.length === 0){
-    h += '<div style="color:var(--muted);font-size:9px">Le calendrier sera genere au debut de la saison.</div>';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📅 Calendrier — Saison '+C.season+' · Semaine '+C.week+'</div>';
+
+  if(upcoming.length === 0 && played.length === 0){
+    h += '<div style="color:var(--muted);font-size:9px">Aucun match programmé.</div>';
   } else {
-    C.fixtures.slice(0,10).forEach(function(f){
-      h += '<div style="padding:6px;border-bottom:1px solid var(--b1);font-size:9px">';
-      h += '<div style="color:var(--muted)">J'+f.week+'</div>';
-      h += '<div style="color:var(--fg);font-weight:700">'+f.home+' vs '+f.away+'</div>';
-      h += '<div style="color:'+(f.played?'#18c860':'var(--muted)')+'">'+( f.played ? f.sh+'-'+f.sa : 'A jouer')+'</div></div>';
-    });
+    // Prochains matchs (5 max)
+    if(upcoming.length > 0){
+      h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin-bottom:4px">À venir</div>';
+      upcoming.slice(0, 5).forEach(function(f){
+        const isHome = f.homeIsPlayer;
+        const opp = isHome ? f.awayName : f.homeName;
+        const isMe = f.homeIsPlayer || f.awayIsPlayer;
+        h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)'+(isMe?';background:rgba(240,192,40,.05);border-radius:4px;padding:5px 4px':'')+'">';
+        h += '<div style="font-size:8px;color:var(--muted);width:20px">J'+f.week+'</div>';
+        if(isMe){
+          h += '<div style="flex:1;font-size:9px;font-weight:700">'+(isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+'</div>';
+          h += '<div style="font-size:8px;color:'+(isHome?'#18c860':'#f0c028')+'">'+(isHome?'🏠 Dom.':'✈️ Ext.')+'</div>';
+          h += '<button class="btn" onclick="playCareerMatch()" style="font-size:8px;padding:1px 6px">▶</button>';
+        } else {
+          h += '<div style="flex:1;font-size:9px;color:var(--muted)">'+f.homeName+' vs '+f.awayName+'</div>';
+        }
+        h += '</div>';
+      });
+    }
+
+    // Résultats récents (5 max)
+    if(played.length > 0){
+      h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin:10px 0 4px">Résultats récents</div>';
+      played.slice(-5).reverse().forEach(function(f){
+        const isHome = f.homeIsPlayer;
+        const isAway = f.awayIsPlayer;
+        if(!isHome && !isAway){
+          h += '<div style="padding:3px 0;border-bottom:1px solid var(--b1);font-size:9px;color:var(--muted)">'+f.homeName+' '+f.sh+'-'+f.sa+' '+f.awayName+'</div>';
+          return;
+        }
+        const myGoals = isHome ? f.sh : f.sa;
+        const opGoals = isHome ? f.sa : f.sh;
+        const opp     = isHome ? f.awayName : f.homeName;
+        const res     = myGoals > opGoals ? 'V' : myGoals === opGoals ? 'N' : 'D';
+        const col     = res==='V' ? '#18c860' : res==='N' ? '#f0c028' : '#e06060';
+        h += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--b1)">';
+        h += '<div style="font-size:8px;color:var(--muted);width:20px">J'+f.week+'</div>';
+        h += '<div style="width:16px;height:16px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:#050e1a">'+res+'</div>';
+        h += '<div style="flex:1;font-size:9px">'+club.name+' <b>'+myGoals+'-'+opGoals+'</b> '+opp+'</div>';
+        h += '</div>';
+      });
+    }
   }
   h += '</div>';
   return h;
 }
+
 
 
 // ── Rendu principal Manager ───────────────────────────────────────────
@@ -5402,6 +5492,115 @@ function acceptManagerJob(i){
 function rejectManagerJob(i){
   if(!careerV2) return;
   careerV2.job_offers.splice(i, 1);
+  saveCareerV2();
+  renderCareerV2();
+}
+
+
+// ── Match en carrière Dirigeant ───────────────────────────────────────
+function playCareerMatch(){
+  if(!careerV2) return;
+  simCareerMatchDirector(); // Pour l'instant on simule
+}
+
+function simCareerMatchDirector(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const fix = (C.fixtures||[]).find(function(f){ return !f.played; });
+  if(!fix){ logEvent('Aucun match a simuler !','#e02030'); return; }
+
+  const myPlayers = C.players || [];
+  const myStr = myPlayers.reduce(function(s,p){
+    return s + ((p.s&&p.s.sht||10)+(p.s&&p.s.spd||10)+(p.s&&p.s.tec||10))/3;
+  }, 0) / Math.max(1, myPlayers.length);
+
+  const aiStr = myStr * (0.7 + Math.random() * 0.6);
+  const isHome = fix.homeIsPlayer;
+  const myGoals = _poissonGoals((myStr/Math.max(1,aiStr)) * (isHome?1.1:0.9) * 0.8);
+  const aiGoals = _poissonGoals((aiStr/Math.max(1,myStr)) * (isHome?0.9:1.1) * 0.8);
+
+  fix.played = true;
+  fix.sh = isHome ? myGoals : aiGoals;
+  fix.sa = isHome ? aiGoals : myGoals;
+
+  const myG = isHome ? fix.sh : fix.sa;
+  const aiG = isHome ? fix.sa : fix.sh;
+  C.season_stats.goals_for  += myG;
+  C.season_stats.goals_against += aiG;
+  if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
+  else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
+  else { C.season_stats.losses++; }
+
+  _updateCareerStandings(fix);
+
+  const opp = isHome ? fix.awayName : fix.homeName;
+  const res = myG > aiG ? 'Victoire' : myG === aiG ? 'Nul' : 'Defaite';
+  const col = myG > aiG ? '#18c860' : myG === aiG ? '#f0c028' : '#e06060';
+  logEvent(res+' ! '+C.club.name+' '+myG+'-'+aiG+' '+opp, col);
+
+  const rev = isHome ? Math.round(50 + C.club.fanbase * 0.1) : 20;
+  C.club.budget += rev;
+  _addFinanceLog('Recettes match vs '+opp, rev);
+
+  saveCareerV2();
+  renderCareerV2();
+}
+
+function _poissonGoals(lambda){
+  lambda = Math.max(0.2, Math.min(4, lambda));
+  var L = Math.exp(-lambda), k = 0, p = 1;
+  do { k++; p *= Math.random(); } while(p > L);
+  return k - 1;
+}
+
+function _updateCareerStandings(fix){
+  if(!careerV2 || !careerV2.standings) return;
+  function upd(id, gf, ga){
+    var s = careerV2.standings.find(function(x){ return x.id === id; });
+    if(!s) return;
+    s.P++; s.GF += gf; s.GA += ga;
+    if(gf > ga){ s.W++; s.Pts += 3; }
+    else if(gf === ga){ s.D++; s.Pts++; }
+    else s.L++;
+  }
+  upd(fix.home, fix.sh, fix.sa);
+  upd(fix.away, fix.sa, fix.sh);
+  var week = fix.week;
+  (careerV2.fixtures||[]).forEach(function(f){
+    if(f.week === week && !f.played && !f.homeIsPlayer && !f.awayIsPlayer){
+      f.sh = _poissonGoals(0.8 + Math.random()*0.8);
+      f.sa = _poissonGoals(0.8 + Math.random()*0.8);
+      f.played = true;
+      upd(f.home, f.sh, f.sa);
+      upd(f.away, f.sa, f.sh);
+    }
+  });
+}
+
+function endCareerSeasonDirector(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const sorted = (C.standings||[]).slice().sort(function(a,b){
+    return b.Pts - a.Pts || (b.GF-b.GA)-(a.GF-a.GA);
+  });
+  const myPos = sorted.findIndex(function(s){ return s.isPlayer; }) + 1;
+  const total = sorted.length;
+  if(myPos <= 2){
+    const pyramid = WORLDS.getPyramid(C.nation||'panthalassa');
+    const levels = pyramid.map(function(p){ return p.id; });
+    const idx = levels.indexOf(C.club.level);
+    if(idx > 0){
+      C.club.level = levels[idx-1];
+      logEvent('🎉 PROMOTION ! Vous montez en '+pyramid[idx-1].name+' !','#f0c028');
+    }
+  } else if(myPos >= total-1){
+    logEvent('Saison difficile — attention la prochaine fois.','#e06060');
+  }
+  C.season++; C.week = 1;
+  C.date = {year:(C.date&&C.date.year||1)+1, month:8, day:1};
+  C.season_stats = {wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0};
+  logEvent('Saison '+C.season+' — Nouveau depart !', C.club.color||'#18c860');
+  _generateSeasonFixtures();
   saveCareerV2();
   renderCareerV2();
 }

@@ -269,6 +269,7 @@ function startCareerDirector(regionId, clubId, nationId){
   };
 
   careerV2.club.board_objectives = _generateBoardObjectives(careerV2.club);
+  _generateSeasonFixtures();
   saveCareerV2();
   logEvent('🏟 Bienvenue au ' + clubName + ' ! Saison 1 commence.', clubColor);
   renderCareerV2();
@@ -391,8 +392,75 @@ function _generateBoardObjectives(club){
 
 function _generateSeasonFixtures(){
   if(!careerV2) return;
-  // Pour l'instant placeholder — sera généré complètement dans la V2 complète
-  careerV2.fixtures = [];
+
+  const club = careerV2.club;
+  const nation = careerV2.nation || 'panthalassa';
+  const region = WORLDS.getRegion(nation, club.region);
+  const level = club.level;
+
+  // Générer 8-12 clubs adversaires du même niveau
+  const nbOpponents = level === 'dh' ? 7 : level === 'r3' ? 9 : 11;
+  const clubNames = (region && region.clubNames) ? [...region.clubNames] : [];
+
+  // Retirer le club du joueur s'il y est
+  const filteredNames = clubNames.filter(function(n){ return n !== club.name; });
+
+  // Compléter si pas assez de noms
+  while(filteredNames.length < nbOpponents){
+    filteredNames.push('Club ' + (filteredNames.length + 1));
+  }
+
+  const opponents = filteredNames.slice(0, nbOpponents).map(function(name){
+    return {
+      id: 'ai_'+Math.random().toString(36).slice(2),
+      name: name,
+      level: level,
+      region: club.region,
+    };
+  });
+
+  // Classement initial
+  const allClubs = [{id:'player_club', name:club.name, isPlayer:true}].concat(opponents);
+  careerV2.standings = allClubs.map(function(c){
+    return {id:c.id, name:c.name, isPlayer:!!c.isPlayer,
+            P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0};
+  });
+
+  // Générer les matchs aller-retour
+  const fixtures = [];
+  let week = 1;
+  const ids = allClubs.map(function(c){ return c.id; });
+
+  // Round-robin simple
+  for(let i = 0; i < ids.length; i++){
+    for(let j = i+1; j < ids.length; j++){
+      const h = allClubs[i];
+      const a = allClubs[j];
+      fixtures.push({
+        id: 'fix_'+Math.random().toString(36).slice(2),
+        week: week++,
+        home: h.id, homeName: h.name, homeIsPlayer: !!h.isPlayer,
+        away: a.id, awayName: a.name, awayIsPlayer: !!a.isPlayer,
+        played: false, sh: null, sa: null,
+      });
+      // Match retour
+      fixtures.push({
+        id: 'fix_'+Math.random().toString(36).slice(2),
+        week: week++,
+        home: a.id, homeName: a.name, homeIsPlayer: !!a.isPlayer,
+        away: h.id, awayName: h.name, awayIsPlayer: !!h.isPlayer,
+        played: false, sh: null, sa: null,
+      });
+    }
+  }
+
+  // Mélanger légèrement les semaines (pas trop)
+  fixtures.sort(function(a,b){ return a.week - b.week; });
+  // Renuméroter proprement
+  fixtures.forEach(function(f, i){ f.week = Math.floor(i/2) + 1; });
+
+  careerV2.fixtures = fixtures;
+  logEvent('📅 Calendrier généré — '+fixtures.length+' matchs cette saison !','#18c860');
 }
 
 function _generateInitialJobOffers(regionId){
