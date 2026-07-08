@@ -627,40 +627,45 @@ function applyFormationRoles(ti){
 }
 
 function formBase(ti,pi){
-  const T=teams[ti];
-  const players=T?.players||[];
-  const p=players[pi];
-  const is11v11 = gameMode === '11v11';
-  const posCoords = is11v11 ? POS_COORDS_11V11 : POS_COORDS;
+  const T = teams[ti];
+  const is11 = window.gameMode === '11v11';
 
-  let f;
-  if(p && p.pos && posCoords[p.pos]){
-    const base=posCoords[p.pos];
-    // Étaler les joueurs du même poste en Y
-    const sameIdx=[];
-    for(let i=0;i<players.length;i++){ if(players[i]&&players[i].pos===p.pos) sameIdx.push(i); }
-    const n=sameIdx.length;
-    let fy=base[1];
-    if(n>1){
-      const k=sameIdx.indexOf(pi);
-      const spread=Math.min(0.34,0.10*n);
-      const t=(k-(n-1)/2)/Math.max(1,(n-1));
-      fy=Math.max(.06,Math.min(.94, base[1]+t*spread*2));
-    }
-    f=[base[0],fy];
-  } else {
-    // Fallback
-    const forms = is11v11 ? FORMS_11V11 : FORMS;
-    const defaultForm = is11v11 ? '442' : '321';
-    f=(forms[T?.strat||T?.strat11]||forms[defaultForm])[pi]||[.5,.5];
+  if(is11){
+    // Mode 11v11 : coordonnées normalisées simples, comme la version épurée
+    const strat11 = T && T.strat11 ? T.strat11 : '442';
+    const forms = FORMS_COORDS_11V11 || {};
+    const coords = (forms[strat11] || forms['442'] || [])[pi] || [.5,.5];
+    const fx = ti===0 ? coords[0] : 1-coords[0];
+    return {x: fx*WW, y: coords[1]*WH};
   }
-  const fx=ti===0?f[0]:1-f[0];
-  // Apply tactical 'width' multiplier (sécurisé si strat non défini)
+
+  // Mode 7v7 : ancien système avec POS_COORDS et étalement
+  const players = T && T.players ? T.players : [];
+  const p = players[pi];
+  let f;
+  if(p && p.pos && POS_COORDS[p.pos]){
+    const base = POS_COORDS[p.pos];
+    const sameIdx = [];
+    for(let i=0;i<players.length;i++){if(players[i]&&players[i].pos===p.pos)sameIdx.push(i);}
+    const n = sameIdx.length;
+    let fy = base[1];
+    if(n>1){
+      const k = sameIdx.indexOf(pi);
+      const spread = Math.min(0.34, 0.10*n);
+      const t = (k-(n-1)/2)/Math.max(1,(n-1));
+      fy = Math.max(.06, Math.min(.94, base[1]+t*spread*2));
+    }
+    f = [base[0], fy];
+  } else {
+    f = (FORMS[T && T.strat ? T.strat : '321'] || FORMS['321'])[pi] || [.5,.5];
+  }
+  const fx = ti===0 ? f[0] : 1-f[0];
   const _st = (typeof strat === 'function') ? strat(ti) : null;
-  const w = _st?.width || 1;
-  const fy2=PCY+(f[1]-.5)*WH*w;
-  return{x:fx*WW, y:clamp(fy2,2,WH-2)};
+  const w = _st && _st.width ? _st.width : 1;
+  const fy2 = PCY + (f[1]-.5)*WH*w;
+  return {x: fx*WW, y: clamp(fy2, 2, WH-2)};
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // BALL CONTROL

@@ -65,6 +65,35 @@ function logEvent(msg,col='#18c860'){
 //    joue la carte prudente/technique), sorts offensifs moins fréquents.
 
 // Normaliser les postes 11v11 vers catégories IA
+
+// ── Tir simplifié pour le mode 11v11 ─────────────────────────────────
+function _doShot11(sh, ati, dti, def2, gk, goalX){
+  G.shots[ati]++; if(sh) sh.mSh++;
+  const ast=strat(ati)||{atk:1}; const dst=strat(dti)||{def:1};
+  const atkS = ((sh?sh.s.sht:40)+irng(-12,12))*ast.atk;
+  const defS = ((gk?gk.s.def+28:30)+(def2?def2.s.def*.3:0)+irng(-10,10))*dst.def;
+  const gy = clamp(PCY+rng(-5.5,5.5), GY1-1.5, GY2+1.5);
+  kickTo(goalX, gy, 2.6); freeB();
+  logEvent(`Tir de ${sh?sh.name:'?'} !`, teams[ati].color+'cc');
+  setTimeout(()=>{
+    if(!G.running)return;
+    if(atkS>defS){
+      goalScored(sh, ati, goalX);
+    } else {
+      const saved = Math.random()<.62;
+      if(saved){
+        logEvent(`Arrêt de ${gk&&gk.name||'GB'} !`, teams[dti].color);
+        if(Math.random()<.38){
+          G.corners[ati]++; G.ball.x=goalX+(ati===0?-.5:.5); G.ball.y=gy; G.ball.vx=0; G.ball.vy=0;
+          G.atkTi=ati; setPhase('CORNER'); logEvent(`Corner pour ${teams[ati].name}`, teams[ati].color+'88');
+        } else { if(gk) giveB(gk); G.atkTi=dti; setPhase('GOALKICK'); }
+      } else {
+        logEvent(`Tir hors cadre`, teams[ati].color+'77'); G.atkTi=dti; setPhase('GOALKICK');
+      }
+    }
+  }, 400/speedMult);
+}
+
 function _posCategory(pos){
   if(!pos) return 'mid';
   if(pos==='GB') return 'gk';
@@ -89,6 +118,170 @@ function aiDecide(dt=0.016){
   const ati=G.atkTi,dti=1-ati;
   const ap=actP(ati),dp=actP(dti);
   if(!ap.length||!dp.length)return;
+
+  // ── IA 11v11 simplifiée (version épurée) ─────────────────────────
+  if(window.gameMode === '11v11'){
+    const ast11=strat(ati)||{atk:1,def:1};
+    const dst11=strat(dti)||{atk:1,def:1};
+    const allPlayers = teams.flatMap(T=>T.players);
+    const carrier11 = G.owner ? allPlayers.find(p=>p.id===G.owner) : null;
+    const carrier = carrier11 || pick(byR(ati,'ATT','MO','MC','AG','AD')) || pick(ap);
+    const opp = pick(byR(dti,'DD','DC','DG','MDC','DCD','DCG','LB','RB')) || pick(dp);
+    const gk = byR(dti,'GB')[0];
+    const oppGoalX = ati===0 ? WW : 0;
+    const fwd = ati===0 ? 1 : -1;
+
+    // Sort — même logique que le 7v7
+    let spell11=null;
+    if(carrier && (G.phase==='ATTACK'||G.phase==='BUILDUP') && carrier.mp>10){
+      for(const sid of (carrier.spells||[])){
+        const sp=SPELLS.find(x=>x.id===sid);
+        if(!sp||carrier.mp<sp.mp)continue;
+        const mult=mentalitySpellMult(ati,ATTACK_SPELLS&&ATTACK_SPELLS.has(sid));
+        if(Math.random()<sp.prob*mult){ spell11=sp; break; }
+      }
+    }
+
+    switch(G.phase){
+      case 'KICKOFF':{
+        if(G.phTick<2)return;
+        const kicker=pick(byR(ati,'ATT','MO','MC','AG','AD'))||pick(ap);
+        if(kicker){kicker.x=PCX+(Math.random()-.5)*1.5;kicker.y=PCY+(Math.random()-.5)*1.5;giveB(kicker);}
+        logEvent(`Coup d\'envoi — ${teams[ati].name} !`,teams[ati].color);
+        setPhase('BUILDUP');return;
+      }
+      case 'BUILDUP':{
+        if(!carrier)return;
+        const r=Math.random();
+        if(r<.20){
+          const mid=pick(byR(ati,'MC','MDC','MDC2','MCD','MCG','MO').filter(p=>!p.hasBall&&!p.stunT));
+          if(mid){kickToP(carrier,mid,1.5);logEvent(`${carrier.name} → ${mid.name}`,teams[ati].color+'aa');}
+        } else if(r<.36){
+          const fwdP=pick(byR(ati,'ATT','ATT2','MO','AG','AD'));
+          if(fwdP){kickToP(carrier,fwdP,2.0);logEvent(`Long ballon pour ${fwdP.name} !`,teams[ati].color+'cc');setPhase('ATTACK');}
+        } else if(r<.50){
+          setPhase('ATTACK');
+        } else if(r<.64){
+          const inter=pick(byR(dti,'MC','MDC','DD','DC','DG','LB','RB').filter(p=>!p.stunT));
+          if(inter){
+            freeB();
+            setTimeout(()=>{if(!inter.red){giveB(inter);G.atkTi=dti;setPhase('TRANSITION');}},180/speedMult);
+            logEvent(`Interception de ${inter.name} !`,teams[dti].color);
+          }
+        } else {
+          const p2=pick(ap.filter(p=>!p.hasBall));
+          if(p2){kickToP(carrier,p2,1.2);logEvent(`${teams[ati].name} fait circuler`,teams[ati].color+'55');}
+        }
+        return;
+      }
+      case 'ATTACK':{
+        if(!carrier){setPhase('BUILDUP');return;}
+        if(spell11){_doSpellRaw(carrier,ati,dti,spell11,oppGoalX);return;}
+        const r=Math.random();
+        if(r<.22){
+          doShot(carrier,ati,dti,opp,gk,oppGoalX);
+        } else if(r<.36){
+          const atkD=(carrier.s.tec+carrier.s.spd*.3+irng(-10,10))*ast11.atk;
+          const defD=(opp?opp.s.def+opp.s.spd*.2:20+irng(-10,10))*dst11.def;
+          spawnTackle(G.ball.x,G.ball.y);
+          if(atkD>defD){
+            logEvent(`${carrier.name} élimine ${opp&&opp.name||''} !`,'#8840e0');
+            // Blessure légère possible sur le défenseur
+            if(opp&&Math.random()<0.08*(1-(opp.s.res||50)/99)){injurePlayer(dti,opp,true);}
+          } else {
+            G.tackles[dti]++;
+            if(opp){giveB(opp);G.atkTi=dti;}
+            logEvent(`${opp&&opp.name||''} tacle ${carrier.name} !`,teams[dti].color);
+            // Blessure possible sur le porteur taclé
+            if(Math.random()<0.10*(1-(carrier.s.res||50)/99)){injurePlayer(ati,carrier,true);}
+            setPhase('TRANSITION');
+          }
+        } else if(r<.50){
+          const wing=pick(byR(ati,'ATT','ATT2','AG','AD','MO').filter(p=>!p.hasBall));
+          if(wing){kickToP(carrier,wing,1.7);logEvent(`Centre de ${carrier.name} → ${wing.name}`,teams[ati].color+'bb');}
+        } else if(r<.63){
+          const mid=pick(byR(ati,'MC','MDC','MCG','MCD').filter(p=>!p.hasBall));
+          if(mid){kickToP(carrier,mid,.9);logEvent(`${carrier.name} recycle`,teams[ati].color+'55');setPhase('BUILDUP');}
+        } else if(r<.76){
+          if(opp){
+            freeB();
+            setTimeout(()=>{if(opp&&!opp.red){giveB(opp);G.atkTi=dti;setPhase('TRANSITION');}},160/speedMult);
+            logEvent(`${opp.name} récupère !`,teams[dti].color);
+          }
+        } else {
+          G.fouls[dti]++;if(opp)opp.stunT=irng(4,7)*60;
+          spawnTackle(G.ball.x,G.ball.y);
+          const cr=Math.random();
+          if(opp&&cr<.14){
+            opp.yc++;
+            if(opp.yc>=2){opp.red=true;logEvent(`🟥 ${opp.name} EXPULSÉ !`,'#e02030');}
+            else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
+            if(Math.random()<0.12*(1-(carrier.s.res||50)/99)){injurePlayer(ati,carrier,true);}
+          } else { logEvent(`Faute sur ${carrier.name}`,'#f0c028'); }
+          setPhase('FREEKICK');
+        }
+        return;
+      }
+      case 'TRANSITION':{
+        if(G.phTick<3)return;
+        const car2=G.owner?allPlayers.find(p=>p.id===G.owner):pick(byR(ati,'MC','MDC','DD','DC','DG'));
+        if(!car2){setPhase('BUILDUP');return;}
+        logEvent(`${teams[ati].name} en contre !`,teams[ati].color);
+        setPhase(Math.random()<.6?'ATTACK':'BUILDUP');
+        return;
+      }
+      case 'CORNER':{
+        if(G.phTick<5)return;
+        const kicker=pick(byR(ati,'MC','MO','ATT','AG','AD'));
+        const header=pick(byR(ati,'ATT','ATT2','DC','DCD','DCG').filter(p=>!p.hasBall));
+        if(!kicker||!header){setPhase('BUILDUP');return;}
+        const cx=oppGoalX+(ati===0?rng(-16,-1):rng(1,16));
+        const cy=PCY+rng(-10,10);
+        kickTo(cx,cy,1.5);
+        logEvent(`Corner de ${kicker.name}...`,teams[ati].color+'bb');
+        setTimeout(()=>{
+          if(!G.running)return;
+          if(Math.random()<.45){giveB(header);setTimeout(()=>{if(G.running)doShot(header,ati,dti,opp,gk,oppGoalX);},280/speedMult);}
+          else{if(gk){giveB(gk);G.atkTi=dti;}setPhase('GOALKICK');}
+        },650/speedMult);
+        return;
+      }
+      case 'FREEKICK':{
+        if(G.phTick<5)return;
+        const sh=pick(byR(ati,'ATT','ATT2','MC','MO','AG','AD'));
+        if(!sh){setPhase('BUILDUP');return;}
+        giveB(sh);
+        const atkS=(sh.s.sht+sh.s.tec*.5+irng(-10,10))*ast11.atk;
+        const defS=(gk?gk.s.def+22:28+irng(-8,8))*dst11.def;
+        kickTo(oppGoalX,PCY+rng(-6,6),2.2);
+        logEvent(`Coup franc de ${sh.name}...`,teams[ati].color+'bb');
+        setTimeout(()=>{
+          if(!G.running)return;
+          G.shots[ati]++;sh.mSh++;
+          if(atkS>defS+8){goalScored(sh,ati,oppGoalX);}
+          else{logEvent(`Coup franc repoussé !`,teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}
+        },580/speedMult);
+        return;
+      }
+      case 'GOALKICK':{
+        if(G.phTick<4)return;
+        let gkp=byR(ati,'GB')[0];
+        // Gardien de fortune si le vrai GB est hors jeu
+        if(!gkp){
+          gkp=actP(ati).find(p=>p.pos==='DC'||p.pos==='DCD'||p.pos==='DCG');
+          if(gkp){
+            if(typeof applyEmergencyGKMalus==='function') applyEmergencyGKMalus(gkp);
+            logEvent(`🧤 ${gkp.name} en gardien de fortune !`,'#f0c028');
+          }
+        }
+        const recv=pick(byR(ati,'MC','MDC','ATT','MO','AG','AD'));
+        if(recv){kickToP(gkp||recv,recv,2.2);logEvent(`Dégagement pour ${recv.name}`,teams[ati].color+'66');}
+        setPhase('BUILDUP');return;
+      }
+    }
+    return; // fin IA 11v11
+  }
+  // ── Fin IA 11v11 ─────────────────────────────────────────────────
 
   const ast=strat(ati),dst=strat(dti);
   const carrier=ownerP()||pick(byR(ati,'ATT','MO','MC'))||pick(ap);

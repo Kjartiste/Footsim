@@ -6,6 +6,58 @@ function roleTarget(ti,p,pi){
   const b=G.ball,isAtk=G.atkTi===ti;
   const myGoalX=ti===0?0:WW,oppGoalX=ti===0?WW:0,fwd=ti===0?1:-1;
   const fb=formBase(ti,pi);
+
+  // ── Mode 11v11 : logique simplifiée comme la version épurée ──────────
+  if(window.gameMode === '11v11'){
+    if(p.pos==='GB'){
+      return{x:ti===0?1.5:WW-1.5, y:clamp(b.y, GY1+.8, GY2-.8)};
+    }
+    const isAtt = ['ATT','ATT2','AG','AD','MO'].includes(p.pos);
+    const isMid = ['MC','MCD','MCG','MDC','MDC2','MOG','MOD'].includes(p.pos);
+    const isDef = ['DC','DCD','DCG','DD','DG','LB','RB'].includes(p.pos);
+
+    if(isAtk){
+      switch(G.phase){
+        case 'KICKOFF': return {x:clamp(fb.x, ti===0?0.5:PCX+0.3, ti===0?PCX-0.3:WW-0.5), y:fb.y};
+        case 'BUILDUP':
+          if(p.hasBall) return{x:clamp(b.x+fwd*rng(2,7),2,WW-2),y:clamp(b.y+rng(-4,4),1,WH-1)};
+          return{x:clamp(fb.x+fwd*rng(0,5),2,WW-2),y:clamp(fb.y+rng(-4,4),1,WH-1)};
+        case 'ATTACK':
+          if(p.hasBall) return{x:clamp(b.x+fwd*rng(3,10),2,WW-2),y:clamp(b.y+rng(-5,5),1,WH-1)};
+          if(isAtt) return{x:clamp(oppGoalX+(ti===0?rng(-25,-3):rng(3,25)),2,WW-2),y:clamp(PCY+(Math.random()-.5)*32,2,WH-2)};
+          if(isMid) return{x:clamp(fb.x+fwd*rng(3,10),2,WW-2),y:clamp(fb.y+rng(-6,6),2,WH-2)};
+          return{x:clamp(fb.x+fwd*rng(2,6),2,WW-2),y:clamp(fb.y+rng(-4,4),2,WH-2)};
+        case 'TRANSITION':
+          if(p.hasBall) return{x:clamp(b.x+fwd*rng(5,14),2,WW-2),y:clamp(PCY+rng(-14,14),2,WH-2)};
+          if(isAtt) return{x:clamp(oppGoalX+(ti===0?rng(-30,-6):rng(6,30)),2,WW-2),y:clamp(PCY+(Math.random()-.5)*28,2,WH-2)};
+          return{x:clamp(fb.x+fwd*rng(2,8),2,WW-2),y:clamp(fb.y+rng(-5,5),2,WH-2)};
+        case 'CORNER':
+          if(isDef) return{x:clamp(fb.x,2,WW-2),y:fb.y};
+          return{x:clamp(oppGoalX+(ti===0?rng(-20,-2):rng(2,20)),2,WW-2),y:clamp(PCY+(Math.random()-.5)*22,2,WH-2)};
+        case 'FREEKICK':
+          if(isAtt||isMid) return{x:clamp(oppGoalX+(ti===0?rng(-18,-2):rng(2,18)),2,WW-2),y:clamp(PCY+(Math.random()-.5)*22,2,WH-2)};
+          return{x:clamp(fb.x+fwd*rng(2,6),2,WW-2),y:clamp(fb.y+rng(-3,3),2,WH-2)};
+        default: return fb;
+      }
+    } else {
+      switch(G.phase){
+        case 'ATTACK':case 'BUILDUP':case 'TRANSITION':{
+          if(isDef){
+            const bkX=clamp(lerp(myGoalX,b.x,.35)+rng(-5,5),ti===0?2:WW*.4,ti===0?WW*.6:WW-2);
+            return{x:bkX,y:clamp(b.y+rng(-10,10),2,WH-2)};
+          }
+          if(isMid) return{x:clamp(lerp(myGoalX,b.x,.55)+rng(-6,6),2,WW-2),y:clamp(fb.y+rng(-7,7),2,WH-2)};
+          return{x:clamp(fb.x+rng(-6,6),2,WW-2),y:clamp(fb.y+rng(-5,5),2,WH-2)};
+        }
+        case 'CORNER':
+          return{x:clamp(myGoalX+(ti===0?rng(2,18):rng(-18,-2)),2,WW-2),y:clamp(PCY+(Math.random()-.5)*22,2,WH-2)};
+        default:
+          return{x:clamp(fb.x+rng(-4,4),2,WW-2),y:clamp(fb.y+rng(-4,4),2,WH-2)};
+      }
+    }
+  }
+
+  // ── Mode 7v7 : logique originale complète ────────────────────────────
   const now=Date.now()*.001;
   // Tactical parameters of the player's own team
   const myStrat=strat(ti);
@@ -415,6 +467,139 @@ const MAX_SPD=8.5,MIN_SPD=2.5,BALL_FRIC=.965,SEP=2.2,PICK_R=1.9;
 
 function physStep(dt,rawDt){
   const now=Date.now()*.001;
+
+  // ── Mode 11v11 : physique complète avec fonctionnalités 7v7 ──────────
+  if(window.gameMode === '11v11'){
+    const SEP11=1.6, PICK11=1.4;
+    if(!G._pressNearest)G._pressNearest=[null,null];
+    if(!G._pressOrder)G._pressOrder=[[],[]];
+
+    // Mise à jour cache pressing (même logique que 7v7)
+    if(Math.random()<0.28){
+      [0,1].forEach(ti=>{
+        const mp=actP(ti).filter(q=>q.pos!=='GB');
+        const sorted=mp.map(q=>({q,d:Math.hypot(q.x-G.ball.x,q.y-G.ball.y)})).sort((a,b)=>a.d-b.d).map(o=>o.q);
+        G._pressOrder[ti]=sorted;
+        G._pressNearest[ti]=sorted[0]||null;
+      });
+    }
+
+    teams.forEach((T,ti)=>T.players.forEach((p,pi)=>{
+      if(p.red||p.hp<=0){p.x=lerp(p.x,-6,.03);return;}
+      if(p.stunT>0)p.stunT=Math.max(0,p.stunT-dt*60);
+      p.bobPhase=(p.bobPhase||0)+dt*2.8;
+      if(p.runT>0)p.runT=Math.max(0,p.runT-dt);
+      if(p.runCool>0)p.runCool=Math.max(0,p.runCool-dt);
+      if(p.tackleCool>0)p.tackleCool=Math.max(0,p.tackleCool-dt);
+
+      // Buffs/debuffs (même système que 7v7)
+      if(p._spdDebuff>0)p._spdDebuff=Math.max(0,p._spdDebuff-dt);
+      if(p._charmed>0)p._charmed=Math.max(0,p._charmed-dt);
+      if(p._atkBuff>0)p._atkBuff=Math.max(0,p._atkBuff-dt);
+      if(p._pacified>0)p._pacified=Math.max(0,p._pacified-dt);
+      if(p._invis>0)p._invis=Math.max(0,p._invis-dt);
+      if(p._folie>0)p._folie=Math.max(0,p._folie-dt);
+      if(p._aile>0)p._aile=Math.max(0,p._aile-dt);
+      if(p._sixsens>0)p._sixsens=Math.max(0,p._sixsens-dt);
+      if(p._sylvestre>0)p._sylvestre=Math.max(0,p._sylvestre-dt);
+
+      const t=roleTarget(ti,p,pi);
+      p.tx=lerp(p.tx||t.x,t.x,.10);
+      p.ty=lerp(p.ty||t.y,t.y,.10);
+
+      const spdBase=p.s.spd*(1-(p._spdDebuff||0)*0.4);
+      const maxSpd=MIN_SPD+(MAX_SPD-MIN_SPD)*(spdBase/99);
+      const aileBoost=p._aile>0?1.45:1;
+      const eff=(p.stunT>0?maxSpd*.2:maxSpd)*aileBoost;
+      const dx=p.tx-p.x,dy=p.ty-p.y,d=Math.hypot(dx,dy);
+      if(d>0.15){
+        const nx=dx/d,ny=dy/d;
+        p.vx=lerp(p.vx||0,nx*eff,.20);
+        p.vy=lerp(p.vy||0,ny*eff,.20);
+      } else {p.vx=(p.vx||0)*.75;p.vy=(p.vy||0)*.75;}
+
+      p.x=clamp((p.x||PCX)+(p.vx||0)*dt,0,WW);
+      p.y=clamp((p.y||PCY)+(p.vy||0)*dt,0,WH);
+
+      // Séparation
+      teams.forEach((T2)=>T2.players.forEach(p2=>{
+        if(p2===p||p2.red||p2.hp<=0)return;
+        const dx2=p.x-p2.x,dy2=p.y-p2.y,d2=Math.hypot(dx2,dy2);
+        if(d2<SEP11&&d2>.01){const push=(SEP11-d2)/SEP11*.12;p.x+=dx2/d2*push;p.y+=dy2/d2*push;}
+      }));
+
+      // Fatigue — même calcul que 7v7
+      const stamFactor=1.1-p.s.stam/99;
+      p.hp=Math.max(0,p.hp-0.003*dt*60*stamFactor);
+      p.mp=Math.min(100,p.mp+0.018*dt*60);
+
+      // Blessure de fatigue (même prob que 7v7)
+      if(p.hp<15&&p.injLevel===0&&Math.random()<dt*0.008){
+        if(typeof injurePlayer==='function') injurePlayer(ti,p,false);
+      }
+    }));
+
+    // Substitutions automatiques (blessures)
+    if(typeof processPendingSubs==='function') processPendingSubs();
+
+    // Timers globaux
+    if(G.gegenT){G.gegenT[0]=Math.max(0,(G.gegenT[0]||0)-dt);G.gegenT[1]=Math.max(0,(G.gegenT[1]||0)-dt);}
+    if(G.gkCoolT>0)G.gkCoolT=Math.max(0,G.gkCoolT-dt);
+    if(G._gkSpellCool){G._gkSpellCool[0]=Math.max(0,(G._gkSpellCool[0]||0)-dt);G._gkSpellCool[1]=Math.max(0,(G._gkSpellCool[1]||0)-dt);}
+
+    // Balle — même logique que 7v7 avec corners auto
+    const b=G.ball;
+    const own=ownerP();
+    if(own&&own.hasBall){
+      b.x=lerp(b.x,own.x+(own.vx||0)*dt*.5,.26);
+      b.y=lerp(b.y,own.y+(own.vy||0)*dt*.5,.26);
+      b.vx=0;b.vy=0;b.spin=(b.spin||0)*.9;
+      G.possT[G.atkTi]++;
+    } else {
+      b.x+=(b.vx||0)*dt*60;b.y+=(b.vy||0)*dt*60;
+      b.vx=(b.vx||0)*Math.pow(BALL_FRIC,dt*60);
+      b.vy=(b.vy||0)*Math.pow(BALL_FRIC,dt*60);
+      b.spin=(b.spin||0)*Math.pow(.94,dt*60);
+      if(Math.abs(b.vx)<.03&&Math.abs(b.vy)<.03){b.vx=0;b.vy=0;}
+      if(b.y<0){b.y=0;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
+      if(b.y>WH){b.y=WH;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
+      // Corners automatiques (comme 7v7)
+      if(b.x<=0&&!(b.y>GY1&&b.y<GY2)&&(b.vx||0)<0&&G.running
+         &&G.phase!=='CORNER'&&G.phase!=='FREEKICK'&&G.phase!=='GOALKICK'&&G.phase!=='KICKOFF'){
+        G.corners[1]++;b.x=.5;b.y=clamp(b.y,1,WH-1);b.vx=0;b.vy=0;
+        G.atkTi=1;setPhase('CORNER');
+        logEvent(`Corner pour ${teams[1].name}`,teams[1].color+'88');
+      } else if(b.x<0){b.x=0;b.vx=(b.vx||0)*-.5;}
+      if(b.x>=WW&&!(b.y>GY1&&b.y<GY2)&&(b.vx||0)>0&&G.running
+         &&G.phase!=='CORNER'&&G.phase!=='FREEKICK'&&G.phase!=='GOALKICK'&&G.phase!=='KICKOFF'){
+        G.corners[0]++;b.x=WW-.5;b.y=clamp(b.y,1,WH-1);b.vx=0;b.vy=0;
+        G.atkTi=0;setPhase('CORNER');
+        logEvent(`Corner pour ${teams[0].name}`,teams[0].color+'88');
+      } else if(b.x>WW){b.x=WW;b.vx=(b.vx||0)*-.5;}
+      // Auto pickup
+      if(!G.owner){
+        for(const T of teams) for(const p of T.players){
+          if(p.red||p.hp<=0||p.stunT>0)continue;
+          if(Math.hypot(p.x-b.x,p.y-b.y)<PICK11){giveB(p);break;}
+        }
+      }
+    }
+    b.trail=b.trail||[];
+    b.trail.push({x:b.x,y:b.y});
+    if(b.trail.length>22)b.trail.shift();
+    if(G.flash>0)G.flash-=dt*60*.025;
+    G.ptcl=(G.ptcl||[]).filter(p=>p.l>0);
+    G.ptcl.forEach(p=>{
+      p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;
+      p.vx*=Math.pow(.91,dt*60);p.vy*=Math.pow(.91,dt*60);
+      if(p.t!=='r')p.vy+=.06*dt*60;
+      if(p.t==='r')p.r+=p.vr*dt*60;
+      p.l-=dt*60;
+    });
+    return;
+  }
+  // ── Fin mode 11v11 ────────────────────────────────────────────────
+
   const ballNearOppGoal = G.ball.x > WW-PA_W && G.ball.y>GY1-PA_H/2 && G.ball.y<GY2+PA_H/2
                        || G.ball.x < PA_W    && G.ball.y>GY1-PA_H/2 && G.ball.y<GY2+PA_H/2;
   const ballOwnerIsGB = (G.owner && G.owner.pos==='GB') || G.phase==='GOALKICK' || (G.gkCoolT||0)>0 || ballNearOppGoal;
