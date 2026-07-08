@@ -482,21 +482,17 @@ input[type=range]:focus{outline:none}
 <script src="ui.js"></script>
 <script src="save.js"></script>
 <script>
-window.onload = function(){
-  try {
-    loadProfiles();
-    if(!activeProfileId || !profiles[activeProfileId]){
-      renderProfileScreen();
-    } else {
-      nav('setup');
-    }
-  } catch(e){
-    console.error('Erreur démarrage:', e);
-    setTimeout(function(){
-      try { renderProfileScreen(); } catch(e2){ console.error(e2); }
-    }, 300);
+// Démarrage direct — tous les scripts précédents sont déjà exécutés
+try {
+  loadProfiles();
+  if(!activeProfileId || !profiles[activeProfileId]){
+    renderProfileScreen();
+  } else {
+    nav('setup');
   }
-};
+} catch(e){
+  console.error('Erreur démarrage:', e);
+}
 </script>
 </body>
 </html>

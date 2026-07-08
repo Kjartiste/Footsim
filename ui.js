@@ -4672,6 +4672,11 @@ function buildCupTeams(count,savedIdxs,npcSel){
 function renderCareerV2(){
   const el = document.getElementById('career-out'); if(!el) return;
   if(!careerV2){ renderCareerV2Choice(); return; }
+  // Générer les fixtures si manquantes (carrière ancienne ou migration)
+  if(careerV2.type === 'director' && (!careerV2.fixtures || careerV2.fixtures.length === 0)){
+    _generateSeasonFixtures();
+    saveCareerV2();
+  }
   if(careerV2.type === 'director') renderCareerDirector(el);
   else renderCareerManager(el);
 }
