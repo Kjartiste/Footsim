@@ -405,9 +405,17 @@ function _generateSeasonFixtures(){
   // Retirer le club du joueur s'il y est
   const filteredNames = clubNames.filter(function(n){ return n !== club.name; });
 
-  // Compléter si pas assez de noms
+  // Compléter avec des noms génériques si pas assez
+  const prefixes = ['FC','AS','SC','RC','US','CA','EC','AC','SK','FK'];
+  const suffixes = ['United','City','Athletic','Sporting','Rovers','Town','Warriors','Stars','Eagles','Lions'];
+  let idx = 0;
   while(filteredNames.length < nbOpponents){
-    filteredNames.push('Club ' + (filteredNames.length + 1));
+    const pre = prefixes[idx % prefixes.length];
+    const suf = suffixes[Math.floor(idx / prefixes.length) % suffixes.length];
+    const num = Math.floor(idx / (prefixes.length * suffixes.length)) + 1;
+    const name = pre + ' ' + suf + (num > 1 ? ' ' + num : '');
+    if(!filteredNames.includes(name) && name !== club.name) filteredNames.push(name);
+    idx++;
   }
 
   const opponents = filteredNames.slice(0, nbOpponents).map(function(name){
