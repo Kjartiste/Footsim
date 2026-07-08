@@ -2,7 +2,7 @@
 // ENGINE.JS — Moteur physique, roleTarget, physStep
 // ═══════════════════════════════════════════════════
 function roleTarget(ti,p,pi){
-  if(p.red||p.hp<=0)return{x:-5,y:PCY};
+  if(p.red)return{x:-5,y:PCY};
   const b=G.ball,isAtk=G.atkTi===ti;
   const myGoalX=ti===0?0:WW,oppGoalX=ti===0?WW:0,fwd=ti===0?1:-1;
   const fb=formBase(ti,pi);
@@ -610,7 +610,12 @@ function physStep(dt,rawDt){
   const ballOwnerIsGB = (G.owner && G.owner.pos==='GB') || G.phase==='GOALKICK' || (G.gkCoolT||0)>0 || ballNearOppGoal;
   // Players
   teams.forEach((T,ti)=>T.players.forEach((p,pi)=>{
-    if(p.red||p.hp<=0){p.x=lerp(p.x,-6,.03);return;}
+    // Seuls les joueurs EXPULSÉS quittent le terrain. Un joueur épuisé
+    // (hp/énergie à 0) NE se fige plus : il continue de jouer, simplement
+    // beaucoup plus lentement (voir staminaSpeed plus bas). Avant, hp<=0
+    // renvoyait le joueur hors du terrain → « beaucoup de joueurs ne bougent
+    // pas », surtout avec des effectifs à faible endurance.
+    if(p.red){p.x=lerp(p.x,-6,.03);return;}
     if(p.stunT>0)p.stunT=Math.max(0,p.stunT-dt*60);
     if(p._dominated>0){
       p._dominated=Math.max(0,p._dominated-dt*60);
@@ -692,6 +697,9 @@ function physStep(dt,rawDt){
                           isSupport ? (1.0 + myPressStr*0.20) : 1.0;
     const sprintMul=(p.runT>0?1.35:1.0)*pressBonusMul;
     const injPenalty=[1,.80,.55,.22][p.injLevel||0];
+    // Fatigue progressive : un joueur épuisé ralentit au lieu de se figer.
+    // hp=100 → 1.0 (pleine vitesse) ; hp=0 → 0.45 (petit trot fatigué).
+    const staminaSpeed = 0.45 + 0.55*clamp((p.hp||0)/100, 0, 1);
     // Folie : le joueur court vers une cible aléatoire sur le terrain
     if(p._folie>0&&Math.random()<.04){p.tx=rng(2,WW-2);p.ty=rng(2,WH-2);}
     // Suggestion Mentale : le joueur fuit — sa cible est à l'opposé du ballon.
@@ -700,7 +708,7 @@ function physStep(dt,rawDt){
       p.tx=clamp(p.x+away.x*18,2,WW-2);
       p.ty=clamp(p.y+away.y*18,2,WH-2);
     }
-    const eff=(p.stunT>0?baseMax*.2:baseMax*sprintMul*spdMul)*injPenalty;
+    const eff=(p.stunT>0?baseMax*.2:baseMax*sprintMul*spdMul*staminaSpeed)*injPenalty;
     const dx=p.tx-p.x,dy=p.ty-p.y,d=Math.hypot(dx,dy);
     if(d>0.15){
       const n=norm(dx,dy);
@@ -714,7 +722,7 @@ function physStep(dt,rawDt){
 
     // Separation
     allP().forEach(p2=>{
-      if(p2===p||p2.red||p2.hp<=0)return;
+      if(p2===p||p2.red)return;
       const dx2=p.x-p2.x,dy2=p.y-p2.y,d2=Math.hypot(dx2,dy2);
       if(d2<SEP&&d2>.01){const push=(SEP-d2)/SEP*.12;p.x+=dx2/d2*push;p.y+=dy2/d2*push;}
     });
@@ -806,7 +814,7 @@ function physStep(dt,rawDt){
         // En phase GOALKICK, seule l'équipe qui dégage peut ramasser la balle
         if(G.phase==='GOALKICK'&&_ti!==G.atkTi)continue;
         for(const p of teams[_ti].players){
-          if(p.red||p.hp<=0||p.stunT>0)continue;
+          if(p.red||p.stunT>0)continue;
           const d=Math.hypot(p.x-b.x,p.y-b.y);
           if(d<bestD){bestD=d;bestP=p;}
         }
