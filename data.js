@@ -29,6 +29,12 @@ function _recalcTerrainConstants(){
   GY1=PCY-3.0; GY2=PCY+3.0;
 }
 
+function _applyMode5v5(){
+  WW=60; WH=40; PSX=7; PA_W=10; PA_H=20;
+  GY1=PCY-2.5; GY2=PCY+2.5; // but plus étroit en futsal/5v5
+  _recalcTerrainConstants();
+}
+
 function _applyMode7v7(){
   WW=75; WH=50; PSX=9; PA_W=12; PA_H=26;
   GY1=PCY-3.0; GY2=PCY+3.0;
@@ -600,12 +606,21 @@ function applyFormationRoles(ti){
   if(!T||!T.players?.length) return;
 
   const is11v11 = gameMode === '11v11';
-  const expectedSize = is11v11 ? 11 : 7;
+  const is5v5 = gameMode === '5v5';
+  const expectedSize = is11v11 ? 11 : (is5v5 ? 5 : 7);
 
   // Assigner les postes selon la formation si l'équipe a le bon nombre de joueurs
   const strat11 = is11v11 ? (T.strat11||'442') : null;
   if(is11v11 && strat11 && FORMS_11V11[strat11] && T.players.length === 11){
     const positions = FORMS_11V11[strat11];
+    T.players.forEach((p, i) => {
+      if(p && positions[i]) p.pos = positions[i];
+    });
+  }
+  // 5v5 : appliquer les postes de la formation si effectif exact de 5
+  const strat5 = is5v5 ? (T.strat5||'121') : null;
+  if(is5v5 && strat5 && FORMS_5V5[strat5] && T.players.length === 5){
+    const positions = FORMS_5V5[strat5];
     T.players.forEach((p, i) => {
       if(p && positions[i]) p.pos = positions[i];
     });
@@ -639,12 +654,13 @@ function formBase(ti,pi){
     return {x: fx*WW, y: coords[1]*WH};
   }
 
-  // Mode 7v7 : ancien système avec POS_COORDS et étalement
+  // Mode 7v7 / 5v5 : système avec POS_COORDS et étalement
+  const posMap = window.gameMode === '5v5' ? (window.POS_COORDS_5V5 || POS_COORDS) : POS_COORDS;
   const players = T && T.players ? T.players : [];
   const p = players[pi];
   let f;
-  if(p && p.pos && POS_COORDS[p.pos]){
-    const base = POS_COORDS[p.pos];
+  if(p && p.pos && posMap[p.pos]){
+    const base = posMap[p.pos];
     const sameIdx = [];
     for(let i=0;i<players.length;i++){if(players[i]&&players[i].pos===p.pos)sameIdx.push(i);}
     const n = sameIdx.length;
@@ -761,6 +777,59 @@ window.FORMS_COORDS_11V11 = {
            [.74,.50]],
 };
 
+// ── Coordonnées normalisées 5v5 (futsal) — GB + 4 joueurs de champ ────
+// [profondeur 0→1 (0=but propre, 1=but adverse), côté 0→1]
+window.FORMS_COORDS_5V5 = {
+  // Diamant : 1 déf, 2 milieux (gauche/droite), 1 pivot/attaquant
+  '121':  [[.08,.50],[.28,.50],[.52,.24],[.52,.76],[.80,.50]],
+  // Carré : 2 défenseurs, 2 attaquants
+  '22':   [[.10,.50],[.30,.30],[.30,.70],[.72,.30],[.72,.70]],
+  // Offensif : 1 déf, 1 milieu, 2 attaquants
+  '112':  [[.08,.50],[.26,.50],[.50,.50],[.76,.28],[.76,.72]],
+  // Défensif : 3 défenseurs, 1 pointe
+  '31':   [[.08,.50],[.26,.25],[.26,.50],[.26,.75],[.74,.50]],
+  // Y inversé ultra-offensif : 1 déf, 3 attaquants
+  '13':   [[.09,.50],[.28,.50],[.66,.20],[.66,.50],[.66,.80]],
+};
+
+// Formations 5v5 : liste ordonnée des postes [GB, ...4 joueurs de champ]
+const FORMS_5V5 = {
+  '121': ['GB','DC','MOG','MOD','ATT'],
+  '22':  ['GB','DD','DG','AG','AD'],
+  '112': ['GB','DC','MC','AG','AD'],
+  '31':  ['GB','DD','DC','DG','ATT'],
+  '13':  ['GB','DC','AG','MO','AD'],
+};
+
+window.FORMS_5V5 = FORMS_5V5;
+
+// Stratégies 5v5 (bases tactiques : pressing / largeur / profondeur)
+const STRATS_5V5 = [
+  {id:'121', n:'1-2-1',  d:'Diamant équilibré',                atk:1.00,def:1.00,press:.55,width:1.00,attDepth:0,  midPush:1.05,runFreq:1.10,col:'#1878e8'},
+  {id:'22',  n:'2-2',    d:'Carré compact, deux blocs',        atk:1.05,def:1.05,press:.50,width:1.05,attDepth:0,  midPush:1.00,runFreq:1.05,col:'#f0c028'},
+  {id:'112', n:'1-1-2',  d:'Deux pointes, pressing haut',      atk:1.22,def:.85, press:.85,width:1.10,attDepth:3,  midPush:1.35,runFreq:1.45,col:'#e02030'},
+  {id:'31',  n:'3-1',    d:'Bloc bas, un pivot',               atk:.80, def:1.30,press:.22,width:.82, attDepth:-2, midPush:.60, runFreq:.70, col:'#18c860'},
+  {id:'13',  n:'1-3',    d:'Ultra offensif, trois devant',     atk:1.32,def:.78, press:.90,width:1.18,attDepth:4,  midPush:1.45,runFreq:1.60,col:'#e91e63'},
+];
+
+// Positions de base 5v5 par poste individuel
+const POS_COORDS_5V5 = {
+  GB:  [.08,.50],
+  DC:  [.26,.50],
+  DD:  [.28,.78],
+  DG:  [.28,.22],
+  MDC: [.40,.50],
+  MC:  [.48,.50],
+  MOG: [.54,.24],
+  MOD: [.54,.76],
+  MO:  [.60,.50],
+  AG:  [.74,.22],
+  AD:  [.74,.78],
+  ATT: [.80,.50],
+};
+window.POS_COORDS_5V5 = POS_COORDS_5V5;
+window.STRATS_5V5 = STRATS_5V5;
+
 window.gameMode = '7v7';
 
 
@@ -769,11 +838,18 @@ function setGameMode(mode){
   gameMode = mode;
   if(mode === '11v11'){
     _applyMode11v11();
+  } else if(mode === '5v5'){
+    _applyMode5v5();
   } else {
     _applyMode7v7();
   }
   if(typeof resize === 'function') resize();
   if(typeof updateModeBtns === 'function') updateModeBtns();
+}
+
+function _applyMode5v5(){
+  // Appliquer les constantes 5v5
+  Object.assign(window, CONSTANTS_5V5);
 }
 
 function _applyMode7v7(){
@@ -785,6 +861,15 @@ function _applyMode11v11(){
   // Appliquer les constantes 11v11
   Object.assign(window, CONSTANTS_11V11);
 }
+
+// ── Constantes 5v5 (futsal / foot à 5) ───────────────────────────────
+const CONSTANTS_5V5 = {
+  FIELD_W: 75, FIELD_H: 50,
+  GOAL_W: 6, PS_X: 9,
+  PA_W: 12, PA_H: 26,
+  TEAM_SIZE: 5, BENCH_SIZE: 3,
+  MAX_SUBS: 99, MATCH_DURATION: 90,
+};
 
 // ── Constantes 7v7 (originales) ──────────────────────────────────────
 const CONSTANTS_7V7 = {

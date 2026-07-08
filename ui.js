@@ -419,14 +419,60 @@ function nav(p){
     teams[1]=_leagueUserTeamBackup[1];
     renderTB(0);renderTB(1);syncHUD();
   }
-  document.querySelectorAll('.ntab').forEach((el,i)=>el.classList.toggle('on',['setup','tactic','match','stats','league','cup','career'][i]===p));
+  document.querySelectorAll('.ntab').forEach((el,i)=>el.classList.toggle('on',['mode','setup','tactic','match','stats','league','cup','career'][i]===p));
   document.querySelectorAll('.spage').forEach(el=>el.classList.remove('on'));
   const sp=document.getElementById(`sp-${p}`);if(sp)sp.classList.add('on');
+  if(p==='mode')renderModeScreen();
   if(p==='stats')renderStats();
   if(p==='tactic'){renderTactics();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);}
   if(p==='league')renderLeague();
   if(p==='cup')renderCup();
   if(p==='career'){ renderCareerV2(); }
+}
+
+// ══════════════════════════════════════════════════════════
+// ÉCRAN DE SÉLECTION DES MODES DE JEU
+// ══════════════════════════════════════════════════════════
+function renderModeScreen(){
+  const out = document.getElementById('mode-out');
+  if(!out) return;
+  const modes = [
+    {id:'5v5',   n:'5 contre 5',   sub:'Foot à 5 · Futsal',       col:'#8840e0', field:'1 gardien + 4 joueurs', desc:'Format nerveux et rapide. Petits effectifs, beaucoup de duels, scores élevés.', icon:'⚡'},
+    {id:'7v7',   n:'7 contre 7',   sub:'Format classique',        col:'#f0c028', field:'1 gardien + 6 joueurs', desc:'Le mode historique de FootSim. Équilibre parfait entre tactique et action.', icon:'⚽'},
+    {id:'11v11', n:'11 contre 11', sub:'Football à 11',           col:'#18c860', field:'1 gardien + 10 joueurs', desc:'Le vrai football. Grandes équipes, formations profondes, 3 changements max.', icon:'🏟️'},
+  ];
+  const cur = window.gameMode || '7v7';
+  let h = '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;padding:8px 4px 2px">Choisis ton mode</div>'
+    + '<div style="font-size:10px;color:var(--muted);padding:0 4px 10px;line-height:1.4">Le mode détermine le nombre de joueurs sur le terrain, les formations disponibles et la taille des effectifs. L\'onglet <b>Équipes</b> s\'adapte automatiquement.</div>';
+  modes.forEach(m=>{
+    const active = cur===m.id;
+    h += '<div onclick="selectGameMode(\''+m.id+'\')" style="cursor:pointer;background:'+(active?m.col+'18':'var(--card)')+';border:2px solid '+(active?m.col:'var(--b1)')+';border-radius:12px;padding:12px;margin-bottom:10px;transition:all .12s">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<div style="width:44px;height:44px;border-radius:10px;background:'+m.col+'22;border:1px solid '+m.col+'55;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">'+m.icon+'</div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="display:flex;align-items:center;gap:8px"><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:17px;font-weight:900;color:'+(active?m.col:'#fff')+';letter-spacing:.5px">'+m.n+'</div>'
+      + (active?'<span style="font-size:8px;font-weight:900;letter-spacing:1px;color:#05101c;background:'+m.col+';padding:2px 6px;border-radius:10px">ACTIF</span>':'')+'</div>'
+      + '<div style="font-size:10px;color:'+m.col+';font-weight:700;letter-spacing:.5px">'+m.sub+'</div>'
+      + '</div></div>'
+      + '<div style="font-size:11px;color:var(--text);margin-top:8px;line-height:1.4">'+m.desc+'</div>'
+      + '<div style="font-size:9px;color:var(--muted);margin-top:6px;letter-spacing:.5px">👥 '+m.field+'</div>'
+      + '</div>';
+  });
+  h += '<button class="btn btng" style="width:100%;justify-content:center;margin-top:4px;padding:10px;font-size:13px" onclick="nav(\'setup\')">✓ Continuer → Équipes</button>';
+  out.innerHTML = h;
+}
+
+// Sélectionne un mode depuis l'écran des modes et rafraîchit tout ce qui dépend de la taille des équipes
+function selectGameMode(mode){
+  setGameMode(mode);
+  // Adapter immédiatement les effectifs à la taille du mode, pour que
+  // l'onglet Équipes reflète tout de suite le bon nombre de joueurs.
+  try{ _prepareTeamsForMode(); }catch(e){ console.error('prepareTeams failed:',e); }
+  renderModeScreen();
+  // Rafraîchir les autres écrans dépendants (sans quitter l'onglet Modes)
+  if(typeof renderTB==='function'){ try{ renderTB(0); renderTB(1); }catch(e){} }
+  if(typeof renderTactics==='function'){ try{ renderTactics(); }catch(e){} }
+  if(typeof updateCompoPitch==='function'){ try{ updateCompoPitch(); }catch(e){} }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -548,7 +594,7 @@ function selectProfileAndEnter(pid){
   selectProfile(pid);
   const ov = document.getElementById('profile-screen');
   if(ov) ov.remove();
-  nav('setup');
+  nav('mode');
 }
 
 // ── Écran de gestion des profils ─────────────────────────────────────
@@ -1127,8 +1173,13 @@ function showPreMatch(onStart){
       </div>
     </div>`;
 
-    // ── Sélecteur de mode 7v7 / 11v11 ──────────────────────────────────
+    // ── Sélecteur de mode 5v5 / 7v7 / 11v11 ────────────────────────────
     h+='<div style="display:flex;gap:6px;margin:4px 14px 8px">'
+      +'<button onclick="setGameMode(\'5v5\');showPreMatch(window._prematchOnStart)" '
+      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='5v5'?'#8840e0':'var(--b1)')+';'
+      +'background:'+(window.gameMode==='5v5'?'rgba(136,64,224,.15)':'var(--dark)')+';'
+      +'color:'+(window.gameMode==='5v5'?'#8840e0':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
+      +'⚽ 5v5</button>'
       +'<button onclick="setGameMode(\'7v7\');showPreMatch(window._prematchOnStart)" '
       +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';'
       +'background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';'
@@ -1227,7 +1278,83 @@ function _prepareTeamsForMode(){
       applyFormationRoles(ti);
     });
     resetSubs11v11();
+  } else if(window.gameMode === '5v5'){
+    [0,1].forEach(function(ti){
+      _ensureTeamSize5v5(ti);
+      if(!teams[ti].strat5) teams[ti].strat5 = '121';
+      applyFormationRoles(ti);
+    });
+  } else {
+    // 7v7 : garantir 7 titulaires (utile après un passage par le 5v5)
+    [0,1].forEach(function(ti){ _ensureTeamSize7v7(ti); });
   }
+}
+
+// Ramène l'effectif de terrain à 7 titulaires (complète depuis le banc si besoin)
+function _ensureTeamSize7v7(ti){
+  const T = teams[ti];
+  if(!T) return;
+  T.players = T.players || [];
+  T.bench = T.bench || [];
+  const fillPos = ['DC','DD','DG','MC','MC','ATT'];
+  while(T.players.length < 7){
+    if(T.bench.length > 0){
+      const p = T.bench.shift();
+      p.onBench = false;
+      T.players.push(p);
+    } else if(window.WORLDS && WORLDS.generatePlayer){
+      const pos = fillPos[(T.players.length-1) % fillPos.length] || 'MC';
+      const p = WORLDS.generatePlayer('panthalassa','solgrath',pos,pos+'_'+T.players.length,'dh');
+      if(p) T.players.push(p); else break;
+    } else break;
+  }
+  const gbCount = T.players.filter(p=>p && p.pos==='GB').length;
+  if(gbCount === 0 && T.players[0]) T.players[0].pos = 'GB';
+}
+
+// Adapte l'effectif au format 5v5 : 5 titulaires (dont 1 GB), le reste au banc.
+function _ensureTeamSize5v5(ti){
+  const T = teams[ti];
+  if(!T) return;
+  T.players = T.players || [];
+  T.bench = T.bench || [];
+
+  // Si trop de titulaires : renvoyer les surnuméraires au banc
+  if(T.players.length > 5){
+    // Garder de préférence 1 gardien + 4 joueurs de champ
+    const gk = T.players.find(p=>p && p.pos==='GB');
+    const rest = T.players.filter(p=>p && p!==gk);
+    const starters = [];
+    if(gk) starters.push(gk);
+    for(const p of rest){
+      if(starters.length >= 5) break;
+      starters.push(p);
+    }
+    // Les autres vont au banc (en tête pour rester accessibles)
+    const extras = T.players.filter(p=>p && starters.indexOf(p)<0);
+    extras.forEach(p=>{ p.onBench=true; });
+    T.bench = extras.concat(T.bench);
+    T.players = starters;
+  }
+
+  // Si pas assez de titulaires : compléter depuis le banc puis générer
+  const nation = 'panthalassa', region = 'solgrath';
+  const fillPos = ['DC','MOG','MOD','ATT'];
+  while(T.players.length < 5){
+    if(T.bench.length > 0){
+      const p = T.bench.shift();
+      p.onBench = false;
+      T.players.push(p);
+    } else if(window.WORLDS && WORLDS.generatePlayer){
+      const pos = fillPos[(T.players.length-1) % fillPos.length] || 'MC';
+      const p = WORLDS.generatePlayer(nation, region, pos, pos+'_'+T.players.length, 'dh');
+      if(p) T.players.push(p); else break;
+    } else break;
+  }
+
+  // Garantir exactement un gardien
+  const gbCount = T.players.filter(p=>p && p.pos==='GB').length;
+  if(gbCount === 0 && T.players[0]) T.players[0].pos = 'GB';
 }
 
 function _ensureTeamSize11v11(ti){
@@ -1326,17 +1453,19 @@ function goMatch(){
 
 // Mettre à jour l'apparence des boutons de mode selon le mode actif
 function updateModeBtns(){
-  const btn7 = document.getElementById('mode-btn-7v7');
-  const btn11 = document.getElementById('mode-btn-11v11');
-  if(btn7){
-    btn7.style.borderColor = window.gameMode==='7v7' ? 'var(--gold)' : 'var(--b1)';
-    btn7.style.background  = window.gameMode==='7v7' ? 'rgba(240,192,40,.15)' : 'var(--dark)';
-    btn7.style.color       = window.gameMode==='7v7' ? 'var(--gold)' : 'var(--muted)';
-  }
-  if(btn11){
-    btn11.style.borderColor = window.gameMode==='11v11' ? '#18c860' : 'var(--b1)';
-    btn11.style.background  = window.gameMode==='11v11' ? 'rgba(24,200,96,.15)' : 'var(--dark)';
-    btn11.style.color       = window.gameMode==='11v11' ? '#18c860' : 'var(--muted)';
+  const set=(id,active,col)=>{
+    const b=document.getElementById(id);
+    if(!b) return;
+    b.style.borderColor = active ? col : 'var(--b1)';
+    b.style.background  = active ? (col==='var(--gold)'?'rgba(240,192,40,.15)':col==='#18c860'?'rgba(24,200,96,.15)':'rgba(136,64,224,.15)') : 'var(--dark)';
+    b.style.color       = active ? col : 'var(--muted)';
+  };
+  set('mode-btn-5v5',  window.gameMode==='5v5',  '#8840e0');
+  set('mode-btn-7v7',  window.gameMode==='7v7',  'var(--gold)');
+  set('mode-btn-11v11',window.gameMode==='11v11','#18c860');
+  // Rafraîchir l'écran de sélection des modes s'il est visible
+  if(typeof renderModeScreen === 'function' && document.getElementById('sp-mode')?.classList.contains('on')){
+    renderModeScreen();
   }
 }
 function syncHUD(){
@@ -1483,8 +1612,9 @@ function updateCompoPitch(){
         </div>
       </div>`;
     };
+    const _fsz = window.gameMode==='11v11'?11:(window.gameMode==='5v5'?5:7);
     const lines={GB:[],DEF:[],MID:[],ATT:[]};
-    (T.players||[]).slice(0,7).forEach(p=>{
+    (T.players||[]).slice(0,_fsz).forEach(p=>{
       const pos=p.pos||'MC';
       if(pos==='GB') lines.GB.push(p);
       else if(['DC','DD','DG'].includes(pos)) lines.DEF.push(p);
@@ -1502,14 +1632,18 @@ function updateCompoPitch(){
 
 function renderTactics(){
   const is11 = window.gameMode === '11v11';
-  const stratList = is11 ? STRATS_11V11 : STRATS;
+  const is5 = window.gameMode === '5v5';
+  const stratList = is11 ? STRATS_11V11 : (is5 ? STRATS_5V5 : STRATS);
+  const modeLbl = is11 ? '11v11' : (is5 ? '5v5' : '7v7');
+  const modeCol = is11 ? '#18c860' : (is5 ? '#8840e0' : 'var(--gold)');
 
   [0,1].forEach(ti=>{
     const T=teams[ti];
-    const curStrat = is11 ? (T.strat11||'442') : (T.strat||'321');
+    const curStrat = is11 ? (T.strat11||'442') : (is5 ? (T.strat5||'121') : (T.strat||'321'));
+    const stratAttr = is11 ? 'strat11' : (is5 ? 'strat5' : 'strat');
     const stratItems = stratList.map(s=>`
       <div class="sc${curStrat===s.id?' sel':''}" onclick="
-        ${is11 ? `teams[${ti}].strat11='${s.id}'` : `teams[${ti}].strat='${s.id}'`};
+        teams[${ti}].${stratAttr}='${s.id}';
         applyFormationRoles(${ti});renderTactics();updateCompoPitch();syncHUD()">
         <div style="display:flex;align-items:center;gap:5px">
           <div style="width:7px;height:7px;border-radius:50%;background:${s.col}"></div>
@@ -1526,12 +1660,14 @@ function renderTactics(){
     <div class="team-blk" style="margin-bottom:8px">
       <div class="team-hd"><div class="tdot2" style="background:${T.color}"></div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;letter-spacing:.8px;text-transform:uppercase">${T.name}</div>
-        <div style="font-size:9px;color:${is11?'#18c860':'var(--gold)'};margin-left:auto;font-weight:700">${is11?'11v11':'7v7'}</div>
+        <div style="font-size:9px;color:${modeCol};margin-left:auto;font-weight:700">${modeLbl}</div>
       </div>
       <div style="padding:6px">
         <div style="font-size:9px;color:var(--muted);background:var(--panel);border:1px solid var(--b1);border-radius:6px;padding:5px 7px;margin-bottom:6px;line-height:1.4">
           ${is11
             ? 'ℹ️ Formation 11v11 — les coordonnées de chaque slot sont fixes. Choisissez votre schéma tactique.'
+            : is5
+            ? 'ℹ️ Formation 5v5 (foot à 5) — 1 gardien + 4 joueurs de champ. Choisissez votre schéma tactique.'
             : 'ℹ️ La stratégie règle le pressing/largeur/profondeur. Le <b>placement</b> vient du <b>Poste</b> individuel.'}
         </div>
         ${stratItems}
