@@ -203,106 +203,77 @@ function loadCareerV2(){
 }
 
 // ── Initialisation Carrière Dirigeant ────────────────────────────────
-function startCareerDirector(regionId, clubId){
-  const region = WORLDS.getRegion('panthalassa', regionId);
+function startCareerDirector(regionId, clubId, nationId){
+  nationId = nationId || 'panthalassa';
+  const region = WORLDS.getRegion(nationId, regionId);
   if(!region){ logEvent('❌ Région introuvable','#e02030'); return; }
 
-  // Trouver le club choisi ou en créer un
-  const clubName = clubId || region.clubNames[0];
-
-  // Niveau de départ selon la région et le club
-  // Pour l'instant on commence en District ou R3 selon la région
+  const clubName  = clubId || region.clubNames[0];
+  const clubColor = window._careerColor || region.color;
   const startLevel = region.pyramid.district_groups > 0 ? 'dh' :
                      region.pyramid.has_r3 ? 'r3' : 'r2';
+  const budget = WORLDS.startBudget(nationId, regionId);
+
+  // Petit effectif de départ : 7 titulaires + 2-3 remplaçants max
+  const squad = WORLDS.generateSquad(nationId, regionId, {
+    positions: ['GB','DC','DD','DG','MC','MC','ATT'],
+    bench: ['GB','MC','ATT'],
+    reserves: [],
+    level: startLevel,
+  });
 
   careerV2 = {
-    type: 'director',          // director ou manager
+    type: 'director',
+    nation: nationId,
     season: 1,
     week: 1,
-    date: { year: 1, month: 8, day: 1 }, // début saison en août
+    date: { year: 1, month: 8, day: 1 },
 
-    // Club du joueur
     club: {
       id: 'player_club',
       name: clubName,
       region: regionId,
-      color: region.color,
-      level: startLevel,       // niveau actuel dans la pyramide
-      group: 0,                // groupe dans la division (pour niveaux régionaux)
-      budget: WORLDS.startBudget('panthalassa', regionId),
-      transferBudget: Math.round(WORLDS.startBudget('panthalassa', regionId) * 0.3),
-      wage_budget: Math.round(WORLDS.startBudget('panthalassa', regionId) * 0.4),
+      nation: nationId,
+      color: clubColor,
+      level: startLevel,
+      group: 0,
+      budget: budget,
+      transferBudget: Math.round(budget * 0.25),
+      wage_budget: Math.round(budget * 0.35),
       weekly_costs: 0,
-      reputation: WORLDS.startReputation(startLevel, WORLDS.getRegion('panthalassa', regionId)),
+      reputation: WORLDS.startReputation(startLevel, region),
       fanbase: _startFanbase(region),
       infra: { stadium:0, training:0, formation:0, medical:0, scout:0 },
       sponsor: null,
-      stadium_capacity: 500 + region.population * 200,
-      // Staff
-      staff: {
-        manager: null,         // manager IA ou nom du manager
-        scout: null,
-        physio: null,
-        coach: null,
-      },
-      // Objectifs fixés par le conseil
+      stadium_capacity: 500 + region.population * 100,
+      staff: { manager:null, scout:null, physio:null, coach:null },
       board_objectives: [],
-      // Historique
       history: [],
     },
 
-    // Joueurs du club
-    ...WORLDS.generateSquad('panthalassa', regionId),
-    // bench et reserves inclus dans generateSquad
-    
+    // Petit effectif de départ
+    players:  squad.players,
+    bench:    squad.bench,
+    reserves: [],
 
-    // Mercato
     mercato: {
-      window_open: false,
-      window_type: null,       // 'summer' ou 'winter'
-      transfer_list: [],       // joueurs disponibles sur le marché
-      incoming_offers: [],     // offres reçues pour nos joueurs
-      outgoing_offers: [],     // nos offres en attente
-      loan_list: [],           // joueurs disponibles en prêt
+      window_open: false, window_type: null,
+      transfer_list: [], incoming_offers: [], outgoing_offers: [], loan_list: [],
     },
-
-    // Calendrier de la saison
     fixtures: [],
-
-    // Statistiques de la saison
-    season_stats: {
-      wins:0, draws:0, losses:0,
-      goals_for:0, goals_against:0,
-      points:0,
-    },
-
-    // Finances détaillées
-    finances: {
-      log: [],
-      weekly_revenue: 0,
-      weekly_costs: 0,
-      total_earned: 0,
-      total_spent: 0,
-    },
-
-    // Événements en attente
+    season_stats: { wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0 },
+    finances: { log:[], weekly_revenue:0, weekly_costs:0, total_earned:0, total_spent:0 },
     pending_events: [],
-
-    // Réputation du manager/directeur sportif
-    director_reputation: 50,
+    director_reputation: 30,
     director_name: 'Vous',
   };
 
-  // Générer les objectifs du conseil selon le niveau
   careerV2.club.board_objectives = _generateBoardObjectives(careerV2.club);
-
-  // Générer le calendrier de la première saison
-  _generateSeasonFixtures();
-
   saveCareerV2();
-  logEvent(`🏟️ Bienvenue à ${clubName} ! Saison 1 commence.`, region.color);
+  logEvent('🏟 Bienvenue au ' + clubName + ' ! Saison 1 commence.', clubColor);
   renderCareerV2();
 }
+
 
 // ── Initialisation Carrière Manager ──────────────────────────────────
 function startCareerManager(regionId){

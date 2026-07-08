@@ -39,7 +39,19 @@ const WORLDS = {
   },
 
   // ── Générer un joueur selon sa nation et sa région ──────────────────
-  generatePlayer(nationId, regionId, pos, name){
+  // ── Modificateurs de stats selon le niveau de la pyramide ──────────
+  // Un joueur de District n'a PAS les mêmes stats qu'un joueur de D1
+  LEVEL_STAT_RANGES: {
+    dh:  {min:8,  max:28},   // District — amateurs totaux
+    r3:  {min:18, max:38},   // Régional 3 — semi-amateurs
+    r2:  {min:28, max:48},   // Régional 2
+    r1:  {min:38, max:58},   // Régional 1
+    d3:  {min:50, max:68},   // Division 3 — national amateur
+    d2:  {min:60, max:78},   // Division 2 — pro bas niveau
+    d1:  {min:72, max:92},   // Division 1 — élite
+  },
+
+  generatePlayer(nationId, regionId, pos, name, level){
     const nation = this.get(nationId);
     const region = this.getRegion(nationId, regionId);
     if(!nation || !region) return null;
@@ -52,38 +64,48 @@ const WORLDS = {
       ? nation.races.human.statOverride
       : nation.baseStats;
 
-    // Calculer les stats avec modificateurs de région
+    // Fourchette selon le niveau — écrase les baseStats de la nation
+    const levelRange = this.LEVEL_STAT_RANGES[level] || this.LEVEL_STAT_RANGES['dh'];
+
+    // Calculer les stats avec modificateurs de région + niveau
     const mods = region.statMods || {};
     const stat = (key) => {
-      const b = baseStats[key] || {min:40, max:70};
-      const mod = mods[key] || 0;
-      const variance = mods.stat_variance ? (Math.random()-.5) * (mods.stat_variance/10) : 0;
+      // On part de la fourchette du niveau, pas de la fourchette de la nation
+      const levelMin = levelRange.min;
+      const levelMax = levelRange.max;
+      // Les mods de région décalent dans cette fourchette (+10 tec pour Thalassyr reste cohérent)
+      const mod = Math.round((mods[key] || 0) * 0.4); // réduit l'impact des mods sur les bas niveaux
+      const variance = mods.stat_variance ? (Math.random()-.5) * (mods.stat_variance/20) : 0;
+      // Certaines stats ont un bonus/malus selon le poste
+      const posBonus = _statPosBonus(key, pos);
       return Math.max(1, Math.min(99,
-        Math.round(b.min + Math.random()*(b.max - b.min) + mod + variance + (Math.random()-.5)*8)
+        Math.round(levelMin + Math.random()*(levelMax - levelMin) + mod + variance + posBonus + (Math.random()-.5)*5)
       ));
     };
 
-    // Sorts selon la région
+    // Sorts : limités en bas de la pyramide
     const baseSpells = [...(nation.preferredSpells || [])];
     const regionSpells = region.spellBonus || [];
     const fullPool = [...new Set([...baseSpells, ...regionSpells])];
-
-    // Nombre de sorts (Velmara en a plus)
     const extraSpells = mods.extra_spells || 0;
     const fewerSpells = mods.fewer_spells || false;
-    const nbSpells = fewerSpells
-      ? Math.max(0, 1 + extraSpells + Math.floor(Math.random()*1))
-      : 1 + extraSpells + Math.floor(Math.random()*2);
-
-    const spells = [...fullPool].sort(()=>Math.random()-.5).slice(0, Math.max(1, nbSpells));
+    // En bas niveau, les sorts sont plus rares
+    const levelSpellChance = {dh:0.3, r3:0.45, r2:0.6, r1:0.75, d3:0.85, d2:0.9, d1:1.0};
+    const spellChance = levelSpellChance[level] || 0.3;
+    let nbSpells = 0;
+    if(Math.random() < spellChance){
+      nbSpells = fewerSpells ? 1 : 1 + extraSpells + Math.floor(Math.random()*2);
+    }
+    const spells = nbSpells > 0 ? [...fullPool].sort(()=>Math.random()-.5).slice(0, nbSpells) : [];
 
     return {
-      id: `p_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      id: 'p_'+Date.now()+'_'+Math.random().toString(36).slice(2),
       name,
       pos,
       nation: nationId,
       region: regionId,
       race,
+      level: level || 'dh',
       s: {
         tec:  stat('tec'),
         spd:  stat('spd'),
@@ -119,17 +141,18 @@ const WORLDS = {
   generateSquad(nationId, regionId, options={}){
     const region = this.getRegion(nationId, regionId);
     if(!region) return {players:[], bench:[], reserves:[]};
+    const level = options.level || 'dh';
 
     const names = [...(region.names || [])].sort(()=>Math.random()-.5);
     let nameIdx = 0;
-    const nextName = () => names[nameIdx++] || `Joueuse${nameIdx}`;
+    const nextName = () => names[nameIdx++] || 'Joueuse'+(nameIdx);
 
     const positions = options.positions || ['GB','DC','DD','DG','MC','MC','ATT'];
-    const benchPos  = options.bench    || ['GB','MC','ATT','DC','MC'];
-    const resPos    = options.reserves || ['MC','ATT','DC'];
+    const benchPos  = options.bench    || ['GB','MC','ATT'];
+    const resPos    = options.reserves || [];
 
     const make = (pos, isBench=false) => {
-      const p = this.generatePlayer(nationId, regionId, pos, nextName());
+      const p = this.generatePlayer(nationId, regionId, pos, nextName(), level);
       if(!p) return null;
       if(isBench) p.onBench = true;
       return p;
@@ -165,6 +188,23 @@ const WORLDS = {
   },
 
 };
+
+// Bonus/malus de stats selon le poste (gardien a plus de def, attaquant plus de tir etc.)
+function _statPosBonus(key, pos){
+  const posBonus = {
+    GB:  {def:5, res:3, tec:-2, sht:-5, spd:-3},
+    DC:  {def:5, res:3, stam:2, sht:-3},
+    DD:  {def:4, spd:3, sht:-2},
+    DG:  {def:4, spd:3, sht:-2},
+    MC:  {tec:3, stam:3},
+    MDC: {def:4, stam:4, sht:-2},
+    MO:  {tec:4, sht:2},
+    ATT: {sht:6, spd:4, def:-4, stam:-2},
+    AG:  {spd:5, sht:4, def:-3},
+    AD:  {spd:5, sht:4, def:-3},
+  };
+  return (posBonus[pos] && posBonus[pos][key]) || 0;
+}
 
 // Freeze le registre
 Object.freeze(WORLDS);

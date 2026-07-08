@@ -4800,46 +4800,98 @@ function _renderClubStep(el, nationId, regionId, mode){
   if(!el || !nation || !region) return;
   const startLevel = _getStartLevel(region);
   const pyramid = nation.pyramid.find(function(p){return p.id===startLevel;});
-  const clubs = region.clubNames || [];
-  let h = '<div style="padding:12px;max-width:600px;margin:0 auto">';
+
+  let h = '<div style="padding:12px;max-width:500px;margin:0 auto">';
   h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
   h += '<button class="btn" id="back-to-regions" style="font-size:10px;padding:2px 8px">&larr; Retour</button>';
-  h += '<div style="font-size:13px;font-weight:900;color:' + region.color + '">' + region.name + ' — Club</div>';
+  h += '<div style="font-size:13px;font-weight:900;color:' + region.color + '">' + region.name + ' — Votre club</div>';
   h += '</div>';
-  h += '<div style="background:var(--dark);border:1px solid ' + region.color + '44;border-radius:8px;padding:8px;margin-bottom:12px">';
-  h += '<div style="font-size:10px;color:var(--gold);font-weight:700;margin-bottom:4px">📍 Niveau de départ : ' + (pyramid ? pyramid.name : startLevel) + '</div>';
-  h += '<div style="font-size:9px;color:var(--muted)">Budget : 🪙 ' + _fmtMoney(WORLDS.startBudget(nationId, regionId)) + ' · Réputation : ' + WORLDS.startReputation(startLevel, region) + '/100</div>';
+
+  // Récap niveau départ
+  h += '<div style="background:var(--dark);border:1px solid ' + region.color + '44;border-radius:8px;padding:10px;margin-bottom:14px">';
+  h += '<div style="font-size:10px;color:var(--gold);font-weight:700;margin-bottom:6px">📍 Niveau de départ : ' + (pyramid ? pyramid.name : startLevel) + '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9px;color:var(--muted)">';
+  h += '<div>🪙 Budget : <b>' + _fmtMoney(WORLDS.startBudget(nationId, regionId)) + '</b></div>';
+  h += '<div>⭐ Réputation : <b>' + WORLDS.startReputation(startLevel, region) + '/100</b></div>';
+  h += '<div>👥 Effectif : <b>7–12 joueurs</b></div>';
+  h += '<div>🏟 Capacité stade : <b>500 places</b></div>';
+  h += '</div></div>';
+
+  // Nom du club
+  h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:12px">';
+  h += '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:10px">⚽ Créez votre club</div>';
+
+  h += '<div style="margin-bottom:8px">';
+  h += '<label style="font-size:9px;color:var(--muted);display:block;margin-bottom:3px">Nom du club *</label>';
+  h += '<input id="club-name-input" type="text" maxlength="30" placeholder="Ex: FC Sirène, AS Profondeurs..."'
+    + ' style="width:100%;background:var(--dark);border:1px solid ' + region.color + ';border-radius:6px;'
+    + 'color:var(--fg);padding:7px 10px;font-size:12px;font-weight:700;box-sizing:border-box">';
   h += '</div>';
-  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px">';
-  clubs.forEach(function(name, i){
-    h += '<div class="club-card" data-club="' + i + '" data-name="' + name.replace(/"/g,'&quot;') + '"'
-      + ' style="background:var(--dark);border:2px solid var(--b1);border-radius:8px;padding:8px;cursor:pointer;text-align:center;font-size:10px;font-weight:700">'
-      + name + '</div>';
+
+  // Couleur du club
+  h += '<div style="margin-bottom:10px">';
+  h += '<label style="font-size:9px;color:var(--muted);display:block;margin-bottom:6px">Couleur du club</label>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  var colors = ['#e02030','#1878e8','#18c860','#f0c028','#8840e0','#ff6b00','#00bcd4','#e91e63','#607d8b','#ffffff'];
+  colors.forEach(function(col){
+    h += '<div class="color-pick" data-color="' + col + '"'
+      + ' style="width:28px;height:28px;border-radius:50%;background:' + col + ';cursor:pointer;border:3px solid transparent;transition:border .15s"></div>';
   });
-  h += '</div>';
-  h += '<button class="btn btng" id="career-start-btn" style="width:100%;display:none">&#x25B6; Commencer la carrière</button>';
+  h += '</div></div>';
+
+  // Suggestions de noms depuis la région
+  h += '<div style="margin-bottom:8px">';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:4px">Suggestions :</div>';
+  h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+  (region.clubNames || []).slice(0, 6).forEach(function(name){
+    h += '<button class="btn club-suggest" data-name="' + name.replace(/"/g,'&quot;') + '"'
+      + ' style="font-size:8px;padding:2px 6px">' + name + '</button>';
+  });
+  h += '</div></div></div>';
+
+  h += '<button class="btn btng" id="career-start-btn" style="width:100%;font-size:12px">&#x25B6; Commencer la carrière</button>';
   h += '</div>';
   el.innerHTML = h;
+
+  // Couleur sélectionnée par défaut = couleur de la région
+  window._careerColor = region.color;
+  var defaultCol = el.querySelector('[data-color="' + region.color + '"]')
+    || el.querySelector('.color-pick');
+  if(defaultCol){ defaultCol.style.border = '3px solid white'; window._careerColor = defaultCol.dataset.color; }
+
+  // Events couleurs
+  el.querySelectorAll('.color-pick').forEach(function(c){
+    c.addEventListener('click', function(){
+      el.querySelectorAll('.color-pick').forEach(function(x){ x.style.border='3px solid transparent'; });
+      c.style.border = '3px solid white';
+      window._careerColor = c.dataset.color;
+    });
+  });
+
+  // Suggestions noms
+  el.querySelectorAll('.club-suggest').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var input = document.getElementById('club-name-input');
+      if(input) input.value = btn.dataset.name;
+    });
+  });
+
+  // Retour
   document.getElementById('back-to-regions').addEventListener('click', function(){
     _renderRegionStep(el, nationId, mode);
   });
-  document.querySelectorAll('.club-card').forEach(function(card){
-    var cname = card.dataset.name;
-    card.addEventListener('mouseover', function(){ card.style.borderColor = region.color; });
-    card.addEventListener('mouseout',  function(){ if(window._careerClub !== cname) card.style.borderColor = ''; });
-    card.addEventListener('click', function(){
-      window._careerClub = cname;
-      document.querySelectorAll('.club-card').forEach(function(c){ c.style.borderColor=''; c.style.background='var(--dark)'; });
-      card.style.borderColor = region.color;
-      card.style.background = region.color + '22';
-      var btn = document.getElementById('career-start-btn');
-      if(btn) btn.style.display = 'block';
-    });
-  });
+
+  // Démarrer
   document.getElementById('career-start-btn').addEventListener('click', function(){
+    var name = (document.getElementById('club-name-input')||{}).value || '';
+    name = name.trim();
+    if(!name){ logEvent('❌ Entrez un nom de club !','#e02030'); return; }
+    window._careerClub = name;
+    window._careerColor = window._careerColor || region.color;
     confirmStartCareer();
   });
 }
+
 
 function _getStartLevel(region){
   if(!region || !region.pyramid) return 'dh';
