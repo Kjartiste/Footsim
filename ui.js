@@ -1126,6 +1126,20 @@ function showPreMatch(onStart){
       </div>
     </div>`;
 
+    // ── Sélecteur de mode 7v7 / 11v11 ──────────────────────────────────
+    h+='<div style="display:flex;gap:6px;margin:4px 14px 8px">'
+      +'<button onclick="setGameMode(\'7v7\');showPreMatch(window._prematchOnStart)" '
+      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';'
+      +'background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';'
+      +'color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
+      +'⚽ 7v7</button>'
+      +'<button onclick="setGameMode(\'11v11\');showPreMatch(window._prematchOnStart)" '
+      +'style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';'
+      +'background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';'
+      +'color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">'
+      +'⚽ 11v11</button>'
+      +'</div>';
+
     // Option "Match personnalisé" : score de départ + une seule mi-temps
     h+='<details style="margin:2px 14px 6px;background:var(--card);border:1px solid var(--b1);border-radius:8px;padding:6px 10px">'
       +'<summary style="cursor:pointer;font-size:10px;font-weight:800;color:var(--gold);letter-spacing:1px;list-style:none">⚙️ MATCH PERSONNALISÉ</summary>'
@@ -1172,8 +1186,20 @@ function _setCustomScore(ti,val){
 function startMatchFromPreMatch(){
   document.getElementById('prematch-modal').classList.remove('on');
   showTacBtns(true);
-  G._everStarted=true; // le match démarre : fin des changements libres illimités
-  // Appliquer un score de départ personnalisé s'il a été défini
+  G._everStarted=true;
+
+  // ── Adapter les équipes au mode sélectionné ──────────────────────
+  if(gameMode === '11v11'){
+    [0,1].forEach(function(ti){
+      _ensureTeamSize11v11(ti);
+      // Assigner formation 11v11 si pas déjà fait
+      if(!teams[ti].strat11) teams[ti].strat11 = '442';
+      applyFormationRoles(ti);
+    });
+    resetSubs11v11();
+  }
+
+  // Appliquer un score de départ personnalisé
   if(G._customScore&&(G._customScore[0]||G._customScore[1])){
     G.scores=[G._customScore[0]||0, G._customScore[1]||0];
     const e0=document.getElementById('hs0'),e1=document.getElementById('hs1');
@@ -1181,16 +1207,12 @@ function startMatchFromPreMatch(){
     if(e1)e1.textContent=G.scores[1];
     syncHUD();
   }
-  // Mode "une seule mi-temps" : on démarre directement en 2e période (horloge à
-  // 45') pour qu'une seule mi-temps soit jouée puis le coup de sifflet final.
   if(G._singleHalf){
-    G.half=2;
-    G.minute=45;
-    G._firstHalfKickoffTi=G.atkTi;
+    G.half=2; G.minute=45; G._firstHalfKickoffTi=G.atkTi;
     const hc=document.getElementById('hclock');if(hc)hc.textContent="45'";
   }
-  _gifArmIfNeeded();   // démarre l'enregistrement GIF si l'option a été cochée
-  _triggerConcert();   // Concert de Lumière : lancement au coup d'envoi
+  _gifArmIfNeeded();
+  _triggerConcert();
   const btn=document.getElementById('mbtn');
   if(window._prematchOnStart){
     window._prematchOnStart();
@@ -1199,6 +1221,29 @@ function startMatchFromPreMatch(){
     placeKickoff(G._kickoffTi!==undefined?G._kickoffTi:(Math.random()<.5?0:1));
     G.running=true;G._paused=false;
     if(btn)btn.textContent='⏸ Pause';
+  }
+}
+
+// Compléter une équipe jusqu'à 11 joueurs pour le mode 11v11
+function _ensureTeamSize11v11(ti){
+  const T = teams[ti];
+  if(!T) return;
+  const nation = 'panthalassa';
+  const region = 'solgrath'; // région neutre pour les joueurs générés
+  const positions11 = ['DC','DD','DG','DC','MC','MC','MDC','MO','AG','AD','ATT'];
+  let idx = 0;
+  while(T.players.length < 11){
+    const pos = positions11[idx % positions11.length];
+    const p = WORLDS.generatePlayer(nation, region, pos, 'Joueur '+(T.players.length+1), 'dh');
+    if(p){ p.onBench=false; T.players.push(p); }
+    idx++;
+  }
+  // S'assurer que le banc a au moins 3 joueurs
+  const benchPositions = ['GB','MC','ATT','DC','MO','DD','MC'];
+  while(T.bench.length < 3){
+    const pos = benchPositions[T.bench.length % benchPositions.length];
+    const p = WORLDS.generatePlayer(nation, region, pos, 'Rempl.'+(T.bench.length+1), 'dh');
+    if(p){ p.onBench=true; T.bench.push(p); }
   }
 }
 
@@ -1227,8 +1272,15 @@ function syncHUD(){
     if(scoreEl)scoreEl.style.color=T.color;
   });
   const f0=document.getElementById('ftag0'),f1=document.getElementById('ftag1');
-  if(f0)f0.textContent=strat(0).id.toUpperCase();
-  if(f1)f1.textContent=strat(1).id.toUpperCase();
+  if(f0)f0.textContent=(gameMode==='11v11'?(teams[0].strat11||'442'):(strat(0).id||'321')).toUpperCase();
+  if(f1)f1.textContent=(gameMode==='11v11'?(teams[1].strat11||'442'):(strat(1).id||'321')).toUpperCase();
+  // Compteur de changements en 11v11
+  if(gameMode==='11v11'){
+    const s0=document.getElementById('ftag0'),s1=document.getElementById('ftag1');
+    const subs0 = G_11V11.subs_used[0], subs1 = G_11V11.subs_used[1];
+    if(s0) s0.title = `Changements : ${subs0}/3`;
+    if(s1) s1.title = `Changements : ${subs1}/3`;
+  }
 }
 
 function promoteReserve(ti,ri){

@@ -387,7 +387,8 @@ function drawShadow(x,y,r){
 function drawPlayer(T,p){
   if(!p||p.red||p.hp<=0)return;
   const px=wx(p.x),py=wy(p.y);
-  const r=ws(1.55);
+  // Taille des joueurs adaptée au mode (11v11 = terrain plus grand = joueurs plus petits)
+  const r=ws(gameMode==='11v11' ? 1.1 : 1.55);
   if(r<=0)return;
 
   drawShadow(p.x,p.y,1.55);
@@ -680,7 +681,7 @@ function drawPlayer(T,p){
   if(p.yc===1){ctx.fillStyle='#f0c028';ctx.fillRect(px+r*.55,py+safeBob-r*1.5,ws(.32),ws(.44));}
 
   // Name tag (bigger, more legible)
-  const fontSize=ws(.52);
+  const fontSize=ws(gameMode==='11v11'?.38:.52);
   ctx.font=`700 ${fontSize}px Barlow Condensed,sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='top';
   // Drop shadow for readability
@@ -956,25 +957,34 @@ function doSub(ti,pi,bi,source='bench'){
   const incoming=arr[bi];
   const outgoing=teams[ti].players[pi];
   if(!incoming||!outgoing)return;
+
+  // ── Limite de 3 changements en 11v11 (sauf pré-match) ──────────────
+  const preMatch=_isPreMatch();
+  if(gameMode==='11v11' && !preMatch){
+    if(!canSub11v11(ti)){
+      logEvent(`❌ ${teams[ti].name} a déjà utilisé ses 3 changements !`,'#e02030');
+      return;
+    }
+    doSub11v11(ti); // incrémenter le compteur
+    logEvent(`🔄 Changement ${G_11V11.subs_used[ti]}/3 — ${incoming.name} remplace ${outgoing.name}`,teams[ti].color);
+  }
+
   incoming.x=outgoing.x;incoming.y=outgoing.y;
   incoming.vx=0;incoming.vy=0;incoming.tx=outgoing.x;incoming.ty=outgoing.y;
   incoming.onBench=false;incoming.subbedOut=false;
-  // Reset any lingering debuffs/buffs from the bench
   incoming.stunT=0;incoming.tackleCool=0;incoming.runT=0;incoming.runCool=0;
   incoming._spdDebuff=0;incoming._charmed=0;incoming._atkBuff=0;incoming._pacified=0;
   incoming._invis=0;incoming._folie=0;incoming._aile=0;incoming._sixsens=0;incoming._sylvestre=0;incoming._flee=0;
   outgoing.onBench=true;outgoing.hasBall=false;
-  // Avant le coup d'envoi : changements ILLIMITÉS et réversibles (on prépare la
-  // compo). Le joueur sorti n'est PAS définitivement remplacé, il peut revenir.
-  // Une fois le match lancé, la règle réelle s'applique (sorti = définitif).
-  const preMatch=_isPreMatch();
   outgoing.subbedOut=!preMatch;
   if(G.owner===outgoing.id)freeB();
   outgoing.x=-10;outgoing.y=PCY;
   teams[ti].players[pi]=incoming;
   arr[bi]=outgoing;
   _handleGKMalusOnSwap(outgoing,incoming,preMatch);
-  logEvent(preMatch?`🔧 ${incoming.name} entre à la place de ${outgoing.name} (compo)`:`🔄 ${incoming.name} remplace ${outgoing.name}`,teams[ti].color);
+  if(gameMode!=='11v11'){
+    logEvent(preMatch?`🔧 ${incoming.name} entre à la place de ${outgoing.name} (compo)`:`🔄 ${incoming.name} remplace ${outgoing.name}`,teams[ti].color);
+  }
   renderInjuryPanel();
   if(document.getElementById('htmodal').classList.contains('on'))renderHtTeams();
   _refreshPrematchIfOpen();
@@ -1477,6 +1487,12 @@ function endMatch(){
   document.getElementById('mbtn').textContent='↺ Rejouer';
   if(G.leagueMode){
     G.leagueMode=false;
+    // Enregistrer résultat carrière si match carrière
+    if(window._careerFixPlaying){
+      recordCareerMatchResult();
+      showEndMatchRecap();
+      return;
+    }
     // Figer le récap AVANT toute restauration/navigation (teams[] = équipes du match)
     const _recapSnap=_captureRecapSnapshot();
     // Tracker les stats joueurs avant tout (teams[] encore intacts)
