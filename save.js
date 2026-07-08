@@ -270,6 +270,12 @@ function startCareerDirector(regionId, clubId, nationId){
 
   careerV2.club.board_objectives = _generateBoardObjectives(careerV2.club);
   _generateSeasonFixtures();
+  _generateFreeAgents();
+  _generateYouthIntake();
+
+  // Coûts hebdomadaires initiaux
+  careerV2.club.weekly_costs = _weeklyCareerCosts();
+
   saveCareerV2();
   logEvent('🏟 Bienvenue au ' + clubName + ' ! Saison 1 commence.', clubColor);
   renderCareerV2();
@@ -388,6 +394,179 @@ function _generateBoardObjectives(club){
     d1:  [{type:'top_half', desc:'Top 8', reward:25000}],
   };
   return levelObjectives[club.level] || [{type:'survive', desc:'Survivre la saison', reward:1000}];
+}
+
+// ═══════════════════════════════════════════════════════════
+// SYSTÈME ÉCONOMIQUE AMATEUR — Licences, joueurs libres, jeunes
+// ═══════════════════════════════════════════════════════════
+
+// Coûts réalistes par niveau
+const LEVEL_COSTS = {
+  dh:  { license:15, weeklyBase:50,  matchCost:20,  youth:5 },
+  r3:  { license:20, weeklyBase:100, matchCost:40,  youth:8 },
+  r2:  { license:30, weeklyBase:200, matchCost:80,  youth:15 },
+  r1:  { license:50, weeklyBase:500, matchCost:150, youth:30 },
+  d3:  { license:0,  weeklyBase:2000,matchCost:500, youth:100},
+  d2:  { license:0,  weeklyBase:5000,matchCost:1000,youth:200},
+  d1:  { license:0,  weeklyBase:15000,matchCost:3000,youth:500},
+};
+
+function _weeklyCareerRevenue(){
+  if(!careerV2) return 0;
+  const C = careerV2;
+  const club = C.club;
+  const level = club.level;
+  const costs = LEVEL_COSTS[level] || LEVEL_COSTS['dh'];
+  const isPro = ['d1','d2','d3'].includes(level);
+
+  let revenue = 0;
+
+  if(!isPro){
+    // Revenus licences : chaque joueur cotise
+    const nbPlayers = (C.players||[]).length + (C.bench||[]).length;
+    const licenseRev = nbPlayers * costs.license;
+    revenue += licenseRev;
+
+    // Subvention municipale (selon fanbase/réputation)
+    const municipal = Math.round(costs.weeklyBase * (0.5 + club.reputation/200));
+    revenue += municipal;
+  } else {
+    // Pro : billetterie + sponsors
+    const attendance = Math.round(club.stadium_capacity * (0.3 + club.reputation/150));
+    const ticketRev = Math.round(attendance * (level==='d1'?8:level==='d2'?5:3));
+    revenue += ticketRev;
+    revenue += costs.weeklyBase;
+  }
+
+  return revenue;
+}
+
+function _weeklyCareerCosts(){
+  if(!careerV2) return 0;
+  const C = careerV2;
+  const level = C.club.level;
+  const costs = LEVEL_COSTS[level] || LEVEL_COSTS['dh'];
+  const isPro = ['d1','d2','d3'].includes(level);
+
+  let total = costs.weeklyBase * 0.3; // frais fixes (terrain, admin)
+
+  if(isPro){
+    // Salaires des joueurs
+    const nbP = (C.players||[]).length + (C.bench||[]).length;
+    total += nbP * Math.round(costs.weeklyBase * 0.08);
+  }
+
+  // Coûts infrastructure
+  const infra = C.club.infra || {};
+  Object.values(infra).forEach(function(lvl){
+    total += lvl * costs.weeklyBase * 0.05;
+  });
+
+  return Math.round(total);
+}
+
+// ── Générer des joueurs libres locaux ──────────────────────────────────
+function _generateFreeAgents(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const nation = C.nation || 'panthalassa';
+  const region = C.club.region;
+  const level  = C.club.level;
+  const nb = 5 + Math.floor(Math.random() * 4); // 5-8 joueurs libres
+
+  const positions = ['GB','DC','DD','DG','MC','MC','ATT','MC','ATT','DC'];
+  const regionObj = WORLDS.getRegion(nation, region);
+  const names = regionObj ? [...(regionObj.names||[])].sort(function(){ return Math.random()-.5; }) : [];
+  let ni = 0;
+
+  careerV2.freeAgents = [];
+  for(var i = 0; i < nb; i++){
+    var pos = positions[Math.floor(Math.random()*positions.length)];
+    var name = names[ni++] || ('Joueur '+(i+1));
+    var p = WORLDS.generatePlayer(nation, region, pos, name, level);
+    if(p) careerV2.freeAgents.push(p);
+  }
+}
+
+// ── Générer des jeunes du club ──────────────────────────────────────────
+// Appelé en début de saison — 1-3 jeunes arrivent
+// 1 chance sur 1000 qu'un jeune ait un potentiel pro exceptionnel
+function _generateYouthIntake(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const nation = C.nation || 'panthalassa';
+  const region = C.club.region;
+  const level  = C.club.level;
+  const costs  = LEVEL_COSTS[level] || LEVEL_COSTS['dh'];
+
+  if(!C.youthPool) C.youthPool = [];
+
+  const nb = 1 + Math.floor(Math.random() * 3); // 1-3 jeunes
+  const positions = ['MC','ATT','DC','DD','DG','MC'];
+  const regionObj = WORLDS.getRegion(nation, region);
+  const names = regionObj ? [...(regionObj.names||[])].sort(function(){ return Math.random()-.5; }) : [];
+  let ni = 0;
+
+  for(var i = 0; i < nb; i++){
+    var pos = positions[Math.floor(Math.random()*positions.length)];
+    var name = names[ni++] || ('Jeune '+(i+1));
+
+    // Stats très basses — c'est un jeune (stats DH ou en dessous)
+    var p = WORLDS.generatePlayer(nation, region, pos, name, 'dh');
+    if(!p) continue;
+
+    // Potentiel : combien il pourrait atteindre au max
+    var pot = 15 + Math.floor(Math.random()*30); // 15-45 par défaut (resteront amateurs)
+
+    // 1 chance sur 200 : talent régional (potentiel R1-D3)
+    if(Math.random() < 0.005){
+      pot = 50 + Math.floor(Math.random()*20);
+      logEvent('⭐ '+name+' montre un potentiel régional prometteur !','#f0c028');
+    }
+
+    // 1 chance sur 1000 : PÉPITE PRO
+    if(Math.random() < 0.001){
+      pot = 72 + Math.floor(Math.random()*18); // 72-90 — niveau pro
+      p._isPotentialPro = true;
+      logEvent('💎💎💎 INCROYABLE ! '+name+' est une pépite de niveau professionnel ! Un club pro va vouloir le recruter...','#9c27b0');
+    }
+
+    p._potential = pot;
+    p._age = 16 + Math.floor(Math.random()*3); // 16-18 ans
+    p._isYouth = true;
+    C.youthPool.push(p);
+  }
+}
+
+// ── Appliquer les revenus/coûts hebdomadaires ─────────────────────────
+function _applyWeeklyEconomy(){
+  if(!careerV2 || careerV2.type !== 'director') return;
+  const C = careerV2;
+  const level = C.club.level;
+  const costs = LEVEL_COSTS[level] || LEVEL_COSTS['dh'];
+
+  const rev  = _weeklyCareerRevenue();
+  const cost = _weeklyCareerCosts();
+  const net  = rev - cost;
+
+  C.club.budget += net;
+
+  const isPro = ['d1','d2','d3'].includes(level);
+  if(!isPro){
+    const nbP = (C.players||[]).length + (C.bench||[]).length;
+    _addFinanceLog('Licences ('+nbP+' joueurs × '+costs.license+'🪙)', nbP * costs.license);
+    _addFinanceLog('Subvention municipale', rev - nbP*costs.license);
+  } else {
+    _addFinanceLog('Revenus hebdomadaires', rev);
+  }
+  if(cost > 0) _addFinanceLog('Frais hebdomadaires', -cost);
+
+  // Alertes budget
+  if(C.club.budget < 0){
+    logEvent('🚨 Budget négatif ! Le club est en difficulté financière.','#e02030');
+  } else if(C.club.budget < rev * 4){
+    logEvent('⚠️ Trésorerie faible — moins d\'un mois de réserve.','#f0c028');
+  }
 }
 
 function _generateSeasonFixtures(){

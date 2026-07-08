@@ -4672,10 +4672,13 @@ function buildCupTeams(count,savedIdxs,npcSel){
 function renderCareerV2(){
   const el = document.getElementById('career-out'); if(!el) return;
   if(!careerV2){ renderCareerV2Choice(); return; }
-  // Générer les fixtures si manquantes (carrière ancienne ou migration)
-  if(careerV2.type === 'director' && (!careerV2.fixtures || careerV2.fixtures.length === 0)){
-    _generateSeasonFixtures();
-    saveCareerV2();
+  // Générer les données manquantes (carrière ancienne ou migration)
+  if(careerV2.type === 'director'){
+    let needSave = false;
+    if(!careerV2.fixtures || careerV2.fixtures.length === 0){ _generateSeasonFixtures(); needSave=true; }
+    if(!careerV2.freeAgents || careerV2.freeAgents.length === 0){ _generateFreeAgents(); needSave=true; }
+    if(!careerV2.youthPool){ careerV2.youthPool = []; _generateYouthIntake(); needSave=true; }
+    if(needSave) saveCareerV2();
   }
   if(careerV2.type === 'director') renderCareerDirector(el);
   else renderCareerManager(el);
@@ -5162,23 +5165,151 @@ function _renderDirectorSquad(){
 }
 
 function _renderDirectorMercato(){
-  const C = careerV2;
-  const wopen = C.mercato.window_open;
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🔄 Mercato</div>';
-  h += '<div style="font-size:10px;color:'+(wopen?'#18c860':'#e06060')+';margin-bottom:10px">'
-    +(wopen?'🟢 Fenetree ouverte ('+C.mercato.window_type+')':'🔴 Fenetre fermee')+'</div>';
-  if(!wopen){
-    h += '<div style="font-size:9px;color:var(--muted)">Prochaine fenetre : ete (mois 6-7) ou hiver (mois 12-1).</div>';
+  const C = careerV2; const club = C.club;
+  const level = club.level;
+  const isPro = ['d1','d2','d3'].includes(level);
+  const isSemiPro = ['r1','r2'].includes(level);
+  // District/R3 = amateur, pas de mercato classique
+
+  let h = '<div style="padding:4px">';
+
+  if(!isPro && !isSemiPro){
+    // ── MODE AMATEUR (DH / R3) ──────────────────────────────────────
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:4px">ℹ️ Club Amateur</div>';
+    h += '<div style="font-size:9px;color:var(--muted);line-height:1.5">En District et R3, il n\'y a pas de marché des transferts. Les joueurs s\'engagent librement et jouent bénévolement. Vos revenus viennent des <b>licences</b> et de la <b>municipalité</b>.</div>';
+    h += '</div>';
+
+    // Joueurs libres locaux
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🆓 Joueurs libres locaux</div>';
+    h += '<button class="btn" onclick="refreshFreeAgents()" style="font-size:8px;padding:2px 8px">🔄 Actualiser</button>';
+    h += '</div>';
+
+    const freeAgents = C.freeAgents || [];
+    if(freeAgents.length === 0){
+      h += '<div style="font-size:9px;color:var(--muted)">Aucun joueur disponible. Avancez d\'une semaine ou actualisez.</div>';
+    } else {
+      freeAgents.forEach(function(p, i){
+        const vals = Object.values(p.s||{});
+        const ovr = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length) : 10;
+        const ovrCol = ovr>=20?'#f0c028':ovr>=15?'#e06060':'#888';
+        const canSign = (C.players||[]).length + (C.bench||[]).length < 16;
+        h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)">';
+        h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + p.pos + '</div>';
+        h += '<div style="flex:1"><div style="font-size:10px;font-weight:700">' + p.name + '</div>';
+        h += '<div style="font-size:8px;color:var(--muted)">' + (p.race==='human'?'👤':'🧜') + ' · ' + (p.region||'?') + '</div></div>';
+        h += '<div style="font-size:11px;font-weight:900;color:' + ovrCol + ';width:24px;text-align:center">' + ovr + '</div>';
+        if(p._isPotentialPro){
+          h += '<div style="font-size:8px;color:#9c27b0" title="Potentiel pro détecté !">💎</div>';
+        }
+        h += '<button class="btn btng" onclick="signFreeAgent(' + i + ')" style="font-size:8px;padding:2px 6px;' + (!canSign?'opacity:.4;pointer-events:none':'') + '">' + (canSign?'Signer':'Plein') + '</button>';
+        h += '</div>';
+      });
+    }
+    h += '</div>';
+
+    // Académie jeunes
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px">🎓 Jeunes du club</div>';
+    const youth = C.youthPool || [];
+    if(youth.length === 0){
+      h += '<div style="font-size:9px;color:var(--muted)">Pas encore de jeunes. Ils arrivent en début de saison.</div>';
+    } else {
+      youth.forEach(function(p, i){
+        const vals = Object.values(p.s||{});
+        const ovr = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length) : 10;
+        const pot = p._potential || ovr;
+        const potCol = pot >= 70 ? '#9c27b0' : pot >= 50 ? '#f0c028' : pot >= 35 ? '#18c860' : '#888';
+        h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)">';
+        h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + p.pos + '</div>';
+        h += '<div style="flex:1"><div style="font-size:10px;font-weight:700">' + p.name + (p._isPotentialPro?' <span style="color:#9c27b0">💎 PÉPITE</span>':'') + '</div>';
+        h += '<div style="font-size:8px;color:var(--muted)">OVR actuel : ' + ovr + ' · Potentiel : <span style="color:' + potCol + '">' + pot + '</span></div></div>';
+        h += '<button class="btn btng" onclick="promoteYouth(' + i + ')" style="font-size:8px;padding:2px 6px">↑ Promouvoir</button>';
+        if(p._isPotentialPro){
+          h += '<button class="btn" onclick="sellYouthPro(' + i + ')" style="font-size:8px;padding:2px 6px;color:#9c27b0;border-color:#9c27b0">💰 Vendre</button>';
+        }
+        h += '</div>';
+      });
+    }
+    h += '</div>';
+
+  } else if(isSemiPro){
+    // ── MODE SEMI-PRO (R1 / R2) ────────────────────────────────────
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:4px">⚽ Recrutement Semi-Pro</div>';
+    h += '<div style="font-size:9px;color:var(--muted)">Budget mercato : <b>🪙 ' + _fmtMoney(club.transferBudget) + '</b> · Indemnités de transfert faibles possibles.</div>';
+    h += '</div>';
+    h += '<div style="font-size:9px;color:var(--muted);padding:8px">Marché semi-pro — à développer prochainement.</div>';
+
   } else {
-    h += '<button class="btn btng" onclick="openTransferMarket()" style="width:100%;font-size:10px">🔍 Marche des transferts</button>';
+    // ── MODE PRO (D1/D2/D3) ────────────────────────────────────────
+    const wopen = C.mercato && C.mercato.window_open;
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="font-size:10px;color:' + (wopen?'#18c860':'#e06060') + ';font-weight:700">' + (wopen?'🟢 Fenêtre ouverte':'🔴 Fenêtre fermée') + '</div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:4px">Budget transferts : 🪙 ' + _fmtMoney(club.transferBudget) + '</div>';
+    h += '</div>';
+    h += '<div style="font-size:9px;color:var(--muted);padding:8px">Marché pro — à développer prochainement.</div>';
   }
-  if(C.mercato.incoming_offers.length > 0){
-    h += '<div style="margin-top:10px;font-size:10px;color:#f0c028;font-weight:700">📬 '+C.mercato.incoming_offers.length+' offre(s) recue(s)</div>';
-  }
+
   h += '</div>';
   return h;
 }
+
+function signFreeAgent(idx){
+  if(!careerV2) return;
+  const p = (careerV2.freeAgents||[])[idx];
+  if(!p){ logEvent('Joueur introuvable','#e02030'); return; }
+  const total = (careerV2.players||[]).length + (careerV2.bench||[]).length;
+  if(total >= 16){ logEvent('Effectif plein ! (max 16)','#e02030'); return; }
+
+  p.onBench = true;
+  if(!careerV2.bench) careerV2.bench = [];
+  careerV2.bench.push(p);
+  careerV2.freeAgents.splice(idx, 1);
+  logEvent('✅ ' + p.name + ' rejoint le club !', '#18c860');
+  saveCareerV2();
+  renderCareerDirectorTab('mercato');
+}
+
+function promoteYouth(idx){
+  if(!careerV2) return;
+  const p = (careerV2.youthPool||[])[idx];
+  if(!p){ logEvent('Joueur introuvable','#e02030'); return; }
+  const total = (careerV2.players||[]).length + (careerV2.bench||[]).length;
+  if(total >= 16){ logEvent('Effectif plein !','#e02030'); return; }
+
+  p.onBench = true;
+  if(!careerV2.bench) careerV2.bench = [];
+  careerV2.bench.push(p);
+  careerV2.youthPool.splice(idx, 1);
+  logEvent('🎓 ' + p.name + ' intègre l\'équipe première !', '#18c860');
+  saveCareerV2();
+  renderCareerDirectorTab('mercato');
+}
+
+function sellYouthPro(idx){
+  if(!careerV2) return;
+  const p = (careerV2.youthPool||[])[idx];
+  if(!p || !p._isPotentialPro){ return; }
+  // Vente d\'un jeune pépite à un club pro — revenu conséquent
+  const fee = Math.round(50000 + Math.random() * 150000);
+  careerV2.club.budget += fee;
+  _addFinanceLog('Vente de ' + p.name + ' à un club pro', fee);
+  careerV2.youthPool.splice(idx, 1);
+  logEvent('💰 ' + p.name + ' vendu à un club professionnel pour 🪙 ' + _fmtMoney(fee) + ' !', '#9c27b0');
+  saveCareerV2();
+  renderCareerDirectorTab('mercato');
+}
+
+function refreshFreeAgents(){
+  if(!careerV2) return;
+  _generateFreeAgents();
+  saveCareerV2();
+  renderCareerDirectorTab('mercato');
+}
+
 
 function _renderDirectorFinances(){
   const C = careerV2; const club = C.club;
@@ -5362,39 +5493,44 @@ function renderCareerManager(el){
 // ── Actions carrière ──────────────────────────────────────────────────
 function advanceCareerWeek(){
   if(!careerV2) return;
-  // Générer les fixtures si elles manquent (carrière ancienne ou bug)
-  if(!careerV2.fixtures || careerV2.fixtures.length === 0){
+  const C = careerV2;
+
+  // Générer les fixtures si manquantes
+  if(!C.fixtures || C.fixtures.length === 0){
     _generateSeasonFixtures();
   }
-  careerV2.week++;
+  // Générer les joueurs libres si manquants
+  if(!C.freeAgents || C.freeAgents.length === 0){
+    _generateFreeAgents();
+  }
 
-  // Gestion du mois/année
-  const weeksPerMonth = 4;
-  if(careerV2.week % weeksPerMonth === 0){
-    careerV2.date.month++;
-    if(careerV2.date.month > 12){
-      careerV2.date.month = 1;
-      careerV2.date.year++;
-    }
-    // Ouvrir/fermer mercato
+  C.week++;
+
+  // Économie hebdomadaire
+  _applyWeeklyEconomy();
+
+  // Toutes les 4 semaines : refresh des joueurs libres
+  if(C.week % 4 === 0){
+    _generateFreeAgents();
+    logEvent('🔄 Nouveaux joueurs libres disponibles !','#00bcd4');
+  }
+
+  // Gestion mercato (pro seulement)
+  const isPro = ['d1','d2','d3'].includes(C.club.level);
+  if(isPro){
     _checkMercatoWindow();
   }
 
-  // Coûts hebdomadaires
-  if(careerV2.type === 'director'){
-    const costs = careerV2.club.weekly_costs || 0;
-    if(costs > 0){
-      careerV2.club.budget -= costs;
-      _addFinanceLog('Couts hebdomadaires (semaine '+careerV2.week+')', -costs);
-    }
-  }
-
-  // Événements aléatoires selon la région
+  // Événements région
   _triggerRegionEvent();
+
+  // Événements aléatoires hebdo
+  _triggerWeeklyEvent();
 
   saveCareerV2();
   renderCareerV2();
 }
+
 
 function _checkMercatoWindow(){
   if(!careerV2) return;
@@ -5413,6 +5549,47 @@ function _checkMercatoWindow(){
     careerV2.mercato.window_open = false;
     careerV2.mercato.window_type = null;
     logEvent('🔒 Fenêtre de transferts fermée.','#e06060');
+  }
+}
+
+
+function _triggerWeeklyEvent(){
+  if(!careerV2 || careerV2.type !== 'director') return;
+  const C = careerV2;
+  const level = C.club.level;
+  const isPro = ['d1','d2','d3'].includes(level);
+
+  // Blessure aléatoire d'un joueur (5%)
+  if(Math.random() < 0.05){
+    const allP = (C.players||[]).concat(C.bench||[]).filter(function(p){ return !p._missNextMatch && p.injLevel < 2; });
+    if(allP.length > 0){
+      const p = allP[Math.floor(Math.random()*allP.length)];
+      p.injLevel = 1;
+      p.injT = (2 + Math.floor(Math.random()*3)) * 7; // 2-4 semaines
+      logEvent('🤕 ' + p.name + ' est blessé pour ' + Math.ceil(p.injT/7) + ' semaine(s) !','#f0c028');
+    }
+  }
+
+  // Récupération blessures
+  (C.players||[]).concat(C.bench||[]).forEach(function(p){
+    if(p.injLevel > 0 && p.injT > 0){
+      p.injT = Math.max(0, p.injT - 7);
+      if(p.injT === 0){
+        p.injLevel = 0;
+        logEvent('💪 ' + p.name + ' est remis de sa blessure !','#18c860');
+      }
+    }
+  });
+
+  // Amateur : un joueur part (2%) — il a trouvé autre chose
+  if(!isPro && Math.random() < 0.02 && (C.players||[]).length > 7){
+    const arr = C.players || [];
+    const idx = 1 + Math.floor(Math.random()*(arr.length-1)); // pas le GB
+    const p = arr[idx];
+    if(p){
+      arr.splice(idx, 1);
+      logEvent('😢 ' + p.name + ' quitte le club (raisons personnelles).','#e06060');
+    }
   }
 }
 
@@ -5514,7 +5691,94 @@ function rejectManagerJob(i){
 // ── Match en carrière Dirigeant ───────────────────────────────────────
 function playCareerMatch(){
   if(!careerV2) return;
-  simCareerMatchDirector(); // Pour l'instant on simule
+  const C = careerV2;
+  const fix = (C.fixtures||[]).find(function(f){ return !f.played; });
+  if(!fix){ logEvent('Aucun match à jouer !','#e02030'); return; }
+
+  const isHome = fix.homeIsPlayer;
+  const oppName = isHome ? fix.awayName : fix.homeName;
+  const level   = C.club.level;
+  const nation  = C.nation || 'panthalassa';
+  const region  = C.club.region;
+
+  // ── Équipe du joueur (team 0) ──────────────────────────────────────
+  teams[0] = {
+    name:    C.club.name,
+    color:   C.club.color || '#e02030',
+    img:     C.club.img   || '',
+    strat:   C.club.strat || '321',
+    players: C.players.map(function(p){ return Object.assign({}, p); }),
+    bench:   (C.bench||[]).map(function(p){ return Object.assign({}, p); }),
+    reserves:(C.reserves||[]).map(function(p){ return Object.assign({}, p); }),
+  };
+
+  // ── Équipe adversaire IA (team 1) — générée au bon niveau ──────────
+  const aiSquad = WORLDS.generateSquad(nation, region, {
+    positions: ['GB','DC','DD','DG','MC','MC','ATT'],
+    bench: ['GB','MC','ATT'],
+    reserves: [],
+    level: level,
+  });
+  // Noms depuis la région ou génériques
+  const regionObj = WORLDS.getRegion(nation, region);
+  const aiColor   = regionObj ? regionObj.color : '#1878e8';
+
+  teams[1] = {
+    name:    oppName,
+    color:   aiColor,
+    img:     '',
+    strat:   '321',
+    players: aiSquad.players,
+    bench:   aiSquad.bench,
+    reserves: [],
+  };
+
+  // Appliquer les formations
+  applyFormationRoles(0);
+  applyFormationRoles(1);
+
+  // Mémoriser le fix en cours pour enregistrer le résultat après match
+  window._careerFixPlaying = fix;
+  G.leagueMode = true; // pour que endMatch sache qu'il faut enregistrer
+
+  // Lancer le pré-match normal
+  showPreMatch(null);
+  nav('match');
+}
+
+function recordCareerMatchResult(){
+  if(!careerV2 || !window._careerFixPlaying) return;
+  const fix  = window._careerFixPlaying;
+  const s0   = G.scores[0]; // notre score (team 0)
+  const s1   = G.scores[1]; // adversaire (team 1)
+  const C    = careerV2;
+
+  fix.played = true;
+  fix.sh = fix.homeIsPlayer ? s0 : s1;
+  fix.sa = fix.homeIsPlayer ? s1 : s0;
+
+  const myG = fix.homeIsPlayer ? s0 : s1;
+  const aiG = fix.homeIsPlayer ? s1 : s0;
+
+  C.season_stats.goals_for     += myG;
+  C.season_stats.goals_against += aiG;
+  if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
+  else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
+  else { C.season_stats.losses++; }
+
+  _updateCareerStandings(fix);
+
+  const opp = fix.homeIsPlayer ? fix.awayName : fix.homeName;
+  const res = myG > aiG ? '✅ Victoire' : myG === aiG ? '🟡 Nul' : '❌ Défaite';
+  const col = myG > aiG ? '#18c860' : myG === aiG ? '#f0c028' : '#e06060';
+  logEvent(res+' ! '+C.club.name+' '+myG+'-'+aiG+' '+opp, col);
+
+  const rev = fix.homeIsPlayer ? Math.round(50 + C.club.fanbase * 0.05) : 10;
+  C.club.budget += rev;
+  _addFinanceLog('Recettes match vs '+opp, rev);
+
+  window._careerFixPlaying = null;
+  saveCareerV2();
 }
 
 function simCareerMatchDirector(){
@@ -5615,6 +5879,9 @@ function endCareerSeasonDirector(){
   C.season_stats = {wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0};
   logEvent('Saison '+C.season+' — Nouveau depart !', C.club.color||'#18c860');
   _generateSeasonFixtures();
+  _generateFreeAgents();
+  _generateYouthIntake();
+  C.club.weekly_costs = _weeklyCareerCosts();
   saveCareerV2();
   renderCareerV2();
 }
