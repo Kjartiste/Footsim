@@ -400,15 +400,20 @@ function _generateBoardObjectives(club){
 // SYSTÈME ÉCONOMIQUE AMATEUR — Licences, joueurs libres, jeunes
 // ═══════════════════════════════════════════════════════════
 
-// Coûts réalistes par niveau
+// Coûts réalistes par niveau — TOUT coûte plus cher qu'avant
 const LEVEL_COSTS = {
-  dh:  { license:15, weeklyBase:50,  matchCost:20,  youth:5 },
-  r3:  { license:20, weeklyBase:100, matchCost:40,  youth:8 },
-  r2:  { license:30, weeklyBase:200, matchCost:80,  youth:15 },
-  r1:  { license:50, weeklyBase:500, matchCost:150, youth:30 },
-  d3:  { license:0,  weeklyBase:2000,matchCost:500, youth:100},
-  d2:  { license:0,  weeklyBase:5000,matchCost:1000,youth:200},
-  d1:  { license:0,  weeklyBase:15000,matchCost:3000,youth:500},
+  //          license  weeklyBase  matchCost  youth  compFee  stadiumRent
+  'dh_4': { license:8,   weeklyBase:30,   matchCost:10,  youth:3,  compFee:20,  stadiumRent:15  },
+  'dh_3': { license:10,  weeklyBase:40,   matchCost:15,  youth:4,  compFee:25,  stadiumRent:20  },
+  'dh_2': { license:12,  weeklyBase:55,   matchCost:20,  youth:5,  compFee:30,  stadiumRent:25  },
+  'dh_1': { license:15,  weeklyBase:70,   matchCost:25,  youth:6,  compFee:40,  stadiumRent:30  },
+  dh:     { license:12,  weeklyBase:55,   matchCost:20,  youth:5,  compFee:30,  stadiumRent:25  },
+  r3:     { license:20,  weeklyBase:150,  matchCost:50,  youth:10, compFee:80,  stadiumRent:60  },
+  r2:     { license:30,  weeklyBase:300,  matchCost:100, youth:20, compFee:150, stadiumRent:120 },
+  r1:     { license:50,  weeklyBase:700,  matchCost:200, youth:40, compFee:300, stadiumRent:250 },
+  d3:     { license:0,   weeklyBase:3000, matchCost:600, youth:150,compFee:800, stadiumRent:0   },
+  d2:     { license:0,   weeklyBase:8000, matchCost:1500,youth:300,compFee:2000,stadiumRent:0   },
+  d1:     { license:0,   weeklyBase:25000,matchCost:5000,youth:800,compFee:8000,stadiumRent:0   },
 };
 
 function _weeklyCareerRevenue(){
@@ -424,18 +429,23 @@ function _weeklyCareerRevenue(){
   if(!isPro){
     // Revenus licences : chaque joueur cotise
     const nbPlayers = (C.players||[]).length + (C.bench||[]).length;
-    const licenseRev = nbPlayers * costs.license;
-    revenue += licenseRev;
+    revenue += nbPlayers * costs.license;
 
-    // Subvention municipale (selon fanbase/réputation)
-    const municipal = Math.round(costs.weeklyBase * (0.5 + club.reputation/200));
+    // Subvention municipale selon réputation
+    const municipal = Math.round(costs.weeklyBase * 0.3 * (0.8 + club.reputation/500));
     revenue += municipal;
+
+    // Petite buvette/événements (aléatoire)
+    if(Math.random() < 0.3){
+      revenue += Math.round(costs.weeklyBase * 0.1 * Math.random());
+    }
   } else {
-    // Pro : billetterie + sponsors
-    const attendance = Math.round(club.stadium_capacity * (0.3 + club.reputation/150));
-    const ticketRev = Math.round(attendance * (level==='d1'?8:level==='d2'?5:3));
-    revenue += ticketRev;
-    revenue += costs.weeklyBase;
+    // Pro : billetterie
+    const attendance = Math.round(club.stadium_capacity * Math.min(1, 0.25 + club.reputation/120));
+    const ticketPrice = level==='d1' ? 10 : level==='d2' ? 6 : 4;
+    revenue += Math.round(attendance * ticketPrice / 4); // par semaine
+    // Sponsors
+    revenue += Math.round(costs.weeklyBase * 0.4);
   }
 
   return revenue;
@@ -448,19 +458,34 @@ function _weeklyCareerCosts(){
   const costs = LEVEL_COSTS[level] || LEVEL_COSTS['dh'];
   const isPro = ['d1','d2','d3'].includes(level);
 
-  let total = costs.weeklyBase * 0.3; // frais fixes (terrain, admin)
+  let total = 0;
+
+  // Frais fixes hebdomadaires (déplacements, admin, électricité...)
+  total += costs.weeklyBase * 0.4;
+
+  // Loyer stade (amateurs louent leur terrain à la mairie)
+  total += costs.stadiumRent || 0;
+
+  // Frais de compétition : divisés sur 8 semaines (saison ~8 semaines)
+  total += Math.round((costs.compFee || 0) / 8);
 
   if(isPro){
     // Salaires des joueurs
     const nbP = (C.players||[]).length + (C.bench||[]).length;
-    total += nbP * Math.round(costs.weeklyBase * 0.08);
+    total += nbP * Math.round(costs.weeklyBase * 0.06);
   }
 
-  // Coûts infrastructure
+  // Coûts infrastructure (chaque niveau coûte plus)
   const infra = C.club.infra || {};
   Object.values(infra).forEach(function(lvl){
-    total += lvl * costs.weeklyBase * 0.05;
+    total += lvl * Math.round(costs.weeklyBase * 0.08);
   });
+
+  // Frais de match si match joué cette semaine
+  const nextFix = (C.fixtures||[]).find(function(f){
+    return !f.played && f.week === C.week;
+  });
+  if(nextFix) total += costs.matchCost || 0;
 
   return Math.round(total);
 }
@@ -544,30 +569,37 @@ function _applyWeeklyEconomy(){
   const C = careerV2;
   const level = C.club.level;
   const costs = LEVEL_COSTS[level] || LEVEL_COSTS['dh'];
+  const isPro = ['d1','d2','d3'].includes(level);
 
   const rev  = _weeklyCareerRevenue();
   const cost = _weeklyCareerCosts();
-  const net  = rev - cost;
+  C.club.budget += rev - cost;
 
-  C.club.budget += net;
-
-  const isPro = ['d1','d2','d3'].includes(level);
   if(!isPro){
-    const nbP = (C.players||[]).length + (C.bench||[]).length;
-    _addFinanceLog('Licences ('+nbP+' joueurs × '+costs.license+'🪙)', nbP * costs.license);
-    _addFinanceLog('Subvention municipale', rev - nbP*costs.license);
+    const nb = (C.players||[]).length + (C.bench||[]).length;
+    const licRev = nb * costs.license;
+    if(licRev > 0) _addFinanceLog('Licences ('+nb+'x'+costs.license+')', licRev);
+    const munRev = rev - licRev;
+    if(munRev > 0) _addFinanceLog('Subvention municipale', Math.round(munRev));
   } else {
-    _addFinanceLog('Revenus hebdomadaires', rev);
+    _addFinanceLog('Revenus (billetterie + sponsors)', rev);
   }
-  if(cost > 0) _addFinanceLog('Frais hebdomadaires', -cost);
 
-  // Alertes budget
+  const fixedCost = Math.round(costs.weeklyBase * 0.4);
+  const rentCost  = costs.stadiumRent || 0;
+  const compCost  = Math.round((costs.compFee||0) / 8);
+  if(fixedCost > 0) _addFinanceLog('Frais fixes', -fixedCost);
+  if(rentCost  > 0) _addFinanceLog('Loyer terrain', -rentCost);
+  if(compCost  > 0) _addFinanceLog('Frais competition', -compCost);
+
+  const net = rev - cost;
   if(C.club.budget < 0){
-    logEvent('🚨 Budget négatif ! Le club est en difficulté financière.','#e02030');
-  } else if(C.club.budget < rev * 4){
-    logEvent('⚠️ Trésorerie faible — moins d\'un mois de réserve.','#f0c028');
+    logEvent('🚨 Budget negatif ! ('+_fmtMoney(C.club.budget)+')','#e02030');
+  } else if(net < 0 && C.club.budget < Math.abs(net) * 8){
+    logEvent('⚠️ Tresorerie faible.','#f0c028');
   }
 }
+
 
 function _generateSeasonFixtures(){
   if(!careerV2) return;

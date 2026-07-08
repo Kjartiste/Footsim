@@ -24,6 +24,9 @@ html,body{height:100%;background:var(--dark);color:var(--text);font-family:'Barl
 
 /* ── LAYOUT ── */
 #app{display:flex;height:100vh;height:100dvh;width:100vw;user-select:none;-webkit-user-select:none;touch-action:manipulation;overflow:hidden}
+#app.career-mode #sidebar{width:100%;max-width:100%;flex:1}
+#app.career-mode #main{display:none}
+#app.career-mode{flex-direction:row}
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--panel);border-right:1px solid var(--b2);display:flex;flex-direction:column;overflow:hidden}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
@@ -473,26 +476,24 @@ input[type=range]:focus{outline:none}
   </div>
 </div>
 
-<script src="panthalassa.js"></script>
-<script src="worlds_index.js"></script>
-<script src="data.js"></script>
-<script src="engine.js"></script>
-<script src="ia.js"></script>
-<script src="visual.js"></script>
-<script src="ui.js"></script>
-<script src="save.js"></script>
+<script src="js/worlds/panthalassa.js"></script>
+<script src="js/worlds/index.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ia.js"></script>
+<script src="js/visual.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/save.js"></script>
 <script>
-// Démarrage direct — tous les scripts précédents sont déjà exécutés
-try {
+// Démarrage — afficher l'écran de profil si pas de profil actif
+(function(){
   loadProfiles();
   if(!activeProfileId || !profiles[activeProfileId]){
     renderProfileScreen();
   } else {
     nav('setup');
   }
-} catch(e){
-  console.error('Erreur démarrage:', e);
-}
+})();
 </script>
 </body>
 </html>

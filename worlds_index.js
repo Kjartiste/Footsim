@@ -39,16 +39,21 @@ const WORLDS = {
   },
 
   // ── Générer un joueur selon sa nation et sa région ──────────────────
-  // ── Modificateurs de stats selon le niveau de la pyramide ──────────
-  // Un joueur de District n'a PAS les mêmes stats qu'un joueur de D1
+  // ── Fourchettes de stats selon le niveau ─────────────────────────────
+  // DH = District — les groupes les plus bas ont des stats proches de 0
+  // On utilise le groupe (0=plus bas, 3=meilleur DH) pour varier
   LEVEL_STAT_RANGES: {
-    dh:  {min:8,  max:28},   // District — amateurs totaux
-    r3:  {min:18, max:38},   // Régional 3 — semi-amateurs
-    r2:  {min:28, max:48},   // Régional 2
-    r1:  {min:38, max:58},   // Régional 1
-    d3:  {min:50, max:68},   // Division 3 — national amateur
-    d2:  {min:60, max:78},   // Division 2 — pro bas niveau
-    d1:  {min:72, max:92},   // Division 1 — élite
+    'dh_4': {min:2,  max:12},   // District groupe 4 (le plus bas, fondation)
+    'dh_3': {min:5,  max:15},   // District groupe 3
+    'dh_2': {min:8,  max:18},   // District groupe 2
+    'dh_1': {min:10, max:22},   // District groupe 1 (meilleur niveau district)
+    dh:     {min:8,  max:20},   // District générique
+    r3:     {min:15, max:32},   // Régional 3
+    r2:     {min:25, max:42},   // Régional 2
+    r1:     {min:35, max:55},   // Régional 1
+    d3:     {min:48, max:65},   // Division 3
+    d2:     {min:58, max:75},   // Division 2
+    d1:     {min:70, max:90},   // Division 1 — élite
   },
 
   generatePlayer(nationId, regionId, pos, name, level){

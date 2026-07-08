@@ -398,6 +398,15 @@ function resumeSecondHalf(){
   }
 }
 function nav(p){
+  // Plein écran carrière : cacher le canvas, sidebar = 100%
+  const app = document.getElementById('app');
+  if(app){
+    if(p === 'career'){
+      app.classList.add('career-mode');
+    } else {
+      app.classList.remove('career-mode');
+    }
+  }
   // Si aucun profil actif → afficher l'écran de sélection de profil
   if(!activeProfileId && p !== 'profiles'){
     renderProfileScreen();
