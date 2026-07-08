@@ -2091,7 +2091,8 @@ function createLeague(teamCount,savedIdxs){
     allT.push({id:allT.length,name:AI_TEAM_DEFS[ai].name,color:AI_TEAM_DEFS[ai].color,isUser:false,aIdx:ai});ai++;
   }
   leagueState={teams:allT,playerStats:{},standings:allT.map(t=>({id:t.id,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0})),
-    fixtures:genFixtures(allT),currentFix:null};
+    fixtures:genFixtures(allT),currentFix:null,
+    gameMode: gameMode}; // sauvegarder le mode
   leagueSetupMode=false;saveLeague();renderLeague();
 }
 
@@ -2114,6 +2115,10 @@ function playLeagueMatch(){
   teams[0]=deepCloneTeam(hD);
   teams[1]=deepCloneTeam(aD);
   _lastNav='league';resetMatch();G.leagueMode=true;
+  // Restaurer le mode de jeu de la ligue
+  if(leagueState.gameMode && leagueState.gameMode !== gameMode){
+    setGameMode(leagueState.gameMode);
+  }
   nav('match');syncHUD();renderTB(0);renderTB(1);
   const hN=leagueState.teams.find(t=>t.id===fix.home)?.name||hD.name;
   const aN=leagueState.teams.find(t=>t.id===fix.away)?.name||aD.name;
@@ -2343,13 +2348,19 @@ function renderLeague(){
         '</label>').join('');
     }
     el.innerHTML='<div style="padding:2px">'+
+      // ── Sélecteur de mode ──────────────────────────────────
+      '<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
+      '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
+      '</div>'+
+      // ─────────────────────────────────────────────────────
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-      '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold)">🏆 NOUVELLE SAISON</div>'+
+      '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold)">🏆 NOUVELLE SAISON '+(gameMode==='11v11'?'<span style="color:#18c860;font-size:11px">11v11</span>':'<span style="color:var(--gold);font-size:11px">7v7</span>')+'</div>'+
       '<div style="display:flex;gap:3px">'+
       '<button class="btn" style="padding:2px 7px;font-size:9px" onclick="exportData()" title="Exporter JSON">⬇ JSON</button>'+
       '<label class="btn" style="padding:2px 7px;font-size:9px;cursor:pointer" title="Importer JSON">⬆ Import<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label>'+
       '</div></div>'+
-      '<div style="font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">Championnat aller-simple · max 12 équipes.<br>Sauvegarde tes équipes (onglet Équipes) pour les ajouter.</div>'+
+      '<div style="font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">Championnat aller-simple · max '+(gameMode==='11v11'?'12':'12')+' équipes.<br>Sauvegarde tes équipes (onglet Équipes) pour les ajouter.</div>'+
       '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Nombre d\'équipes</div>'+
       '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px" id="tc-btns">'+
       [4,6,8,10,12].map(n=>'<button class="btn'+(n===6?' btng':'')+'" id="tc'+n+'" style="flex:1;justify-content:center;min-width:32px;padding:5px 0;font-size:11px" onclick="selectTC('+n+')">'+n+'</button>').join('')+
@@ -2360,7 +2371,7 @@ function renderLeague(){
         '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;color:'+teams[i].color+'">'+teams[i].name+'</span>'+
         '<span style="font-size:9px;color:var(--gold);margin-left:auto">⭐ Toi</span></div>').join('')+
       roHTML+
-      '<button class="btn btng" style="width:100%;justify-content:center;margin-top:10px" onclick="confirmCreateLeague()">▶ Créer la ligue</button>'+
+      '<button class="btn btng" style="width:100%;justify-content:center;margin-top:10px" onclick="confirmCreateLeague()">▶ Créer la ligue '+(gameMode==='11v11'?'11v11':'7v7')+'</button>'+
       (leagueState?'<button class="btn" style="width:100%;justify-content:center;margin-top:4px;color:var(--muted);font-size:10px" onclick="leagueSetupMode=false;renderLeague()">← Retour</button>':'')+
       '</div>';
     window._selectedTC=window._selectedTC||6;return;

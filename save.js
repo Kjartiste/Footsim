@@ -953,7 +953,11 @@ function renderCupSetup(el){
   }).join('');
 
   el.innerHTML=`<div style="padding:4px" id="cup-setup-main">
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;letter-spacing:2px;color:var(--gold);margin-bottom:10px">NOUVELLE COUPE</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button onclick="setGameMode('7v7');renderCup()" style="flex:1;padding:7px;border-radius:8px;border:2px solid ${gameMode==='7v7'?'var(--gold)':'var(--b1)'};background:${gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)'};color:${gameMode==='7v7'?'var(--gold)':'var(--muted)'};font-size:12px;font-weight:900;cursor:pointer">⚽ 7v7</button>
+      <button onclick="setGameMode('11v11');renderCup()" style="flex:1;padding:7px;border-radius:8px;border:2px solid ${gameMode==='11v11'?'#18c860':'var(--b1)'};background:${gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)'};color:${gameMode==='11v11'?'#18c860':'var(--muted)'};font-size:12px;font-weight:900;cursor:pointer">⚽ 11v11</button>
+    </div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;letter-spacing:2px;color:var(--gold);margin-bottom:10px">NOUVELLE COUPE ${gameMode==='11v11'?'<span style="color:#18c860;font-size:11px">11v11</span>':'<span style="font-size:11px">7v7</span>'}</div>
     <div class="slbl" style="margin-bottom:5px">Format des règles</div>
     <select class="inp" id="cup-fmt-sel" style="width:100%;margin-bottom:4px" onchange="_cupFmt=this.value;var _fd=document.getElementById('cup-fmt-desc');if(_fd)_fd.textContent=CUP_FORMATS.find(f=>f.id===this.value)?.desc||'';var _hg=['groups_ko','round_robin'].includes(CUP_FORMATS.find(f=>f.id===this.value)?.type);var _gc=document.getElementById('cup-groups-cfg');if(_gc)_gc.style.display=_hg?'block':'none';" >
       ${CUP_FORMATS.map(f=>`<option value="${f.id}"${f.id===_cupFmt?' selected':''}>${f.name}</option>`).join('')}
