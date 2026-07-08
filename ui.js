@@ -398,12 +398,16 @@ function resumeSecondHalf(){
   }
 }
 function nav(p){
+  // Si aucun profil actif → afficher l'écran de sélection de profil
+  if(!activeProfileId && p !== 'profiles'){
+    renderProfileScreen();
+    return;
+  }
   // Close prematch modal if navigating away
   document.getElementById('prematch-modal')?.classList.remove('on');
   if(_leagueUserTeamBackup&&(p==='setup'||p==='tactic')){
     teams[0]=_leagueUserTeamBackup[0];
     teams[1]=_leagueUserTeamBackup[1];
-    // Keep _leagueUserTeamBackup set so match can be properly ended
     renderTB(0);renderTB(1);syncHUD();
   }
   document.querySelectorAll('.ntab').forEach((el,i)=>el.classList.toggle('on',['setup','tactic','match','stats','league','cup','career'][i]===p));
@@ -413,7 +417,256 @@ function nav(p){
   if(p==='tactic'){renderTactics();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);}
   if(p==='league')renderLeague();
   if(p==='cup')renderCup();
-  if(p==='career')renderCareer();
+  if(p==='career'){ if(careerV2) renderCareerV2(); else renderCareer(); }
+}
+
+// ══════════════════════════════════════════════════════════
+// ÉCRAN DE PROFILS
+// ══════════════════════════════════════════════════════════
+
+function renderProfileScreen(){
+  // Overlay plein écran par-dessus tout
+  let ov = document.getElementById('profile-screen');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'profile-screen';
+    ov.style.cssText = 'position:fixed;inset:0;background:var(--bg,#050e1a);z-index:9999;overflow-y:auto;display:flex;align-items:center;justify-content:center;';
+    document.body.appendChild(ov);
+  }
+
+  const profileList = Object.values(profiles);
+  const hasProfiles = profileList.length > 0;
+
+  ov.innerHTML = `
+  <div style="width:100%;max-width:500px;padding:20px">
+
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:32px;margin-bottom:6px">⚽</div>
+      <div style="font-size:24px;font-weight:900;color:var(--gold,#f0c028);letter-spacing:3px">FOOTSIM 7V7</div>
+      <div style="font-size:10px;color:var(--muted,#8899aa);margin-top:4px">Choisissez votre profil</div>
+    </div>
+
+    <!-- Profils existants -->
+    ${hasProfiles ? `
+    <div style="margin-bottom:16px">
+      ${profileList.sort((a,b)=>b.lastPlayed>a.lastPlayed?1:-1).map(p=>`
+        <div style="background:var(--panel,#0d1f35);border:2px solid var(--b1,#1a3050);border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:12px"
+             onclick="selectProfileAndEnter('${p.id}')"
+             onmouseover="this.style.borderColor='var(--gold,#f0c028)';this.style.background='rgba(240,192,40,.08)'"
+             onmouseout="this.style.borderColor='var(--b1,#1a3050)';this.style.background='var(--panel,#0d1f35)'">
+          <div style="font-size:28px;width:44px;height:44px;background:var(--dark,#060f1c);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${p.avatar||'⚽'}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:900;color:var(--fg,#e8f0f8)">${p.name}</div>
+            <div style="font-size:9px;color:var(--muted,#8899aa);margin-top:2px">
+              ${_profileSummary(p)}
+            </div>
+            <div style="font-size:9px;color:var(--muted,#8899aa)">
+              Dernière session : ${_timeAgo(p.lastPlayed)}
+            </div>
+          </div>
+          <div style="font-size:18px;color:var(--gold,#f0c028)">▶</div>
+        </div>
+      `).join('')}
+    </div>
+    ` : `
+    <div style="text-align:center;padding:24px;color:var(--muted,#8899aa);font-size:11px;margin-bottom:16px">
+      Aucun profil existant.<br>Créez votre premier profil pour commencer !
+    </div>
+    `}
+
+    <!-- Créer un nouveau profil -->
+    <div style="background:var(--panel,#0d1f35);border:2px dashed var(--b1,#1a3050);border-radius:12px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--gold,#f0c028);margin-bottom:10px">➕ Nouveau profil</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        ${['⚽','🏆','🌊','⚡','🐉','🧜','🌟','🔥'].map(em=>`
+          <div onclick="selectProfileAvatar('${em}')" id="av-${em}"
+               style="width:32px;height:32px;border-radius:50%;background:var(--dark,#060f1c);border:2px solid var(--b1,#1a3050);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .15s"
+               onmouseover="this.style.borderColor='var(--gold,#f0c028)'"
+               onmouseout="if(window._selAvatar!=='${em}')this.style.borderColor='var(--b1,#1a3050)'">
+            ${em}
+          </div>
+        `).join('')}
+      </div>
+      <input id="profile-name-input" type="text" placeholder="Nom du profil…"
+             style="width:100%;background:var(--dark,#060f1c);border:1px solid var(--b1,#1a3050);border-radius:6px;color:var(--fg,#e8f0f8);padding:6px 10px;font-size:11px;box-sizing:border-box;margin-bottom:8px"
+             maxlength="24" onkeydown="if(event.key==='Enter')confirmCreateProfile()">
+      <button onclick="confirmCreateProfile()"
+              style="width:100%;background:var(--gold,#f0c028);color:#050e1a;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:900;cursor:pointer">
+        Créer et jouer
+      </button>
+    </div>
+
+    <!-- Gestion profils -->
+    ${hasProfiles ? `
+    <div style="text-align:center;margin-top:12px">
+      <button onclick="renderProfileManage()"
+              style="background:none;border:1px solid var(--b1,#1a3050);border-radius:6px;color:var(--muted,#8899aa);font-size:9px;padding:4px 12px;cursor:pointer">
+        ⚙️ Gérer les profils
+      </button>
+    </div>
+    ` : ''}
+  </div>`;
+
+  // Sélectionner ⚽ par défaut
+  window._selAvatar = '⚽';
+  setTimeout(()=>{
+    const el = document.getElementById('av-⚽');
+    if(el){ el.style.borderColor='var(--gold,#f0c028)'; el.style.background='rgba(240,192,40,.15)'; }
+  }, 50);
+}
+
+function selectProfileAvatar(em){
+  window._selAvatar = em;
+  document.querySelectorAll('[id^="av-"]').forEach(el=>{
+    el.style.borderColor='var(--b1,#1a3050)';
+    el.style.background='var(--dark,#060f1c)';
+  });
+  const sel = document.getElementById('av-'+em);
+  if(sel){ sel.style.borderColor='var(--gold,#f0c028)'; sel.style.background='rgba(240,192,40,.15)'; }
+}
+
+function confirmCreateProfile(){
+  const name = document.getElementById('profile-name-input')?.value?.trim();
+  if(!name){ logEvent('❌ Entrez un nom de profil','#e02030'); return; }
+  const id = createProfile(name, window._selAvatar||'⚽');
+  selectProfileAndEnter(id);
+}
+
+function selectProfileAndEnter(pid){
+  selectProfile(pid);
+  const ov = document.getElementById('profile-screen');
+  if(ov) ov.remove();
+  nav('setup');
+}
+
+// ── Écran de gestion des profils ─────────────────────────────────────
+function renderProfileManage(){
+  const ov = document.getElementById('profile-screen');
+  if(!ov) return;
+
+  const profileList = Object.values(profiles);
+
+  ov.innerHTML = `
+  <div style="width:100%;max-width:500px;padding:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <button onclick="renderProfileScreen()"
+              style="background:none;border:1px solid var(--b1,#1a3050);border-radius:6px;color:var(--muted);font-size:10px;padding:3px 10px;cursor:pointer">
+        ← Retour
+      </button>
+      <div style="font-size:14px;font-weight:900;color:var(--gold,#f0c028)">⚙️ Gérer les profils</div>
+    </div>
+
+    ${profileList.map(p=>`
+    <div style="background:var(--panel,#0d1f35);border:1px solid var(--b1,#1a3050);border-radius:10px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:22px">${p.avatar||'⚽'}</div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:900">${p.name}</div>
+          <div style="font-size:9px;color:var(--muted)">${_profileSummary(p)}</div>
+          <div style="font-size:9px;color:var(--muted)">Taille : ${_fmtSize(_profileSize(p.id))}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button onclick="selectProfileAndEnter('${p.id}')"
+                  style="background:#18c860;border:none;border-radius:4px;color:#050e1a;font-size:9px;padding:3px 8px;cursor:pointer;font-weight:700">
+            ▶ Jouer
+          </button>
+          <button onclick="confirmDeleteProfile('${p.id}','${p.name.replace(/'/g,"\\'")}')"
+                  style="background:none;border:1px solid #e06060;border-radius:4px;color:#e06060;font-size:9px;padding:3px 8px;cursor:pointer">
+            🗑️ Supprimer
+          </button>
+        </div>
+      </div>
+
+      <!-- Compétitions du profil -->
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1,#1a3050)">
+        ${_renderProfileCompetitions(p)}
+      </div>
+    </div>
+    `).join('')}
+  </div>`;
+}
+
+function _renderProfileCompetitions(p){
+  const cups    = Object.values(p.cups||{});
+  const leagues = Object.values(p.leagues||{});
+  const careers = Object.values(p.careers||{});
+  const total   = cups.length + leagues.length + careers.length;
+
+  if(total === 0) return '<div style="font-size:9px;color:var(--muted)">Aucune compétition sauvegardée</div>';
+
+  const row = (icon, name, savedAt, type, id) => `
+    <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:9px">
+      <span>${icon}</span>
+      <span style="flex:1;color:var(--fg)">${name}</span>
+      <span style="color:var(--muted)">${_timeAgo(savedAt)}</span>
+      <button onclick="loadCompetitionFromProfile('${type}','${id}','${p.id}')"
+              style="background:none;border:1px solid var(--gold);border-radius:3px;color:var(--gold);font-size:8px;padding:1px 5px;cursor:pointer">
+        Charger
+      </button>
+      <button onclick="deleteCompetitionFromProfile('${type}','${id}','${p.id}')"
+              style="background:none;border:1px solid #e06060;border-radius:3px;color:#e06060;font-size:8px;padding:1px 5px;cursor:pointer">
+        ✕
+      </button>
+    </div>`;
+
+  return [
+    ...cups.map(c    => row('🏆', c.name, c.savedAt, 'cup',    c.id)),
+    ...leagues.map(l => row('🥇', l.name, l.savedAt, 'league', l.id)),
+    ...careers.map(c => row('🎯', c.name, c.savedAt, 'career', c.id)),
+  ].join('');
+}
+
+function loadCompetitionFromProfile(type, id, pid){
+  const p = profiles[pid]; if(!p) return;
+  const entry = p[type+'s']?.[id]; if(!entry) return;
+
+  if(type==='cup'){    cupState    = entry.state; saveCup();    }
+  if(type==='league'){ leagueState = entry.state; saveLeague(); }
+  if(type==='career'){ careerV2    = entry.state; saveCareerV2(); }
+
+  selectProfileAndEnter(pid);
+  logEvent(`✅ ${entry.name} chargée !`,'#18c860');
+}
+
+function deleteCompetitionFromProfile(type, id, pid){
+  if(!confirm('Supprimer cette sauvegarde ?')) return;
+  deleteCompetition(type, id);
+  renderProfileManage();
+}
+
+function confirmDeleteProfile(pid, name){
+  if(!confirm(`Supprimer le profil "${name}" et toutes ses sauvegardes ? Cette action est irréversible.`)) return;
+  deleteProfile(pid);
+  if(Object.keys(profiles).length === 0) renderProfileScreen();
+  else renderProfileManage();
+}
+
+// ── Helpers d'affichage ───────────────────────────────────────────────
+function _profileSummary(p){
+  const nc = Object.keys(p.cups||{}).length;
+  const nl = Object.keys(p.leagues||{}).length;
+  const nca = Object.keys(p.careers||{}).length;
+  const parts = [];
+  if(nc)  parts.push(`${nc} coupe${nc>1?'s':''}`);
+  if(nl)  parts.push(`${nl} ligue${nl>1?'s':''}`);
+  if(nca) parts.push(`${nca} carrière${nca>1?'s':''}`);
+  return parts.length ? parts.join(' · ') : 'Aucune compétition';
+}
+
+function _timeAgo(iso){
+  if(!iso) return '–';
+  const diff = Date.now() - new Date(iso).getTime();
+  const min  = Math.floor(diff/60000);
+  const h    = Math.floor(diff/3600000);
+  const d    = Math.floor(diff/86400000);
+  if(min < 1)  return 'à l\'instant';
+  if(min < 60) return `il y a ${min} min`;
+  if(h < 24)   return `il y a ${h}h`;
+  if(d < 7)    return `il y a ${d}j`;
+  return new Date(iso).toLocaleDateString('fr-FR');
 }
 // ── Pre-match screen (FIFA-style) ────────────────────────
 function teamOvr(T){
@@ -1722,7 +1975,15 @@ function ensureAIData(){
       players:mkAIPlayers(i),bench:mkAIBench(i),reserves:mkAIReserves(i)
     }));
 }
-function saveLeague(){_safeLSSet('footsim7v7_league',leagueState);}
+function saveLeague(){
+  _safeLSSet('footsim7v7_league',leagueState);
+  // Sauvegarder aussi dans le profil actif si possible
+  if(activeProfile() && leagueState){
+    const id = activeProfile()?._lastActiveLeague || null;
+    saveCompetition('league', id, leagueState,
+      leagueState.name || `Ligue S${leagueState.season||1}`);
+  }
+}
 function loadLeague(){try{const d=localStorage.getItem('footsim7v7_league');if(d)leagueState=JSON.parse(d);}catch(e){}}
 function clearLeague(){leagueState=null;leagueSetupMode=false;localStorage.removeItem('footsim7v7_league');renderLeague();}
 function openLeagueSetup(){leagueSetupMode=true;renderLeague();}
@@ -2355,7 +2616,14 @@ let _cupFmt='elim',_cupCount=8;
 // Group phase options (used for formats with groups)
 let _cupGC=2,_cupPG=4,_cupGroupLegs=1,_cupAdvance=2; // nb poules, équipes/poule, matchs A/R en poule, qualifiés/poule
 
-function saveCup(){_safeLSSet('footsim7v7_cup',cupState);}
+function saveCup(){
+  _safeLSSet('footsim7v7_cup',cupState);
+  if(activeProfile() && cupState){
+    const id = activeProfile()?._lastActiveCup || null;
+    saveCompetition('cup', id, cupState,
+      cupState.name || `Coupe ${cupState.formatId||''}`);
+  }
+}
 function loadCup(){
   try{
     const d=localStorage.getItem('footsim7v7_cup');
@@ -4395,6 +4663,779 @@ function buildCupTeams(count,savedIdxs,npcSel){
     }
   }
   return allT;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CARRIÈRE V2 — Interface
+// ═══════════════════════════════════════════════════════════
+
+function renderCareerV2(){
+  const el = document.getElementById('career-out'); if(!el) return;
+  if(!careerV2){ renderCareerV2Choice(); return; }
+
+  if(careerV2.type === 'director') renderCareerDirector(el);
+  else renderCareerManager(el);
+}
+
+// ── Écran de choix : Manager ou Dirigeant ────────────────────────────
+function renderCareerV2Choice(){
+  const el = document.getElementById('career-out'); if(!el) return;
+
+  // Si une ancienne carrière existe, proposer de continuer
+  const hasOldCareer = !!careerState;
+
+  el.innerHTML = `
+  <div style="padding:12px;max-width:600px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:22px;font-weight:900;color:var(--gold);letter-spacing:2px">⚽ CARRIÈRE</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Choisissez votre rôle dans le monde de Panthalassa</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+
+      <!-- Carrière Manager -->
+      <div onclick="renderCareerManagerSetup()" style="background:var(--panel);border:2px solid #8840e0;border-radius:12px;padding:16px;cursor:pointer;transition:all .2s"
+           onmouseover="this.style.borderColor='#b070ff';this.style.background='rgba(136,64,224,.15)'"
+           onmouseout="this.style.borderColor='#8840e0';this.style.background='var(--panel)'">
+        <div style="font-size:28px;text-align:center;margin-bottom:8px">🧑‍💼</div>
+        <div style="font-size:14px;font-weight:900;color:#b070ff;text-align:center;margin-bottom:6px">MANAGER</div>
+        <div style="font-size:10px;color:var(--muted);line-height:1.5">
+          Tu es l'entraîneur. Tu diriges les matchs, gères la tactique, peux être embauché ou viré. 
+          Ta réputation grandit avec tes résultats.
+        </div>
+        <div style="margin-top:10px;font-size:9px;color:#8840e0">
+          ⚡ Tactique · Formation · Matchs en direct · Réputation coach
+        </div>
+      </div>
+
+      <!-- Carrière Dirigeant -->
+      <div onclick="renderCareerDirectorSetup()" style="background:var(--panel);border:2px solid var(--gold);border-radius:12px;padding:16px;cursor:pointer;transition:all .2s"
+           onmouseover="this.style.borderColor='#ffe080';this.style.background='rgba(240,192,40,.1)'"
+           onmouseout="this.style.borderColor='var(--gold)';this.style.background='var(--panel)'">
+        <div style="font-size:28px;text-align:center;margin-bottom:8px">🏛️</div>
+        <div style="font-size:14px;font-weight:900;color:var(--gold);text-align:center;margin-bottom:6px">DIRIGEANT</div>
+        <div style="font-size:10px;color:var(--muted);line-height:1.5">
+          Tu es président / directeur sportif. Tu gères le budget, le mercato, l'infrastructure. 
+          Tu nommes un manager et construis un empire.
+        </div>
+        <div style="margin-top:10px;font-size:9px;color:var(--gold)">
+          💰 Mercato · Finances · Infrastructure · Réputation club
+        </div>
+      </div>
+    </div>
+
+    ${hasOldCareer ? `
+    <div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:12px">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px">📂 Ancienne carrière détectée</div>
+      <button class="btn btng" onclick="renderCareer()" style="font-size:10px;width:100%">
+        Continuer l'ancienne carrière (mode classique)
+      </button>
+    </div>
+    ` : ''}
+  </div>`;
+}
+
+// ── Setup Carrière Dirigeant : choix de la région et du club ─────────
+function renderCareerDirectorSetup(){
+  const el = document.getElementById('career-out'); if(!el) return;
+
+  const regionCards = PANTHALASSA_REGIONS.map(r => {
+    const wealthStars = '💰'.repeat(r.wealth);
+    const talentStars = '⭐'.repeat(r.talent);
+    const popStars = '👥'.repeat(Math.min(r.population, 3));
+    const diffColor = r.wealth >= 4 ? '#f0c028' : r.wealth >= 3 ? '#18c860' : '#e06060';
+
+    return `
+    <div onclick="selectDirectorRegion('${r.id}')" id="dreg-${r.id}"
+         style="background:var(--panel);border:2px solid var(--b1);border-radius:10px;padding:12px;cursor:pointer;transition:all .2s"
+         onmouseover="this.style.borderColor='${r.color}';this.style.background='${r.color}22'"
+         onmouseout="if(window._selectedDirectorRegion!=='${r.id}'){this.style.borderColor='var(--b1)';this.style.background='var(--panel)'}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="width:12px;height:12px;border-radius:50%;background:${r.color};flex-shrink:0"></div>
+        <div style="font-size:12px;font-weight:900;color:var(--fg)">${r.name}</div>
+        <div style="font-size:9px;color:var(--muted);margin-left:auto">${r.type}</div>
+      </div>
+      <div style="font-size:9px;color:var(--muted);line-height:1.4;margin-bottom:6px">${r.desc}</div>
+      <div style="display:flex;gap:8px;font-size:9px">
+        <span title="Richesse">${wealthStars}</span>
+        <span title="Vivier">${talentStars}</span>
+        <span title="Population">${popStars}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+  <div style="padding:12px;max-width:700px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <button class="btn" onclick="renderCareerV2Choice()" style="font-size:10px;padding:2px 8px">← Retour</button>
+      <div style="font-size:16px;font-weight:900;color:var(--gold)">🏛️ Carrière Dirigeant</div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">
+      Choisissez votre région de départ dans l'empire de Panthalassa :
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${regionCards}
+    </div>
+
+    <div id="director-club-select" style="display:none">
+      <div style="font-size:11px;color:var(--gold);margin-bottom:8px;font-weight:700">Choisissez votre club :</div>
+      <div id="director-club-list" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px"></div>
+      <button class="btn btng" id="director-start-btn" onclick="confirmStartDirector()" style="width:100%;display:none">
+        ▶ Commencer la carrière
+      </button>
+    </div>
+  </div>`;
+}
+
+let _selectedDirectorRegion = null;
+let _selectedDirectorClub = null;
+
+function selectDirectorRegion(regionId){
+  _selectedDirectorRegion = regionId;
+  window._selectedDirectorRegion = regionId;
+
+  // Reset styles
+  document.querySelectorAll('[id^="dreg-"]').forEach(el=>{
+    el.style.borderColor = 'var(--b1)';
+    el.style.background = 'var(--panel)';
+  });
+  const sel = document.getElementById('dreg-'+regionId);
+  const region = PANTHALASSA_REGIONS.find(r=>r.id===regionId);
+  if(sel && region){
+    sel.style.borderColor = region.color;
+    sel.style.background = region.color+'33';
+  }
+
+  // Afficher les clubs
+  const clubDiv = document.getElementById('director-club-select');
+  const clubList = document.getElementById('director-club-list');
+  if(!clubDiv || !clubList || !region) return;
+
+  clubDiv.style.display = 'block';
+  _selectedDirectorClub = null;
+
+  clubList.innerHTML = region.clubNames.slice(0, 9).map((name, i) => `
+    <div onclick="selectDirectorClub('${name.replace(/'/g,"\\'")}')" id="dclub-${i}"
+         style="background:var(--dark);border:1px solid var(--b1);border-radius:6px;padding:6px 8px;cursor:pointer;font-size:10px;text-align:center;transition:all .15s"
+         onmouseover="this.style.borderColor='${region.color}'"
+         onmouseout="if(window._selectedDirectorClub!=='${name.replace(/'/g,"\\'")}'){ this.style.borderColor='var(--b1)' }">
+      ${name}
+    </div>
+  `).join('');
+
+  document.getElementById('director-start-btn').style.display = 'none';
+}
+
+function selectDirectorClub(name){
+  _selectedDirectorClub = name;
+  window._selectedDirectorClub = name;
+
+  document.querySelectorAll('[id^="dclub-"]').forEach(el=>{
+    el.style.borderColor = 'var(--b1)';
+    el.style.fontWeight = 'normal';
+  });
+
+  const region = PANTHALASSA_REGIONS.find(r=>r.id===_selectedDirectorRegion);
+  const idx = region?.clubNames.indexOf(name) ?? -1;
+  if(idx >= 0){
+    const el = document.getElementById('dclub-'+idx);
+    if(el && region){ el.style.borderColor = region.color; el.style.fontWeight = '900'; }
+  }
+
+  document.getElementById('director-start-btn').style.display = 'block';
+}
+
+function confirmStartDirector(){
+  if(!_selectedDirectorRegion || !_selectedDirectorClub){
+    logEvent('❌ Choisissez une région et un club','#e02030');
+    return;
+  }
+  startCareerDirector(_selectedDirectorRegion, _selectedDirectorClub);
+}
+
+// ── Setup Carrière Manager ────────────────────────────────────────────
+function renderCareerManagerSetup(){
+  const el = document.getElementById('career-out'); if(!el) return;
+
+  const regionCards = PANTHALASSA_REGIONS.map(r => `
+    <div onclick="selectManagerRegion('${r.id}')" id="mreg-${r.id}"
+         style="background:var(--panel);border:2px solid var(--b1);border-radius:8px;padding:10px;cursor:pointer;transition:all .2s"
+         onmouseover="this.style.borderColor='${r.color}'"
+         onmouseout="if(window._selectedManagerRegion!=='${r.id}'){this.style.borderColor='var(--b1)'}">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${r.color}"></div>
+        <div style="font-size:11px;font-weight:900">${r.name}</div>
+      </div>
+      <div style="font-size:9px;color:var(--muted)">${r.type}</div>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+  <div style="padding:12px;max-width:600px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <button class="btn" onclick="renderCareerV2Choice()" style="font-size:10px;padding:2px 8px">← Retour</button>
+      <div style="font-size:16px;font-weight:900;color:#b070ff">🧑‍💼 Carrière Manager</div>
+    </div>
+
+    <div style="background:var(--panel);border:1px solid #8840e044;border-radius:8px;padding:10px;margin-bottom:12px;font-size:10px;color:var(--muted);line-height:1.6">
+      En tant que manager, vous débutez sans club. Choisissez votre région d'origine — 
+      des clubs locaux de bas niveau vous proposeront des contrats. 
+      Gravissez les échelons en bâtissant votre réputation match après match.
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Votre région d'origine :</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px">
+      ${regionCards}
+    </div>
+
+    <button class="btn btng" id="manager-start-btn" onclick="confirmStartManager()" style="width:100%;display:none">
+      ▶ Commencer sans club — chercher un poste
+    </button>
+  </div>`;
+}
+
+let _selectedManagerRegion = null;
+
+function selectManagerRegion(regionId){
+  _selectedManagerRegion = regionId;
+  window._selectedManagerRegion = regionId;
+
+  document.querySelectorAll('[id^="mreg-"]').forEach(el=>{
+    el.style.borderColor='var(--b1)';
+  });
+  const region = PANTHALASSA_REGIONS.find(r=>r.id===regionId);
+  const sel = document.getElementById('mreg-'+regionId);
+  if(sel && region) sel.style.borderColor = region.color;
+
+  document.getElementById('manager-start-btn').style.display = 'block';
+}
+
+function confirmStartManager(){
+  if(!_selectedManagerRegion){ logEvent('❌ Choisissez une région','#e02030'); return; }
+  startCareerManager(_selectedManagerRegion);
+}
+
+// ── Rendu principal Dirigeant ─────────────────────────────────────────
+function renderCareerDirector(el){
+  const C = careerV2;
+  const club = C.club;
+  const region = PANTHALASSA_REGIONS.find(r=>r.id===club.region);
+
+  el.innerHTML = `
+  <div style="padding:8px;max-width:700px;margin:0 auto">
+
+    <!-- Header club -->
+    <div style="background:var(--panel);border:1px solid ${region?.color||'var(--b1)'};border-radius:10px;padding:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;border-radius:8px;background:${club.color};display:flex;align-items:center;justify-content:center;font-size:18px">🏟️</div>
+        <div>
+          <div style="font-size:16px;font-weight:900;color:var(--fg)">${club.name}</div>
+          <div style="font-size:9px;color:var(--muted)">${region?.name||''} · ${PANTHALASSA_PYRAMID.find(p=>p.id===club.level)?.name||club.level} · Saison ${C.season}</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:14px;font-weight:900;color:#18c860">🪙 ${_fmtMoney(club.budget)}</div>
+          <div style="font-size:9px;color:var(--muted)">Budget transferts : ${_fmtMoney(club.transferBudget)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Onglets -->
+    <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
+      ${['overview','squad','mercato','finances','infra','staff','calendar'].map(tab=>`
+        <button class="btn" onclick="renderCareerDirectorTab('${tab}')" id="cdtab-${tab}"
+                style="font-size:9px;padding:3px 8px;flex:1;min-width:60px">
+          ${{overview:'🏠 Vue',squad:'👥 Effectif',mercato:'🔄 Mercato',
+             finances:'💰 Finances',infra:'🏗️ Infra',staff:'👔 Staff',calendar:'📅 Calendrier'}[tab]}
+        </button>
+      `).join('')}
+    </div>
+
+    <div id="career-director-content">
+      <!-- Contenu chargé dynamiquement -->
+    </div>
+
+    <!-- Actions rapides -->
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btng" onclick="advanceCareerWeek()" style="flex:1;font-size:10px">
+        ⏩ Avancer d'une semaine
+      </button>
+      <button class="btn" onclick="abandonCareerV2()" style="font-size:9px;color:#e06060;border-color:#e06060">
+        ✕ Abandonner
+      </button>
+    </div>
+  </div>`;
+
+  // Charger l'onglet vue générale par défaut
+  renderCareerDirectorTab('overview');
+}
+
+function renderCareerDirectorTab(tab){
+  const el = document.getElementById('career-director-content'); if(!el) return;
+  const C = careerV2; const club = C.club;
+
+  // Highlight onglet actif
+  document.querySelectorAll('[id^="cdtab-"]').forEach(b=>b.classList.remove('btng'));
+  const activeBtn = document.getElementById('cdtab-'+tab);
+  if(activeBtn) activeBtn.classList.add('btng');
+
+  switch(tab){
+    case 'overview': el.innerHTML = _renderDirectorOverview(); break;
+    case 'squad':    el.innerHTML = _renderDirectorSquad(); break;
+    case 'mercato':  el.innerHTML = _renderDirectorMercato(); break;
+    case 'finances': el.innerHTML = _renderDirectorFinances(); break;
+    case 'infra':    el.innerHTML = _renderDirectorInfra(); break;
+    case 'staff':    el.innerHTML = _renderDirectorStaff(); break;
+    case 'calendar': el.innerHTML = _renderDirectorCalendar(); break;
+    default: el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px">À venir…</div>';
+  }
+}
+
+function _renderDirectorOverview(){
+  const C = careerV2; const club = C.club;
+  const region = PANTHALASSA_REGIONS.find(r=>r.id===club.region);
+  const ss = C.season_stats;
+  const played = ss.wins + ss.draws + ss.losses;
+  const obj = club.board_objectives[0];
+
+  return `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+
+    <!-- Classement / objectif -->
+    <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🎯 Objectif du conseil</div>
+      ${obj ? `
+        <div style="font-size:11px;color:var(--fg);margin-bottom:4px">${obj.desc}</div>
+        <div style="font-size:9px;color:#18c860">Récompense : 🪙 ${_fmtMoney(obj.reward)}</div>
+      ` : '<div style="color:var(--muted);font-size:9px">Aucun objectif</div>'}
+    </div>
+
+    <!-- Stats saison -->
+    <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📊 Saison en cours</div>
+      <div style="font-size:10px;color:var(--fg)">${played} matchs joués</div>
+      <div style="font-size:9px;color:var(--muted)">✅ ${ss.wins}V 🟡 ${ss.draws}N ❌ ${ss.losses}D</div>
+      <div style="font-size:9px;color:var(--muted)">⚽ ${ss.goals_for} buts marqués / ${ss.goals_against} encaissés</div>
+      <div style="font-size:11px;font-weight:900;color:#18c860;margin-top:4px">${ss.points} pts</div>
+    </div>
+
+    <!-- Finances rapides -->
+    <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">💰 Finances</div>
+      <div style="font-size:10px;color:var(--fg)">Budget total : <b>${_fmtMoney(club.budget)}</b></div>
+      <div style="font-size:9px;color:var(--muted)">Mercato : ${_fmtMoney(club.transferBudget)}</div>
+      <div style="font-size:9px;color:var(--muted)">Salaires : ${_fmtMoney(club.wage_budget)}</div>
+      <div style="font-size:9px;color:#e06060">Coûts hebdo : -${_fmtMoney(club.weekly_costs)}</div>
+    </div>
+
+    <!-- Réputation -->
+    <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">⭐ Réputation</div>
+      <div style="background:var(--panel);border-radius:4px;height:8px;margin-bottom:4px">
+        <div style="background:${region?.color||'#8840e0'};height:100%;border-radius:4px;width:${club.reputation}%"></div>
+      </div>
+      <div style="font-size:9px;color:var(--muted)">${club.reputation}/100 — ${_reputationLabel(club.reputation)}</div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px">👥 Fanbase : ${club.fanbase.toLocaleString()} supporters</div>
+    </div>
+  </div>
+
+  <!-- Events spéciaux région -->
+  ${region?.traits?.positive_events ? `
+  <div style="background:rgba(24,200,96,.1);border:1px solid #18c86044;border-radius:8px;padding:8px;margin-top:8px;font-size:9px;color:#18c860">
+    🌊 <b>Les Mers Bénies</b> — Les événements positifs sont plus fréquents ici.
+  </div>` : ''}
+  ${region?.traits?.corruption_risk ? `
+  <div style="background:rgba(224,96,48,.1);border:1px solid #e0602044;border-radius:8px;padding:8px;margin-top:8px;font-size:9px;color:#e06020">
+    ⚠️ <b>Principauté de Maï</b> — Méfiez-vous des propositions douteuses.
+  </div>` : ''}
+  `;
+}
+
+function _renderDirectorSquad(){
+  const C = careerV2;
+  const mkRow = (p, src) => {
+    const ovr = Math.round(Object.values(p.s||{}).reduce((a,b)=>a+b,0)/Object.keys(p.s||{1:1}).length);
+    const ovrCol = ovr>=70?'#18c860':ovr>=55?'#f0c028':'#e06060';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--b1)">
+      <div style="width:26px;font-size:9px;color:var(--muted);text-align:center">${p.pos}</div>
+      <div style="flex:1;font-size:10px;font-weight:700">${p.name}</div>
+      <div style="font-size:9px;color:${p.race==='human'?'#f0c028':'#00bcd4'}">${p.race==='human'?'👤 Humaine':'🧜 Sirène'}</div>
+      <div style="font-size:11px;font-weight:900;color:${ovrCol};width:28px;text-align:center">${ovr}</div>
+      ${p._isGem?'<div style="font-size:9px;color:#9c27b0">💎 Pépite</div>':''}
+    </div>`;
+  };
+
+  return `
+  <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">👥 Effectif (${C.players.length} titulaires)</div>
+    ${C.players.map(p=>mkRow(p,'player')).join('')}
+    <div style="font-size:10px;font-weight:700;color:var(--muted);margin:10px 0 6px">🪑 Banc (${C.bench.length})</div>
+    ${C.bench.map(p=>mkRow(p,'bench')).join('')}
+    <div style="font-size:10px;font-weight:700;color:var(--muted);margin:10px 0 6px">📋 Réservistes (${C.reserves.length})</div>
+    ${C.reserves.map(p=>mkRow(p,'reserve')).join('')}
+  </div>`;
+}
+
+function _renderDirectorMercato(){
+  const C = careerV2;
+  const window_open = C.mercato.window_open;
+  return `
+  <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🔄 Mercato</div>
+    <div style="font-size:10px;color:${window_open?'#18c860':'#e06060'};margin-bottom:10px">
+      ${window_open ? '🟢 Fenêtre de transferts ouverte ('+C.mercato.window_type+')' : '🔴 Fenêtre de transferts fermée'}
+    </div>
+    ${!window_open ? `
+      <div style="font-size:9px;color:var(--muted)">
+        La prochaine fenêtre de transferts s'ouvrira en été (mois 6-7) ou en hiver (mois 12-1).
+      </div>
+    ` : `
+      <button class="btn btng" onclick="openTransferMarket()" style="width:100%;font-size:10px">
+        🔍 Voir le marché des transferts
+      </button>
+    `}
+    ${C.mercato.incoming_offers.length > 0 ? `
+      <div style="margin-top:10px;font-size:10px;color:#f0c028;font-weight:700">
+        📬 ${C.mercato.incoming_offers.length} offre(s) reçue(s) pour vos joueurs
+      </div>
+    ` : ''}
+  </div>`;
+}
+
+function _renderDirectorFinances(){
+  const C = careerV2; const club = C.club;
+  const log = C.finances.log.slice(-10).reverse();
+  return `
+  <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:10px">💰 Finances</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="background:var(--panel);border-radius:6px;padding:8px;text-align:center">
+        <div style="font-size:9px;color:var(--muted)">Budget total</div>
+        <div style="font-size:14px;font-weight:900;color:#18c860">${_fmtMoney(club.budget)}</div>
+      </div>
+      <div style="background:var(--panel);border-radius:6px;padding:8px;text-align:center">
+        <div style="font-size:9px;color:var(--muted)">Budget mercato</div>
+        <div style="font-size:14px;font-weight:900;color:#f0c028">${_fmtMoney(club.transferBudget)}</div>
+      </div>
+    </div>
+    <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">Historique récent :</div>
+    ${log.length ? log.map(e=>`
+      <div style="display:flex;justify-content:space-between;font-size:9px;padding:3px 0;border-bottom:1px solid var(--b1)">
+        <span style="color:var(--muted)">${e.desc}</span>
+        <span style="color:${e.amount>=0?'#18c860':'#e06060'};font-weight:700">${e.amount>=0?'+':''}${_fmtMoney(e.amount)}</span>
+      </div>
+    `).join('') : '<div style="color:var(--muted);font-size:9px">Aucune transaction pour l\'instant</div>'}
+  </div>`;
+}
+
+function _renderDirectorInfra(){
+  const C = careerV2; const club = C.club;
+  const infra = club.infra || {};
+  const items = [
+    {key:'stadium', label:'🏟️ Stade', desc:'Capacité et revenus billetterie', max:5},
+    {key:'training', label:'⚽ Centre d\'entraînement', desc:'Progression des joueurs', max:5},
+    {key:'formation', label:'🎓 Académie jeunes', desc:'Production de jeunes talents', max:5},
+    {key:'medical', label:'🏥 Centre médical', desc:'Récupération et prévention blessures', max:5},
+    {key:'scout', label:'🔭 Réseau de scouts', desc:'Qualité du recrutement', max:5},
+  ];
+  const upgCost = (key, lvl) => Math.round(1000 * Math.pow(3, lvl));
+
+  return `
+  <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:10px">🏗️ Infrastructure</div>
+    ${items.map(item=>{
+      const lvl = infra[item.key]||0;
+      const cost = upgCost(item.key, lvl);
+      const canAfford = club.budget >= cost;
+      const maxed = lvl >= item.max;
+      return `
+      <div style="background:var(--panel);border-radius:6px;padding:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:10px;font-weight:700">${item.label}</div>
+          <div style="font-size:9px;color:var(--gold)">${'★'.repeat(lvl)}${'☆'.repeat(item.max-lvl)}</div>
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-bottom:6px">${item.desc}</div>
+        ${maxed
+          ? '<div style="font-size:9px;color:#18c860">✅ Niveau maximum</div>'
+          : `<button class="btn${canAfford?'':' disabled'}" onclick="upgradeInfraV2('${item.key}')"
+                    style="font-size:9px;padding:2px 8px;${!canAfford?'opacity:.5;cursor:not-allowed':''}">
+               Améliorer — 🪙 ${_fmtMoney(cost)}
+             </button>`
+        }
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function _renderDirectorStaff(){
+  const C = careerV2; const club = C.club;
+  const staff = club.staff || {};
+  return `
+  <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:10px">👔 Staff</div>
+    ${[
+      {key:'manager', label:'🧑‍💼 Manager', desc:'Dirige les matchs'},
+      {key:'scout', label:'🔭 Scout', desc:'Déniche les talents'},
+      {key:'physio', label:'🏥 Physiothérapeute', desc:'Gère les blessures'},
+      {key:'coach', label:'📋 Entraîneur adjoint', desc:'Améliore la progression'},
+    ].map(item=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:var(--panel);border-radius:6px;margin-bottom:6px">
+        <div>
+          <div style="font-size:10px;font-weight:700">${item.label}</div>
+          <div style="font-size:9px;color:var(--muted)">${item.desc}</div>
+          <div style="font-size:9px;color:${staff[item.key]?'#18c860':'#e06060'}">${staff[item.key]||'⚠️ Poste vacant'}</div>
+        </div>
+        <button class="btn" onclick="hireStaff('${item.key}')" style="font-size:9px;padding:2px 8px">
+          ${staff[item.key]?'Remplacer':'Recruter'}
+        </button>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function _renderDirectorCalendar(){
+  const C = careerV2;
+  return `
+  <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📅 Calendrier</div>
+    <div style="font-size:9px;color:var(--muted);margin-bottom:10px">
+      Semaine ${C.week} · Saison ${C.season}
+    </div>
+    ${C.fixtures.length === 0
+      ? '<div style="color:var(--muted);font-size:9px">Le calendrier sera généré au début de la saison.</div>'
+      : C.fixtures.slice(0, 10).map(f=>`
+        <div style="padding:6px;border-bottom:1px solid var(--b1);font-size:9px">
+          <div style="color:var(--muted)">J${f.week}</div>
+          <div style="color:var(--fg);font-weight:700">${f.home} vs ${f.away}</div>
+          <div style="color:${f.played?'#18c860':'var(--muted)'}">
+            ${f.played ? `${f.sh} - ${f.sa}` : 'À jouer'}
+          </div>
+        </div>
+      `).join('')
+    }
+  </div>`;
+}
+
+// ── Rendu principal Manager ───────────────────────────────────────────
+function renderCareerManager(el){
+  const C = careerV2;
+  const mgr = C.manager;
+
+  el.innerHTML = `
+  <div style="padding:8px;max-width:600px;margin:0 auto">
+    <div style="background:var(--panel);border:2px solid #8840e0;border-radius:10px;padding:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:28px">🧑‍💼</div>
+        <div>
+          <div style="font-size:14px;font-weight:900">${mgr.name}</div>
+          <div style="font-size:9px;color:var(--muted)">Licence ${mgr.license} · Réputation ${mgr.reputation}/100</div>
+          <div style="font-size:9px;color:${mgr.unemployed?'#e06060':'#18c860'}">
+            ${mgr.unemployed ? '🔴 Sans club' : '🟢 '+C.club?.name}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    ${mgr.unemployed ? `
+    <div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📬 Offres d'emploi disponibles</div>
+      ${C.job_offers.length === 0
+        ? '<div style="color:var(--muted);font-size:9px">Aucune offre pour l\'instant. Attendez ou cherchez activement.</div>'
+        : C.job_offers.map((offer, i) => `
+          <div style="background:var(--panel);border-radius:6px;padding:8px;margin-bottom:6px">
+            <div style="font-size:11px;font-weight:700;color:var(--fg)">${offer.club}</div>
+            <div style="font-size:9px;color:var(--muted)">${offer.region} · ${offer.level.toUpperCase()}</div>
+            <div style="font-size:9px;color:#18c860">Salaire : 🪙 ${_fmtMoney(offer.salary)}/semaine</div>
+            <div style="font-size:9px;color:var(--muted)">Contrat : ${offer.contract_years} an(s)</div>
+            <div style="font-size:9px;color:#f0c028">Objectif : ${offer.objectives[0]?.desc||'?'}</div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn btng" onclick="acceptManagerJob(${i})" style="font-size:9px;flex:1">✅ Accepter</button>
+              <button class="btn" onclick="rejectManagerJob(${i})" style="font-size:9px;padding:2px 8px">❌</button>
+            </div>
+          </div>
+        `).join('')
+      }
+    </div>
+    ` : '<!-- Club actif, afficher tableau de bord manager -->'}
+
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button class="btn btng" onclick="advanceCareerWeek()" style="flex:1;font-size:10px">⏩ Semaine suivante</button>
+      <button class="btn" onclick="abandonCareerV2()" style="font-size:9px;color:#e06060;border-color:#e06060">✕ Abandonner</button>
+    </div>
+  </div>`;
+}
+
+// ── Actions carrière ──────────────────────────────────────────────────
+function advanceCareerWeek(){
+  if(!careerV2) return;
+  careerV2.week++;
+
+  // Gestion du mois/année
+  const weeksPerMonth = 4;
+  if(careerV2.week % weeksPerMonth === 0){
+    careerV2.date.month++;
+    if(careerV2.date.month > 12){
+      careerV2.date.month = 1;
+      careerV2.date.year++;
+    }
+    // Ouvrir/fermer mercato
+    _checkMercatoWindow();
+  }
+
+  // Coûts hebdomadaires
+  if(careerV2.type === 'director'){
+    const costs = careerV2.club.weekly_costs || 0;
+    if(costs > 0){
+      careerV2.club.budget -= costs;
+      _addFinanceLog(`Coûts hebdomadaires (semaine ${careerV2.week})`, -costs);
+    }
+  }
+
+  // Événements aléatoires selon la région
+  _triggerRegionEvent();
+
+  saveCareerV2();
+  renderCareerV2();
+}
+
+function _checkMercatoWindow(){
+  if(!careerV2) return;
+  const month = careerV2.date.month;
+  const wasOpen = careerV2.mercato.window_open;
+
+  // Été : mois 6-7 / Hiver : mois 12-1
+  const isOpen = [6,7,12,1].includes(month);
+  const type = [6,7].includes(month) ? 'summer' : 'winter';
+
+  if(isOpen && !wasOpen){
+    careerV2.mercato.window_open = true;
+    careerV2.mercato.window_type = type;
+    logEvent(`🔄 Fenêtre de transferts ${type==='summer'?'estivale':'hivernale'} ouverte !`,'#f0c028');
+  } else if(!isOpen && wasOpen){
+    careerV2.mercato.window_open = false;
+    careerV2.mercato.window_type = null;
+    logEvent('🔒 Fenêtre de transferts fermée.','#e06060');
+  }
+}
+
+function _triggerRegionEvent(){
+  if(!careerV2 || careerV2.type !== 'director') return;
+  const region = PANTHALASSA_REGIONS.find(r=>r.id===careerV2.club.region);
+  if(!region) return;
+
+  // Événements positifs (Les Mers Bénies)
+  if(region.traits?.positive_events && Math.random() < 0.15){
+    const events = [
+      '🌊 Une vague de bonne fortune — un joueur récupère plus vite de sa blessure !',
+      '🌊 Les dieux marins sourient — moral de l\'équipe au maximum cette semaine !',
+      '🌊 Journée bénie — un sponsor offre un bonus inattendu !',
+    ];
+    logEvent(events[Math.floor(Math.random()*events.length)],'#18c860');
+    if(Math.random() < 0.3) _addFinanceLog('Bonus surprise (Les Mers Bénies)', 500);
+  }
+
+  // Risque de corruption (Maï)
+  if(region.traits?.corruption_risk && Math.random() < 0.08){
+    careerV2.pending_events.push({
+      type: 'corruption_offer',
+      desc: 'Une proposition douteuse vous est soumise...',
+      deadline: careerV2.week + 2,
+    });
+    logEvent('⚠️ Une proposition suspecte est arrivée dans votre bureau...','#e06020');
+  }
+
+  // Pépite (Nérïa)
+  if(region.traits?.gem_chance && Math.random() < 0.03){
+    const gemName = ['Mystara','Arcania','Crystana','Runalia','Sigilia'][Math.floor(Math.random()*5)];
+    const gem = mkGemPlayer(gemName, 'ATT');
+    careerV2.pending_events.push({
+      type: 'gem_discovered',
+      desc: `Le scout a découvert une pépite exceptionnelle : ${gemName} !`,
+      player: gem,
+    });
+    logEvent(`💎 Une pépite découverte : ${gemName} ! Rendez-vous dans les événements.`,'#9c27b0');
+  }
+}
+
+function _addFinanceLog(desc, amount){
+  if(!careerV2) return;
+  careerV2.finances.log.push({desc, amount, week: careerV2.week});
+  if(amount < 0) careerV2.finances.total_spent += Math.abs(amount);
+  else careerV2.finances.total_earned += amount;
+}
+
+function upgradeInfraV2(key){
+  if(!careerV2 || careerV2.type !== 'director') return;
+  const club = careerV2.club;
+  const lvl = (club.infra[key]||0);
+  const cost = Math.round(1000 * Math.pow(3, lvl));
+  if(club.budget < cost){ logEvent('❌ Budget insuffisant','#e02030'); return; }
+  club.budget -= cost;
+  club.infra[key] = lvl + 1;
+  _addFinanceLog(`Amélioration ${key} niv.${lvl+1}`, -cost);
+  logEvent(`🏗️ ${key} amélioré niveau ${lvl+1} !`,'#18c860');
+  saveCareerV2();
+  renderCareerDirectorTab('infra');
+}
+
+function hireStaff(role){
+  logEvent('👔 Recrutement staff — fonctionnalité à venir !','#f0c028');
+}
+
+function openTransferMarket(){
+  logEvent('🔄 Marché des transferts — fonctionnalité à venir !','#f0c028');
+}
+
+function acceptManagerJob(i){
+  if(!careerV2 || careerV2.type !== 'manager') return;
+  const offer = careerV2.job_offers[i];
+  if(!offer) return;
+  careerV2.manager.unemployed = false;
+  careerV2.manager.contract = offer;
+  careerV2.club = {
+    id: 'mgr_club',
+    name: offer.club,
+    region: offer.region,
+    level: offer.level,
+    color: PANTHALASSA_REGIONS.find(r=>r.id===offer.region)?.color || '#888',
+  };
+  careerV2.job_offers = [];
+  logEvent(`✅ Contrat signé avec ${offer.club} !`,'#18c860');
+  saveCareerV2();
+  renderCareerV2();
+}
+
+function rejectManagerJob(i){
+  if(!careerV2) return;
+  careerV2.job_offers.splice(i, 1);
+  saveCareerV2();
+  renderCareerV2();
+}
+
+function abandonCareerV2(){
+  if(!confirm('Abandonner cette carrière ? Cette action est irréversible.')) return;
+  careerV2 = null;
+  localStorage.removeItem('footsim_careerV2');
+  renderCareerV2Choice();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function _fmtMoney(n){
+  if(n === undefined || n === null) return '0';
+  const abs = Math.abs(n);
+  if(abs >= 1000000) return (n/1000000).toFixed(1)+'M';
+  if(abs >= 1000) return (n/1000).toFixed(0)+'k';
+  return String(Math.round(n));
+}
+
+function _reputationLabel(rep){
+  if(rep >= 80) return 'Légendaire';
+  if(rep >= 65) return 'Réputé';
+  if(rep >= 50) return 'Connu';
+  if(rep >= 35) return 'Modeste';
+  if(rep >= 20) return 'Inconnu';
+  return 'Amateur';
 }
 
 // ═══════════════════════════════════════════════════════════

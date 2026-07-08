@@ -1,6 +1,449 @@
 // ═══════════════════════════════════════════════════
 // SAVE.JS — Sauvegarde, carrière, import/export
 // ═══════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════
+// SYSTÈME DE PROFILS
+// Structure :
+// profiles = {
+//   'pid_xxx': {
+//     id, name, avatar, created, lastPlayed,
+//     cups:    { 'cup_xxx': {...}, ... },
+//     leagues: { 'league_xxx': {...}, ... },
+//     careers: { 'career_xxx': {...}, ... },
+//   }
+// }
+// ═══════════════════════════════════════════════════
+
+let profiles = {};          // tous les profils
+let activeProfileId = null; // profil actif
+
+const _genId = (prefix) => prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+// ── Persistance profils ───────────────────────────────────────────────
+function saveProfiles(){
+  _safeLSSet('footsim_profiles', profiles);
+  _safeLSSet('footsim_activeProfile', {id: activeProfileId});
+}
+
+function loadProfiles(){
+  try {
+    const d = localStorage.getItem('footsim_profiles');
+    if(d) profiles = JSON.parse(d) || {};
+  } catch(e){ profiles = {}; }
+  try {
+    const a = localStorage.getItem('footsim_activeProfile');
+    if(a){ const p = JSON.parse(a); activeProfileId = p?.id || null; }
+  } catch(e){ activeProfileId = null; }
+}
+
+// ── Profil actif ──────────────────────────────────────────────────────
+function activeProfile(){
+  return activeProfileId ? profiles[activeProfileId] : null;
+}
+
+// ── Créer un profil ───────────────────────────────────────────────────
+function createProfile(name, avatar='⚽'){
+  const id = _genId('pid');
+  profiles[id] = {
+    id,
+    name: name || 'Profil ' + (Object.keys(profiles).length + 1),
+    avatar,
+    created: new Date().toISOString(),
+    lastPlayed: new Date().toISOString(),
+    cups: {},
+    leagues: {},
+    careers: {},
+  };
+  saveProfiles();
+  return id;
+}
+
+// ── Supprimer un profil ───────────────────────────────────────────────
+function deleteProfile(pid){
+  if(!profiles[pid]) return;
+  delete profiles[pid];
+  if(activeProfileId === pid) activeProfileId = null;
+  saveProfiles();
+}
+
+// ── Sélectionner un profil ────────────────────────────────────────────
+function selectProfile(pid){
+  if(!profiles[pid]) return false;
+  activeProfileId = pid;
+  profiles[pid].lastPlayed = new Date().toISOString();
+  // Charger les états dans les variables globales selon le dernier actif
+  _syncGlobalsFromProfile(pid);
+  saveProfiles();
+  return true;
+}
+
+// ── Synchroniser les variables globales depuis le profil ──────────────
+function _syncGlobalsFromProfile(pid){
+  const p = profiles[pid];
+  if(!p) return;
+  // Restaurer le dernier cup/league/career actif si il y en a un
+  const lastCupId = p._lastActiveCup;
+  const lastLeagueId = p._lastActiveLeague;
+  const lastCareerId = p._lastActiveCareer;
+  if(lastCupId && p.cups[lastCupId]) cupState = p.cups[lastCupId].state;
+  if(lastLeagueId && p.leagues[lastLeagueId]) leagueState = p.leagues[lastLeagueId].state;
+  if(lastCareerId && p.careers[lastCareerId]) careerV2 = p.careers[lastCareerId].state;
+}
+
+// ── Sauvegarder une compétition dans le profil actif ─────────────────
+function saveCompetition(type, id, state, name){
+  const p = activeProfile();
+  if(!p){ logEvent('❌ Aucun profil actif','#e02030'); return null; }
+  const key = id || _genId(type);
+  p[type+'s'][key] = {
+    id: key,
+    name: name || key,
+    savedAt: new Date().toISOString(),
+    state: JSON.parse(JSON.stringify(state)), // deep clone
+  };
+  p['_lastActive'+_capitalize(type)] = key;
+  saveProfiles();
+  return key;
+}
+
+// ── Charger une compétition depuis le profil ─────────────────────────
+function loadCompetition(type, id){
+  const p = activeProfile();
+  if(!p) return null;
+  const entry = p[type+'s']?.[id];
+  if(!entry) return null;
+  p['_lastActive'+_capitalize(type)] = id;
+  saveProfiles();
+  return entry.state;
+}
+
+// ── Supprimer une compétition ─────────────────────────────────────────
+function deleteCompetition(type, id){
+  const p = activeProfile();
+  if(!p) return;
+  delete p[type+'s']?.[id];
+  saveProfiles();
+}
+
+// ── Lister les compétitions d'un profil ──────────────────────────────
+function listCompetitions(type, pid){
+  const p = pid ? profiles[pid] : activeProfile();
+  if(!p) return [];
+  return Object.values(p[type+'s'] || {});
+}
+
+// ── Wrappers pratiques ────────────────────────────────────────────────
+function saveCupToProfile(name){
+  if(!cupState){ logEvent('❌ Aucune coupe en cours','#e02030'); return; }
+  const id = activeProfile()?._lastActiveCup || null;
+  const key = saveCompetition('cup', id, cupState, name || 'Coupe');
+  logEvent(`💾 Coupe sauvegardée : "${name || 'Coupe'}"`, '#18c860');
+  return key;
+}
+
+function saveLeagueToProfile(name){
+  if(!leagueState){ logEvent('❌ Aucune ligue en cours','#e02030'); return; }
+  const id = activeProfile()?._lastActiveLeague || null;
+  const key = saveCompetition('league', id, leagueState, name || 'Ligue');
+  logEvent(`💾 Ligue sauvegardée : "${name || 'Ligue'}"`, '#18c860');
+  return key;
+}
+
+function saveCareerToProfile(){
+  if(!careerV2){ logEvent('❌ Aucune carrière en cours','#e02030'); return; }
+  const id = activeProfile()?._lastActiveCareer || null;
+  const club = careerV2.club?.name || 'Carrière';
+  const key = saveCompetition('career', id, careerV2, club);
+  logEvent(`💾 Carrière sauvegardée : "${club}"`, '#18c860');
+  return key;
+}
+
+// ── Helper ────────────────────────────────────────────────────────────
+function _capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ── Taille estimée d'un profil ────────────────────────────────────────
+function _profileSize(pid){
+  const p = profiles[pid];
+  if(!p) return 0;
+  const json = JSON.stringify(p);
+  return json.length; // bytes approximatifs
+}
+
+function _fmtSize(bytes){
+  if(bytes > 1000000) return (bytes/1000000).toFixed(1)+' MB';
+  if(bytes > 1000) return (bytes/1000).toFixed(0)+' KB';
+  return bytes+' B';
+}
+
+// ═══════════════════════════════════════════════════
+// CARRIÈRE V2 — Manager & Dirigeant
+// ═══════════════════════════════════════════════════
+
+let careerV2 = null; // état complet de la carrière V2
+
+function saveCareerV2(){
+  saveCareerToProfile();
+  // Fallback legacy
+  _safeLSSet('footsim_careerV2', careerV2);
+}
+
+function loadCareerV2(){
+  // Essayer d'abord depuis le profil actif
+  const p = activeProfile();
+  if(p?._lastActiveCareer){
+    const state = loadCompetition('career', p._lastActiveCareer);
+    if(state){ careerV2 = state; return; }
+  }
+  // Fallback legacy
+  try {
+    const d = localStorage.getItem('footsim_careerV2');
+    if(d) careerV2 = JSON.parse(d);
+  } catch(e){ careerV2 = null; }
+}
+
+// ── Initialisation Carrière Dirigeant ────────────────────────────────
+function startCareerDirector(regionId, clubId){
+  const region = WORLDS.getRegion('panthalassa', regionId);
+  if(!region){ logEvent('❌ Région introuvable','#e02030'); return; }
+
+  // Trouver le club choisi ou en créer un
+  const clubName = clubId || region.clubNames[0];
+
+  // Niveau de départ selon la région et le club
+  // Pour l'instant on commence en District ou R3 selon la région
+  const startLevel = region.pyramid.district_groups > 0 ? 'dh' :
+                     region.pyramid.has_r3 ? 'r3' : 'r2';
+
+  careerV2 = {
+    type: 'director',          // director ou manager
+    season: 1,
+    week: 1,
+    date: { year: 1, month: 8, day: 1 }, // début saison en août
+
+    // Club du joueur
+    club: {
+      id: 'player_club',
+      name: clubName,
+      region: regionId,
+      color: region.color,
+      level: startLevel,       // niveau actuel dans la pyramide
+      group: 0,                // groupe dans la division (pour niveaux régionaux)
+      budget: WORLDS.startBudget('panthalassa', regionId),
+      transferBudget: Math.round(WORLDS.startBudget('panthalassa', regionId) * 0.3),
+      wage_budget: Math.round(WORLDS.startBudget('panthalassa', regionId) * 0.4),
+      weekly_costs: 0,
+      reputation: WORLDS.startReputation(startLevel, WORLDS.getRegion('panthalassa', regionId)),
+      fanbase: _startFanbase(region),
+      infra: { stadium:0, training:0, formation:0, medical:0, scout:0 },
+      sponsor: null,
+      stadium_capacity: 500 + region.population * 200,
+      // Staff
+      staff: {
+        manager: null,         // manager IA ou nom du manager
+        scout: null,
+        physio: null,
+        coach: null,
+      },
+      // Objectifs fixés par le conseil
+      board_objectives: [],
+      // Historique
+      history: [],
+    },
+
+    // Joueurs du club
+    ...WORLDS.generateSquad('panthalassa', regionId),
+    // bench et reserves inclus dans generateSquad
+    
+
+    // Mercato
+    mercato: {
+      window_open: false,
+      window_type: null,       // 'summer' ou 'winter'
+      transfer_list: [],       // joueurs disponibles sur le marché
+      incoming_offers: [],     // offres reçues pour nos joueurs
+      outgoing_offers: [],     // nos offres en attente
+      loan_list: [],           // joueurs disponibles en prêt
+    },
+
+    // Calendrier de la saison
+    fixtures: [],
+
+    // Statistiques de la saison
+    season_stats: {
+      wins:0, draws:0, losses:0,
+      goals_for:0, goals_against:0,
+      points:0,
+    },
+
+    // Finances détaillées
+    finances: {
+      log: [],
+      weekly_revenue: 0,
+      weekly_costs: 0,
+      total_earned: 0,
+      total_spent: 0,
+    },
+
+    // Événements en attente
+    pending_events: [],
+
+    // Réputation du manager/directeur sportif
+    director_reputation: 50,
+    director_name: 'Vous',
+  };
+
+  // Générer les objectifs du conseil selon le niveau
+  careerV2.club.board_objectives = _generateBoardObjectives(careerV2.club);
+
+  // Générer le calendrier de la première saison
+  _generateSeasonFixtures();
+
+  saveCareerV2();
+  logEvent(`🏟️ Bienvenue à ${clubName} ! Saison 1 commence.`, region.color);
+  renderCareerV2();
+}
+
+// ── Initialisation Carrière Manager ──────────────────────────────────
+function startCareerManager(regionId){
+  const region = WORLDS.getRegion('panthalassa', regionId);
+  if(!region){ logEvent('❌ Région introuvable','#e02030'); return; }
+
+  careerV2 = {
+    type: 'manager',
+    season: 1,
+    week: 1,
+    date: { year: 1, month: 8, day: 1 },
+
+    // Le manager lui-même
+    manager: {
+      name: 'Vous',
+      reputation: 20,          // démarre bas
+      license: 'C',            // C → B → A → Pro
+      nationality: regionId,
+      age: 35,
+      history: [],             // clubs précédents
+      achievements: [],
+      contract: null,          // contrat actuel
+      unemployed: true,
+    },
+
+    // Club actuel (null si sans club)
+    club: null,
+
+    // Offres d'embauche disponibles
+    job_offers: _generateInitialJobOffers(regionId),
+
+    // Événements en attente
+    pending_events: [],
+  };
+
+  saveCareerV2();
+  renderCareerV2();
+}
+
+// ── Helpers de génération ─────────────────────────────────────────────
+
+function _startBudget(regionId){
+  return WORLDS.startBudget('panthalassa', regionId);
+}
+
+function _startReputation(regionId, level){
+  return WORLDS.startReputation(level, WORLDS.getRegion('panthalassa', regionId));
+}
+
+function _startFanbase(region){
+  return Math.round(100 + (region?.population||2) * 50 + Math.random() * 200);
+}
+
+function _generateStartingSquad(regionId){
+  const region = WORLDS.getRegion('panthalassa', regionId);
+  const positions = ['GB','DC','DD','DG','MC','MC','ATT'];
+  const names = _getRegionNames(regionId);
+  return positions.map((pos, i) => {
+    const isHuman = region.traits?.non_siren_players && Math.random() < (region.playerProfile?.non_siren_chance||0);
+    return mkPlayerFromRegion(regionId, pos, names[i] || 'Joueur '+i, isHuman);
+  });
+}
+
+function _generateBench(regionId){
+  const positions = ['GB','MC','ATT','DC','MC'];
+  const names = _getRegionNames(regionId, 7);
+  return positions.map((pos, i) => {
+    const p = mkPlayerFromRegion(regionId, pos, names[i] || 'Remplaçant '+i);
+    p.onBench = true;
+    return p;
+  });
+}
+
+function _generateReserves(regionId){
+  const positions = ['MC','ATT','DC'];
+  const names = _getRegionNames(regionId, 12);
+  return positions.map((pos, i) => {
+    const p = mkPlayerFromRegion(regionId, pos, names[i] || 'Réserviste '+i);
+    p.onBench = true;
+    return p;
+  });
+}
+
+function _getRegionNames(regionId, offset=0){
+  // Noms de sirènes/fantaisie selon la région
+  const namePools = {
+    thalassyr: ['Nereis','Thaleia','Calypso','Amphitrite','Galatea','Sirena','Marinella','Ondine','Undine','Nixie','Lorelei','Melusine','Morgana','Nausicaa','Thessaly'],
+    'coraïrai': ['Coralie','Iridessa','Aqualina','Crystelle','Perline','Saphira','Émera','Rubine','Topaze','Diamante'],
+    mai: ['Maïa','Mairelle','Maïlys','Maïwenn','Maïna','Maïté','Maïlis','Maïka','Maïken','Maïlou'],
+    neria: ['Nérissa','Nereid','Mystara','Arcania','Runalia','Sigilia','Crystana','Opalina','Amethys','Saphirelle'],
+    mersbenie: ['Bénie','Grâcia','Lumina','Sérena','Harmonya','Pacifica','Tranquilla','Bénédice','Grâcielle','Lumielle'],
+    velmara: ['Tempêta','Foudrine','Éclairia','Tornada','Chaosa','Délira','Foufella','Impréva','Turbula','Cyclona'],
+    tydai: ['Duna','Miragea','Sabline','Ventara','Errantia','Horizona','Oasine','Désertine','Nomada','Vastine'],
+    iledublob: ['Solida','Défense','Rempartia','Bouclina','Fortessa','Discipla','Gardienne','Robusta','Solidine','Fermina'],
+    iledazur: ['Azurina','Cosmina','Métropola','Lumina','Élégance','Prestiga','Cristallina','Céruléa','Turquoise','Saphira','Topazina','Amétrine','Opalia','Perline','Nacrine','Émera'],
+    solgrath: ['Solange','Grath','Équilia','Balancia','Normala','Stabina','Classica','Régula','Solide','Standard'],
+    peiryn: ['Peïra','Comtesse','Locale','Rurale','Campagne','Clocher','Village','Hameau','Bourg','Canton'],
+  };
+  const pool = namePools[regionId] || namePools.solgrath;
+  return pool.slice(offset, offset + 15);
+}
+
+function _generateBoardObjectives(club){
+  const levelObjectives = {
+    dh:  [{type:'promotion', desc:'Finir dans le top 2 du groupe', reward:2000}],
+    r3:  [{type:'promotion', desc:'Accéder aux play-offs de montée', reward:3000}],
+    r2:  [{type:'promotion', desc:'Finir dans le top 3', reward:5000}],
+    r1:  [{type:'promotion', desc:'Accéder à la D3', reward:10000}],
+    d3:  [{type:'mid_table', desc:'Assurer le maintien', reward:8000}],
+    d2:  [{type:'mid_table', desc:'Top 10', reward:15000}],
+    d1:  [{type:'top_half', desc:'Top 8', reward:25000}],
+  };
+  return levelObjectives[club.level] || [{type:'survive', desc:'Survivre la saison', reward:1000}];
+}
+
+function _generateSeasonFixtures(){
+  if(!careerV2) return;
+  // Pour l'instant placeholder — sera généré complètement dans la V2 complète
+  careerV2.fixtures = [];
+}
+
+function _generateInitialJobOffers(regionId){
+  // Offres de départ pour le mode manager
+  const region = WORLDS.getRegion('panthalassa', regionId);
+  const offers = [];
+  // 2-3 clubs de bas niveau cherchent un manager
+  for(let i=0; i<3; i++){
+    const clubName = region.clubNames[Math.floor(Math.random()*region.clubNames.length)];
+    offers.push({
+      club: clubName,
+      region: regionId,
+      level: region.pyramid.district_groups > 0 ? 'dh' : 'r3',
+      salary: 200 + Math.round(Math.random()*300),
+      contract_years: 1,
+      objectives: [{type:'survive', desc:'Survivre la saison'}],
+      deadline: 7, // jours pour accepter
+    });
+  }
+  return offers;
+}
+
 function exportData(){
   const payload={
     version:2,
@@ -854,7 +1297,14 @@ window.addEventListener('resize',resize);
 window.addEventListener('orientationchange',()=>setTimeout(resize,200));
 // Prevent default touch scroll on canvas to avoid rubber-band effect
 document.getElementById('canvas-wrap')?.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
-loadLeague();loadSavedTeams();loadCup();
+loadProfiles();loadLeague();loadSavedTeams();loadCup();loadCareerV2();
+// Afficher l'écran de profils au démarrage si aucun profil actif
+window.addEventListener('load', ()=>{
+  if(!activeProfileId || !profiles[activeProfileId]){
+    // Léger délai pour que le DOM soit prêt
+    setTimeout(()=> renderProfileScreen(), 100);
+  }
+});
 renderTB(0);renderTB(1);renderTactics();syncHUD();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);
 resize();placeKickoff(0);
 requestAnimationFrame(frame);
