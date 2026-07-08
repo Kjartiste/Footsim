@@ -4699,10 +4699,11 @@ function renderCareerV2Choice(){
   const hasOldCareer = !!careerState;
 
   let h = '<div style="padding:12px;max-width:600px;margin:0 auto">';
-  h += '<div style="text-align:center;margin-bottom:20px">';
-  h += '<div style="font-size:22px;font-weight:900;color:var(--gold);letter-spacing:2px">⚽ CARRIERE</div>';
-  h += '<div style="font-size:11px;color:var(--muted);margin-top:4px">Choisissez votre role dans le monde de Panthalassa</div>';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
+  h += '<div style="font-size:20px;font-weight:900;color:var(--gold);letter-spacing:2px">⚽ CARRIÈRE</div>';
+  h += '<button class="btn" onclick="nav(\'setup\')" style="font-size:9px;padding:3px 10px">&larr; Retour au jeu</button>';
   h += '</div>';
+  h += '<div style="font-size:11px;color:var(--muted);margin-bottom:16px">Choisissez votre role dans le monde de Panthalassa</div>';
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
   // Manager
   h += '<div onclick="renderCareerManagerSetup()" style="background:var(--panel);border:2px solid #8840e0;border-radius:12px;padding:16px;cursor:pointer">';

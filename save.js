@@ -3455,3 +3455,16 @@ loadCareer();
 loadCupNPCPool();
 initCareerFooterBtns();
 
+
+// ── DÉMARRAGE GLOBAL ───────────────────────────────────────────────────
+// Exécuté après que TOUS les scripts sont chargés (save.js est le dernier)
+try {
+  loadProfiles();
+  if(!activeProfileId || !profiles[activeProfileId]){
+    renderProfileScreen();
+  } else {
+    nav('setup');
+  }
+} catch(e){
+  console.error('Erreur démarrage:', e);
+}
