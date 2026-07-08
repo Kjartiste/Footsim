@@ -1487,13 +1487,23 @@ function syncHUD(){
     if(scoreEl)scoreEl.style.color=T.color;
   });
   const f0=document.getElementById('ftag0'),f1=document.getElementById('ftag1');
-  // Compteur de changements en 11v11 — géré ci-dessous avec _gm
-  if(false){
-    const s0=document.getElementById('ftag0'),s1=document.getElementById('ftag1');
-    const subs0 = G_11V11.subs_used[0], subs1 = G_11V11.subs_used[1];
-    if(s0) s0.title = `Changements : ${subs0}/3`;
-    if(s1) s1.title = `Changements : ${subs1}/3`;
-  }
+  // Mettre à jour les étiquettes de formation selon le mode et la stratégie choisie
+  (function(){
+    const is11=window.gameMode==='11v11', is5=window.gameMode==='5v5';
+    const list = is11 ? (window.STRATS_11V11||[]) : is5 ? (window.STRATS_5V5||[]) : (window.STRATS||[]);
+    const attr = is11 ? 'strat11' : is5 ? 'strat5' : 'strat';
+    const def  = is11 ? '442' : is5 ? '121' : '321';
+    [ [f0,0], [f1,1] ].forEach(([el,ti])=>{
+      if(!el) return;
+      const T=teams[ti]; if(!T) return;
+      const id=T[attr]||def;
+      const s=list.find(x=>x.id===id);
+      el.textContent = s ? s.n : def;
+    });
+  })();
+  // Logo latéral : refléter le mode courant
+  const logo=document.querySelector('.slogo');
+  if(logo){ const m=window.gameMode||'7v7'; logo.textContent='⚽ FootSim '+m; }
 }
 
 function promoteReserve(ti,ri){

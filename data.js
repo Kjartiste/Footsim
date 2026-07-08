@@ -617,11 +617,13 @@ function applyFormationRoles(ti){
       if(p && positions[i]) p.pos = positions[i];
     });
   }
-  // 5v5 : appliquer les postes de la formation si effectif exact de 5
+  // 5v5 : appliquer les postes de la formation aux 5 titulaires pour éviter
+  // que des joueurs générés/importés (souvent tous "DC") ne se collent tous
+  // dans la même zone. On respecte quand même un gardien unique.
   const strat5 = is5v5 ? (T.strat5||'121') : null;
-  if(is5v5 && strat5 && FORMS_5V5[strat5] && T.players.length === 5){
+  if(is5v5 && strat5 && FORMS_5V5[strat5] && T.players.length >= 5){
     const positions = FORMS_5V5[strat5];
-    T.players.forEach((p, i) => {
+    T.players.slice(0,5).forEach((p, i) => {
       if(p && positions[i]) p.pos = positions[i];
     });
   }
