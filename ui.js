@@ -4742,7 +4742,7 @@ function renderCareerDirectorSetup(){
     + '<div style="font-size:16px;font-weight:900;color:var(--gold)">&#x1F3DB; Carri&egrave;re Dirigeant</div>'
     + '</div>'
     + '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Choisissez votre r&eacute;gion de d&eacute;part dans l\'empire de Panthalassa :</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">' + regionCards + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:14px">' + regionCards + '</div>'
     + '<div id="director-club-select" style="display:none">'
     + '<div style="font-size:11px;color:var(--gold);margin-bottom:8px;font-weight:700">Choisissez votre club :</div>'
     + '<div id="director-club-list" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px"></div>'
@@ -4858,7 +4858,7 @@ function renderCareerManagerSetup(){
     + 'En tant que manager, vous debutez sans club. Choisissez votre region d\'origine.'
     + '</div>'
     + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Votre r&eacute;gion d\'origine :</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px">' + regionCards + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px">' + regionCards + '</div>'
     + '<button class="btn btng" id="manager-start-btn" onclick="confirmStartManager()" style="width:100%;display:none">'
     + '&#x25B6; Commencer sans club &mdash; chercher un poste</button>'
     + '</div>';
