@@ -1253,6 +1253,22 @@ function goMatch(){
   syncHUD();renderTB(0);renderTB(1);
   showPreMatch();
 }
+
+// Mettre à jour l'apparence des boutons de mode selon le mode actif
+function updateModeBtns(){
+  const btn7 = document.getElementById('mode-btn-7v7');
+  const btn11 = document.getElementById('mode-btn-11v11');
+  if(btn7){
+    btn7.style.borderColor = gameMode==='7v7' ? 'var(--gold)' : 'var(--b1)';
+    btn7.style.background  = gameMode==='7v7' ? 'rgba(240,192,40,.15)' : 'var(--dark)';
+    btn7.style.color       = gameMode==='7v7' ? 'var(--gold)' : 'var(--muted)';
+  }
+  if(btn11){
+    btn11.style.borderColor = gameMode==='11v11' ? '#18c860' : 'var(--b1)';
+    btn11.style.background  = gameMode==='11v11' ? 'rgba(24,200,96,.15)' : 'var(--dark)';
+    btn11.style.color       = gameMode==='11v11' ? '#18c860' : 'var(--muted)';
+  }
+}
 function syncHUD(){
   updateLiveStatus();
   ['0','1'].forEach(i=>{
@@ -2382,6 +2398,11 @@ function renderLeague(){
   const played=leagueState.fixtures.filter(f=>f.played);
   const hasNPC=pending.some(f=>!isLeagueHumanFix(f));
   let h='<div>';
+  // ── Sélecteur de mode ──────────────────────────────────────────────
+  h+='<div style="display:flex;gap:6px;margin-bottom:8px">'+
+    '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
+    '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
+    '</div>';
   if(!pending.length){
     const champ=leagueState.teams.find(t=>t.id===sorted[0].id);
     h+='<div style="background:rgba(240,192,40,.1);border:1px solid rgba(240,192,40,.28);border-radius:8px;padding:10px;text-align:center;margin-bottom:8px">'+
@@ -3646,6 +3667,11 @@ function renderCup(){
   if(!cupState.format?.type){cupState=null;localStorage.removeItem('footsim7v7_cup');renderCupSetup(el);return;}
 
   let h='<div style="padding:4px">';
+  // ── Sélecteur de mode ────────────────────────────────────────────
+  h+='<div style="display:flex;gap:6px;margin-bottom:8px">'+
+    '<button onclick="setGameMode(\'7v7\');renderCup()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
+    '<button onclick="setGameMode(\'11v11\');renderCup()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
+    '</div>';
   if(cupState.phase!=='done') h+=`<button class="btn" style="font-size:10px;margin-bottom:6px;width:100%;justify-content:center" onclick="openCupTeamEditor()">✏️ Modifier les équipes</button>`;
   if(cupState.phase==='done'&&cupState.champion!==null){
     const ct=cupState.teams.find(t=>t.id===cupState.champion);
