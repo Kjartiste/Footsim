@@ -15,14 +15,17 @@ function roleTarget(ti,p,pi){
   const runFreq=myStrat.runFreq||1;
 
   // Organic wander — reduced amplitude to stop trembling, keep feeling alive
-  const freedom=p.pos==='GB'?0:p.pos==='ATT'||p.pos==='MO'?1.0:p.pos==='MC'||p.pos==='MDC'?0.7:p.pos==='AG'||p.pos==='AD'?0.9:0.5;
+  const freedom=p.pos==='GB'?0:
+    p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'?1.0:
+    p.pos==='AG'||p.pos==='AD'||p.pos==='MOG'||p.pos==='MOD'?0.9:
+    p.pos==='MC'||p.pos==='MDC'||p.pos==='MDC2'||p.pos==='MCD'||p.pos==='MCG'?0.7:0.5;
   const wX=Math.sin(now*p.wSpeed*0.3+p.wPhaseX)*freedom;
   const wY=Math.cos(now*p.wSpeed*0.3*0.83+p.wPhaseY)*freedom;
 
   // GK — hug goal line, track predicted ball Y
   if(p.pos==='GB'){
     const pred=ballPredict(.4);
-    const ballNear=ti===0?b.x<25:b.x>WW-25;
+    const ballNear=ti===0?b.x<WW*0.33:b.x>WW*0.67;
     // High-pressing teams have a sweeper-keeper who steps off the line more
     // (BUG corrigé : G.teams[ti].form n'a jamais existé — form n'était jamais
     // assigné nulle part, donc is133/is322 étaient TOUJOURS false et le
@@ -41,7 +44,10 @@ function roleTarget(ti,p,pi){
   // Player role: 'atk' increases run frequency, 'def' suppresses it
   const pRole=(G.playerRoles[ti]||[])[pi]||'normal';
   const roleRunMod=pRole==='atk'?1.6:pRole==='def'?0.2:1.0;
-  if(isAtk&&!p.hasBall&&p.runT<=0&&p.runCool<=0&&(p.pos==='ATT'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD'||p.pos==='MC')){
+  if(isAtk&&!p.hasBall&&p.runT<=0&&p.runCool<=0&&(
+    p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||
+    p.pos==='AG'||p.pos==='AD'||p.pos==='MOG'||p.pos==='MOD'||
+    p.pos==='MC'||p.pos==='MCD'||p.pos==='MCG')){
     const ballAhead=ti===0?b.x>p.x-5:b.x<p.x+5;
     const phaseOK=G.phase==='ATTACK'||G.phase==='TRANSITION'||G.phase==='BUILDUP';
     if(phaseOK&&ballAhead&&Math.random()<0.35*runFreq*roleRunMod){
@@ -79,8 +85,8 @@ function roleTarget(ti,p,pi){
           return{x:clamp(b.x+fwd*rng(2,5)+wX*.4,2,WW-2),y:clamp(b.y+curve+wY*.6,1,WH-1)};
         }
         // Off-ball: mids push up with midPush; attackers hold attDepth higher
-        const isAttacker=p.pos==='ATT'||p.pos==='MO';
-        const isMid=p.pos==='MC'||p.pos==='MDC';
+        const isAttacker=p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD';
+        const isMid=p.pos==='MC'||p.pos==='MDC'||p.pos==='MDC2'||p.pos==='MCD'||p.pos==='MCG';
         const depthBonus=isAttacker?attDepth:isMid?attDepth*midPush*.4:0;
         return{x:clamp(fb.x+fwd*(rng(0,4)+depthBonus)+wX,2,WW-2),y:clamp(fb.y+wY,1,WH-1)};
       }
@@ -100,7 +106,7 @@ function roleTarget(ti,p,pi){
             :clamp(PCY*(1.45+(mogWidth-1)*0.12)+cycle*2+wY*.5,PCY*1.4,WH-1);
           return{x:clamp(oppGoalX+boxPush+wX*.5,2,WW-2), y:sideY};
         }
-        if(p.pos==='ATT'||p.pos==='MO'){
+        if(p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD'){
           // Strikers prowl in box — direct tactics push deeper into box
           const cycle=Math.sin(now*1.2+p.wPhaseX);
           const boxPush=ti===0?-rng(2,16)-attDepth:rng(2,16)+attDepth;
@@ -124,22 +130,22 @@ function roleTarget(ti,p,pi){
         if(p.hasBall){
           return{x:clamp(b.x+fwd*rng(5,11)+wX*.4,2,WW-2),y:clamp(b.y+wY*1.2,2,WH-2)};
         }
-        if(p.pos==='ATT'||p.pos==='MO'){
+        if(p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD'){
           // Counter-attack: depth-tactic attackers run further into space
           const counterDepth=ti===0?-rng(4,20)-attDepth*1.5:rng(4,20)+attDepth*1.5;
           return{x:clamp(oppGoalX+counterDepth+wX,2,WW-2),
-                 y:clamp(PCY+rng(-10,10)+wY,2,WH-2)};
+                 y:clamp(PCY+rng(-WH*0.2,WH*0.2)+wY,2,WH-2)};
         }
         return{x:clamp(fb.x+fwd*(rng(2,7)*midPush)+wX,2,WW-2),y:clamp(fb.y+wY*1.2,2,WH-2)};
       }
       case 'CORNER':
         if(p.pos==='GB'||p.pos==='DD'||p.pos==='DG')return{x:fb.x,y:fb.y};
         return{x:clamp(oppGoalX+(ti===0?-rng(1,12):rng(1,12))+wX*.8,2,WW-2),
-               y:clamp(PCY+rng(-7,7)+wY*1.2,2,WH-2)};
+               y:clamp(PCY+rng(-WH*0.14,WH*0.14)+wY*1.2,2,WH-2)};
       case 'FREEKICK':
-        if(p.pos==='ATT'||p.pos==='MO')
+        if(p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD')
           return{x:clamp(oppGoalX+(ti===0?-rng(2,12):rng(2,12))+wX,2,WW-2),
-                 y:clamp(PCY+rng(-7,7)+wY,2,WH-2)};
+                 y:clamp(PCY+rng(-WH*0.14,WH*0.14)+wY,2,WH-2)};
         return{x:clamp(fb.x+fwd*rng(2,5)+wX,2,WW-2),y:clamp(fb.y+wY,2,WH-2)};
       default:return{x:fb.x+wX*.7,y:fb.y+wY*.7};
     }
@@ -342,24 +348,28 @@ function roleTarget(ti,p,pi){
         // ══════════════════════════════════════════════════
         // FORME DÉFENSIVE selon position
         // ══════════════════════════════════════════════════
-        if(p.pos==='DC'){
-          // Même logique que DD/DG : bloc bas (lineDepth<0) = ancrage fort
-          // sur lineAnchor, quasi indépendant de la position du ballon.
+        if(p.pos==='DC'||p.pos==='DCD'||p.pos==='DCG'){
           const followBallDC = clamp(0.28 + lineDepth*0.20, 0.05, 0.55);
           const tx = lerp(lineAnchor, pred.x, followBallDC + effectivePress*0.18);
-          // En 222 : les deux DC restent serrés au centre (pas d'écart latéral)
           const is222dc = teams[ti].strat==='222';
-          // compactPull (curseur Largeur) : un bloc resserré tire les DC vers
-          // l'axe central (PCY) au lieu de suivre le ballon en Y ; un bloc
-          // étiré leur laisse davantage suivre pred.y latéralement.
           const dcCentral = clamp(0.35+compactPull*0.7, 0.05, 0.95);
           const dcY = is222dc
-            ? lerp(p.y, PCY, 0.25)          // restent centraux
+            ? lerp(p.y, PCY, 0.25)
             : lerp(p.y, lerp(pred.y,PCY,dcCentral), 0.35);
           return{x:clamp(tx+rolePushFwd*fwd+wX*.3,2,WW-2),
                  y:clamp(dcY+wY*.25,2,WH-2)};
         }
-        if(p.pos==='MC'||p.pos==='MDC'){
+        // LB/RB : comme DD/DG
+        if(p.pos==='DD'||p.pos==='DG'||p.pos==='LB'||p.pos==='RB'){
+          const followBall = clamp(0.25 + lineDepth*0.18, 0.05, 0.50);
+          const tx = lerp(lineAnchor, pred.x, followBall + effectivePress*0.18);
+          const ballCentrality = 1 - Math.abs(G.ball.y - PCY) / PCY;
+          const centralBias = clamp((ballInDanger?0.80:0.50+ballCentrality*0.20)+compactPull*0.5, 0.10, 0.95);
+          const ty = lerp(p.y, PCY, centralBias*0.5);
+          return{x:clamp(tx+rolePushFwd*fwd+wX*.25,2,WW-2),
+                 y:clamp(ty+wY*.25,2,WH-2)};
+        }
+        if(p.pos==='MC'||p.pos==='MDC'||p.pos==='MDC2'||p.pos==='MCD'||p.pos==='MCG'){
           if(ballInPressZone && press > 0.45){
             const af = 0.22+press*0.32;
             return{x:clamp(lerp(p.x,pred.x,af)+rolePushFwd*fwd+wX*.25,2,WW-2),
@@ -371,7 +381,7 @@ function roleTarget(ti,p,pi){
           return{x:clamp(tx+rolePushFwd*fwd+wX*.4,2,WW-2),
                  y:clamp(lerp(p.y,midY,.28)+wY*.5,2,WH-2)};
         }
-        if(p.pos==='MOG'||p.pos==='MOD'){
+        if(p.pos==='MOG'||p.pos==='MOD'||p.pos==='MO'||p.pos==='MCG'||p.pos==='MCD'){
           const is222=teams[ti].strat==='222';
           if(is222){
             const defX=lerp(lineAnchor,pred.x,0.3+effectivePress*0.15);
@@ -382,7 +392,7 @@ function roleTarget(ti,p,pi){
           if(effectivePress>0.2){return{x:clamp(lerp(fb.x,pred.x,0.35+effectivePress*0.25)+rolePushFwd*fwd+wX*.3,2,WW-2),y:clamp(lerp(p.y,pred.y,.3)+wY*.4,2,WH-2)};}
           return{x:clamp(fb.x+rolePushFwd*fwd+wX*.5,2,WW-2),y:clamp(fb.y+wY*.6,2,WH-2)};
         }
-        if(p.pos==='ATT'||p.pos==='MO'){
+        if(p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD'){
           if(ballInPressZone&&press>0.3){const af=0.25+press*0.45;return{x:clamp(lerp(p.x,pred.x,af)+wX*.15,2,WW-2),y:clamp(lerp(p.y,pred.y,af)+wY*.15,2,WH-2)};}
           if(effectivePress>0.2){return{x:clamp(lerp(fb.x,pred.x,0.35+effectivePress*0.25)+rolePushFwd*fwd+wX*.3,2,WW-2),y:clamp(lerp(p.y,pred.y,.3)+wY*.4,2,WH-2)};}
           return{x:clamp(fb.x+rolePushFwd*fwd+wX*.5,2,WW-2),y:clamp(fb.y+wY*.6,2,WH-2)};

@@ -63,6 +63,19 @@ function logEvent(msg,col='#18c860'){
 //    joue vite, qui tente sa chance partout).
 //  • Défense  → sorts de soutien/réactifs beaucoup plus fréquents (l'équipe
 //    joue la carte prudente/technique), sorts offensifs moins fréquents.
+
+// Normaliser les postes 11v11 vers catégories IA
+function _posCategory(pos){
+  if(!pos) return 'mid';
+  if(pos==='GB') return 'gk';
+  if(['DC','DCD','DCG','DD','DG','LB','RB'].includes(pos)) return 'def';
+  if(['MDC','MDC2'].includes(pos)) return 'dmc';
+  if(['MC','MCD','MCG'].includes(pos)) return 'mid';
+  if(['MO','MOG','MOD','MCD','MCG'].includes(pos)) return 'mo';
+  if(['ATT','ATT2','AG','AD'].includes(pos)) return 'att';
+  return 'mid';
+}
+
 function mentalitySpellMult(ti,isAtkSpell){
   const mode=G.tacMode?G.tacMode[ti]:null;
   if(mode==='attack') return isAtkSpell?1.55:0.75;
