@@ -13,11 +13,33 @@ window.onerror=function(msg,src,line,col,err){
 // ═══════════════════════════════════════════════════════════
 // WORLD: 75m × 50m (7-a-side)
 // ═══════════════════════════════════════════════════════════
-const WW=75,WH=50;
-const PCX=WW/2,PCY=WH/2;
-const GY1=PCY-3.0,GY2=PCY+3.0;   // goal = 6m
-const PSX=9;                        // penalty spot distance
-const PA_W=12,PA_H=26;             // penalty area
+// ═══════════════════════════════════════════════════════════
+// WORLD: dimensions terrain (modifiables selon le mode)
+// Valeurs par défaut : 7v7 (75×50)
+// ═══════════════════════════════════════════════════════════
+let WW=75,WH=50;
+let PCX=WW/2,PCY=WH/2;
+let GY1=PCY-3.0,GY2=PCY+3.0;
+let PSX=9;
+let PA_W=12,PA_H=26;
+
+// Recalculer toutes les constantes dérivées après changement de mode
+function _recalcTerrainConstants(){
+  PCX=WW/2; PCY=WH/2;
+  GY1=PCY-3.0; GY2=PCY+3.0;
+}
+
+function _applyMode7v7(){
+  WW=75; WH=50; PSX=9; PA_W=12; PA_H=26;
+  GY1=PCY-3.0; GY2=PCY+3.0;
+  _recalcTerrainConstants();
+}
+
+function _applyMode11v11(){
+  WW=105; WH=68; PSX=11; PA_W=16.5; PA_H=40.3;
+  GY1=PCY-3.66; GY2=PCY+3.66; // but 7.32m
+  _recalcTerrainConstants();
+}
 
 // Canvas scale helpers (set on resize)
 let _s=1,_ox=0,_oy=0;
@@ -576,14 +598,28 @@ function _attackEdge(ati,dti){
 function applyFormationRoles(ti){
   const T=teams[ti];
   if(!T||!T.players?.length) return;
+
+  const is11v11 = gameMode === '11v11';
+  const expectedSize = is11v11 ? 11 : 7;
+
+  // Assigner les postes selon la formation si l'équipe a le bon nombre de joueurs
+  const strat11 = is11v11 ? (T.strat11||'442') : null;
+  if(is11v11 && strat11 && FORMS_11V11[strat11] && T.players.length === 11){
+    const positions = FORMS_11V11[strat11];
+    T.players.forEach((p, i) => {
+      if(p && positions[i]) p.pos = positions[i];
+    });
+  }
+
+  // S'assurer qu'il y a exactement 1 gardien
   const gbCount=T.players.filter(p=>p&&p.pos==='GB').length;
   if(gbCount===0){
-    T.players[0].pos='GB'; // aucun gardien désigné → le 1er joueur en tient lieu
+    T.players[0].pos='GB';
   } else if(gbCount>1){
     let seen=false;
     T.players.forEach(p=>{
       if(p&&p.pos==='GB'){
-        if(seen) p.pos='DC'; // gardiens en trop → replacés en défenseur central
+        if(seen) p.pos = is11v11 ? 'DC' : 'DC';
         seen=true;
       }
     });
@@ -594,30 +630,31 @@ function formBase(ti,pi){
   const T=teams[ti];
   const players=T?.players||[];
   const p=players[pi];
+  const is11v11 = gameMode === '11v11';
+  const posCoords = is11v11 ? POS_COORDS_11V11 : POS_COORDS;
+
   let f;
-  if(p && p.pos && POS_COORDS[p.pos]){
-    const base=POS_COORDS[p.pos];
-    // Poste partagé par plusieurs joueurs (ex: 3 DC) → on les étale
-    // symétriquement en Y autour du point de base de ce poste, pour qu'ils
-    // ne se superposent pas tous exactement au même endroit.
+  if(p && p.pos && posCoords[p.pos]){
+    const base=posCoords[p.pos];
+    // Étaler les joueurs du même poste en Y
     const sameIdx=[];
     for(let i=0;i<players.length;i++){ if(players[i]&&players[i].pos===p.pos) sameIdx.push(i); }
     const n=sameIdx.length;
     let fy=base[1];
     if(n>1){
       const k=sameIdx.indexOf(pi);
-      const spread=Math.min(0.34,0.12*n);           // largeur totale d'étalement
-      const t=(k-(n-1)/2)/Math.max(1,(n-1));        // -0.5..+0.5
+      const spread=Math.min(0.34,0.10*n);
+      const t=(k-(n-1)/2)/Math.max(1,(n-1));
       fy=Math.max(.06,Math.min(.94, base[1]+t*spread*2));
     }
     f=[base[0],fy];
   } else {
-    // Fallback : poste invalide/manquant → ancien comportement par slot fixe
-    f=(FORMS[T?.strat]||FORMS['321'])[pi]||[.5,.5];
+    // Fallback
+    const forms = is11v11 ? FORMS_11V11 : FORMS;
+    const defaultForm = is11v11 ? '442' : '321';
+    f=(forms[T?.strat||T?.strat11]||forms[defaultForm])[pi]||[.5,.5];
   }
   const fx=ti===0?f[0]:1-f[0];
-  // Apply tactical 'width' multiplier: stretch or compress the formation around the midline
-  const w=strat(ti).width||1;
   const fy2=PCY+(f[1]-.5)*WH*w;
   return{x:fx*WW, y:clamp(fy2,2,WH-2)};
 }
@@ -671,4 +708,143 @@ function ballPredict(timeAhead){
   const decay=Math.pow(BALL_FRIC,timeAhead*60);
   const meanV=(1-decay)/(1-BALL_FRIC)/60; // closed-form-ish integral approximation
   return{x:b.x+b.vx*meanV,y:b.y+b.vy*meanV};
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODE DE JEU — Sélecteur global
+// ═══════════════════════════════════════════════════════════
+
+// Exposé sur window pour être accessible depuis index.html et tous les scripts
+window.gameMode = '7v7';
+
+function setGameMode(mode){
+  window.gameMode = mode;
+  gameMode = mode;
+  if(mode === '11v11'){
+    _applyMode11v11();
+  } else {
+    _applyMode7v7();
+  }
+  if(typeof resize === 'function') resize();
+  if(typeof updateModeBtns === 'function') updateModeBtns();
+}
+
+function _applyMode7v7(){
+  // Restaurer les constantes 7v7 originales
+  Object.assign(window, CONSTANTS_7V7);
+}
+
+function _applyMode11v11(){
+  // Appliquer les constantes 11v11
+  Object.assign(window, CONSTANTS_11V11);
+}
+
+// ── Constantes 7v7 (originales) ──────────────────────────────────────
+const CONSTANTS_7V7 = {
+  FIELD_W: 75, FIELD_H: 50,
+  GOAL_W: 6, PS_X: 9,
+  PA_W: 12, PA_H: 26,
+  TEAM_SIZE: 7, BENCH_SIZE: 5,
+  MAX_SUBS: 99, MATCH_DURATION: 90,
+};
+
+// ── Constantes 11v11 ──────────────────────────────────────────────────
+const CONSTANTS_11V11 = {
+  FIELD_W: 105, FIELD_H: 68,
+  GOAL_W: 7.32, PS_X: 11,
+  PA_W: 16.5, PA_H: 40.3,
+  TEAM_SIZE: 11, BENCH_SIZE: 7,
+  MAX_SUBS: 3, MATCH_DURATION: 90,
+};
+
+// ── Formations 11v11 ─────────────────────────────────────────────────
+// Format : liste de positions pour les 11 joueurs [GB, DEF×n, MID×n, ATT×n]
+
+const STRATS_11V11 = [
+  {id:'442',   n:'4-4-2',         d:'Classique équilibré',             atk:1.00,def:1.00,press:.50,width:1.00,attDepth:0,  midPush:1.00,runFreq:1.00,col:'#1878e8'},
+  {id:'433',   n:'4-3-3',         d:'Possession et pressing haut',     atk:1.15,def:.90, press:.70,width:1.15,attDepth:2,  midPush:1.20,runFreq:1.25,col:'#f0c028'},
+  {id:'4231',  n:'4-2-3-1',       d:'Double pivot, MO créatif',        atk:1.10,def:1.05,press:.55,width:1.05,attDepth:1,  midPush:1.30,runFreq:1.15,col:'#e02030'},
+  {id:'352',   n:'3-5-2',         d:'3 défenseurs, milieu dense',      atk:1.05,def:1.10,press:.45,width:.90, attDepth:0,  midPush:1.25,runFreq:1.10,col:'#18c860'},
+  {id:'4141',  n:'4-1-4-1',       d:'Pivot défensif, bloc compact',    atk:.90, def:1.20,press:.35,width:.85, attDepth:-2, midPush:.80, runFreq:.90, col:'#9c27b0'},
+  {id:'532',   n:'5-3-2',         d:'Bloc bas défensif',               atk:.85, def:1.35,press:.20,width:.80, attDepth:-3, midPush:.70, runFreq:.75, col:'#607d8b'},
+  {id:'4312',  n:'4-3-1-2',       d:'Trident offensif',                atk:1.20,def:.88, press:.65,width:1.10,attDepth:3,  midPush:1.40,runFreq:1.40,col:'#ff5722'},
+  {id:'343',   n:'3-4-3',         d:'Ultra offensif, risqué',          atk:1.30,def:.80, press:.80,width:1.20,attDepth:4,  midPush:1.50,runFreq:1.60,col:'#e91e63'},
+  {id:'4411',  n:'4-4-1-1',       d:'Milieu box-to-box, 1 attaquant',  atk:.95, def:1.08,press:.50,width:.95, attDepth:0,  midPush:1.10,runFreq:1.05,col:'#00bcd4'},
+  {id:'541',   n:'5-4-1',         d:'Bunker défensif',                 atk:.75, def:1.45,press:.15,width:.75, attDepth:-4, midPush:.60, runFreq:.70, col:'#795548'},
+];
+
+// ── Positions 11v11 par poste ────────────────────────────────────────
+// [profondeur 0→1 (0=but propre, 1=but adverse), côté 0→1]
+const POS_COORDS_11V11 = {
+  GB:   [.06,.50],
+  DC:   [.22,.50],
+  DCD:  [.22,.63],
+  DCG:  [.22,.37],
+  DD:   [.22,.85],
+  DG:   [.22,.15],
+  LB:   [.22,.85], // latéral bas (synonyme DD)
+  RB:   [.22,.15], // latéral bas (synonyme DG)
+  MDC:  [.40,.50],
+  MDC2: [.40,.38],
+  MC:   [.50,.50],
+  MCD:  [.50,.65],
+  MCG:  [.50,.35],
+  MOG:  [.62,.18],
+  MOD:  [.62,.82],
+  MO:   [.62,.50],
+  AG:   [.78,.15],
+  AD:   [.78,.85],
+  ATT:  [.80,.50],
+  ATT2: [.80,.40],
+};
+
+// ── Positions de base pour chaque formation 11v11 ─────────────────────
+// Liste ordonnée : [GB, puis tous les autres dans l'ordre formation]
+const FORMS_11V11 = {
+  '442':  ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT'],
+  '433':  ['GB','DD','DC','DC','DG','MC','MC','MC','AG','ATT','AD'],
+  '4231': ['GB','DD','DC','DC','DG','MDC','MDC','MO','MOG','MOD','ATT'],
+  '352':  ['GB','DC','DC','DC','MC','MC','MC','MOG','MOD','ATT','ATT'],
+  '4141': ['GB','DD','DC','DC','DG','MDC','MC','MC','MO','MC','ATT'],
+  '532':  ['GB','DD','DC','DC','DC','DG','MC','MC','MC','ATT','ATT'],
+  '4312': ['GB','DD','DC','DC','DG','MC','MC','MC','MO','ATT','ATT'],
+  '343':  ['GB','DC','DC','DC','MC','MC','MC','MC','AG','ATT','AD'],
+  '4411': ['GB','DD','DC','DC','DG','MC','MC','MC','MC','MO','ATT'],
+  '541':  ['GB','DD','DC','DC','DC','DG','MC','MC','MC','MC','ATT'],
+};
+
+// ── Stats niveau 11v11 District (très bas) ────────────────────────────
+// Les potes du dimanche ont des stats entre 0 et 10
+const LEVEL_STAT_RANGES_11V11 = {
+  'dh_4': {min:0,  max:8},    // Dimanche matin, chaussures de ville
+  'dh_3': {min:2,  max:12},
+  'dh_2': {min:5,  max:16},
+  'dh_1': {min:8,  max:20},
+  dh:     {min:3,  max:12},
+  r3:     {min:12, max:28},
+  r2:     {min:22, max:40},
+  r1:     {min:32, max:52},
+  d3:     {min:45, max:62},
+  d2:     {min:55, max:72},
+  d1:     {min:68, max:88},
+};
+
+// ── État global du mode de substitution 11v11 ─────────────────────────
+const G_11V11 = {
+  subs_used: [0, 0],  // changements utilisés par équipe
+  max_subs: 3,
+};
+
+function resetSubs11v11(){
+  G_11V11.subs_used = [0, 0];
+}
+
+function canSub11v11(ti){
+  return G_11V11.subs_used[ti] < G_11V11.max_subs;
+}
+
+function doSub11v11(ti){
+  if(!canSub11v11(ti)) return false;
+  G_11V11.subs_used[ti]++;
+  return true;
 }

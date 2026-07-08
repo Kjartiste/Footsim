@@ -1288,10 +1288,8 @@ function syncHUD(){
     if(scoreEl)scoreEl.style.color=T.color;
   });
   const f0=document.getElementById('ftag0'),f1=document.getElementById('ftag1');
-  if(f0)f0.textContent=(gameMode==='11v11'?(teams[0].strat11||'442'):(strat(0).id||'321')).toUpperCase();
-  if(f1)f1.textContent=(gameMode==='11v11'?(teams[1].strat11||'442'):(strat(1).id||'321')).toUpperCase();
-  // Compteur de changements en 11v11
-  if(gameMode==='11v11'){
+  // Compteur de changements en 11v11 — géré ci-dessous avec _gm
+  if(false){
     const s0=document.getElementById('ftag0'),s1=document.getElementById('ftag1');
     const subs0 = G_11V11.subs_used[0], subs1 = G_11V11.subs_used[1];
     if(s0) s0.title = `Changements : ${subs0}/3`;
@@ -2108,7 +2106,7 @@ function createLeague(teamCount,savedIdxs){
   }
   leagueState={teams:allT,playerStats:{},standings:allT.map(t=>({id:t.id,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0})),
     fixtures:genFixtures(allT),currentFix:null,
-    gameMode: gameMode}; // sauvegarder le mode
+    gameMode: window.gameMode}; // sauvegarder le mode
   leagueSetupMode=false;saveLeague();renderLeague();
 }
 
@@ -2132,8 +2130,8 @@ function playLeagueMatch(){
   teams[1]=deepCloneTeam(aD);
   _lastNav='league';resetMatch();G.leagueMode=true;
   // Restaurer le mode de jeu de la ligue
-  if(leagueState.gameMode && leagueState.gameMode !== gameMode){
-    setGameMode(leagueState.gameMode);
+  if(leagueState.window.gameMode && leagueState.window.gameMode !== window.gameMode){
+    setGameMode(leagueState.window.gameMode);
   }
   nav('match');syncHUD();renderTB(0);renderTB(1);
   const hN=leagueState.teams.find(t=>t.id===fix.home)?.name||hD.name;
