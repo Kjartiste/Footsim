@@ -430,7 +430,7 @@ function renderProfileScreen(){
   if(!ov){
     ov = document.createElement('div');
     ov.id = 'profile-screen';
-    ov.style.cssText = 'position:fixed;inset:0;background:var(--bg,#050e1a);z-index:9999;overflow-y:auto;display:flex;align-items:center;justify-content:center;';
+    ov.style.cssText = 'position:fixed;inset:0;background:#050e1a;z-index:99999;overflow-y:auto;display:flex;align-items:center;justify-content:center;';
     document.body.appendChild(ov);
   }
 

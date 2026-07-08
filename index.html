@@ -482,15 +482,23 @@ input[type=range]:focus{outline:none}
 <script src="ui.js"></script>
 <script src="save.js"></script>
 <script>
-// Démarrage — afficher l'écran de profil si pas de profil actif
-(function(){
-  loadProfiles();
-  if(!activeProfileId || !profiles[activeProfileId]){
-    renderProfileScreen();
-  } else {
-    nav('setup');
+// Démarrage
+document.addEventListener('DOMContentLoaded', function(){
+  try {
+    loadProfiles();
+    if(!activeProfileId || !profiles[activeProfileId]){
+      renderProfileScreen();
+    } else {
+      nav('setup');
+    }
+  } catch(e){
+    console.error('Erreur démarrage:', e);
+    // Fallback : afficher quand même l'écran de profil
+    setTimeout(function(){
+      try { renderProfileScreen(); } catch(e2){ console.error(e2); }
+    }, 300);
   }
-})();
+});
 </script>
 </body>
 </html>
