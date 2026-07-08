@@ -104,7 +104,17 @@ function aiDecide(dt=0.016){
     setPhase('GOALKICK');
     return;
   }
-  const opp=pick(byR(dti,'DD','DC','DG','MDC'))||pick(dp);
+  // En 11v11, inclure les postes supplémentaires dans les sélections
+  const defRoles = gameMode==='11v11'
+    ? ['DD','DC','DG','MDC','MDC2','DCD','DCG','LB','RB']
+    : ['DD','DC','DG','MDC'];
+  const midRoles = gameMode==='11v11'
+    ? ['MC','MDC','MO','MCD','MCG','MOG','MOD']
+    : ['MC','MDC','MO','MOG','MOD'];
+  const attRoles = gameMode==='11v11'
+    ? ['ATT','MO','AG','AD','ATT2']
+    : ['ATT','MO','MOG','MOD'];
+  const opp=pick(byR(dti,...defRoles))||pick(dp);
   const gk=byR(dti,'GB')[0];
   const oppGoalX=ati===0?WW:0;
   const fwd=ati===0?1:-1;
@@ -200,6 +210,32 @@ function aiDecide(dt=0.016){
     });
   }
 
+  // ── Substitutions IA en 11v11 ────────────────────────────────────────
+  // L'IA gère ses 3 changements intelligemment : sort les joueurs épuisés
+  // ou blessés si elle a encore des changements disponibles
+  if(gameMode==='11v11' && G.phase !== 'KICKOFF' && G.half >= 1 && G.minute > 20){
+    [0,1].forEach(function(ti){
+      // IA seulement (pas l'équipe du joueur humain en mode carrière)
+      if(!canSub11v11(ti)) return;
+      // Chercher un joueur très fatigué ou légèrement blessé
+      const outIdx = teams[ti].players.findIndex(function(p, i){
+        if(!p || p.pos==='GB' || p.subbedOut) return false;
+        const tired = p.hp < 20; // très fatigué
+        const lightInj = p.injLevel === 1 && G.minute > 60; // blessé léger en 2e mi
+        return tired || lightInj;
+      });
+      if(outIdx < 0) return;
+      const freshBi = teams[ti].bench.findIndex(function(b){
+        return b && b.onBench && !b.subbedOut && (b.injLevel||0) === 0 && b.hp > 60;
+      });
+      if(freshBi < 0) return;
+      // Probabilité faible pour éviter spam (1 substitution max toutes les ~30 secondes)
+      if(Math.random() < dt * 0.03){
+        doSub(ti, outIdx, freshBi, 'bench');
+      }
+    });
+  }
+
   // DD/DG — montées latérales (1x par frame max via dt pour éviter le spam)
   if(G.phase==='ATTACK'||G.phase==='BUILDUP'){
     [0,1].forEach(t=>{
@@ -245,10 +281,16 @@ function aiDecide(dt=0.016){
       if(spell&&SUPPORT_SPELLS.has(spell.id)){doSpell(carrier,ati,dti,spell,oppGoalX);return;}
       const r=Math.random();
       if(r<.22){
-        const mid=pick(byR(ati,'MC','MDC','MO','MOG','MOD').filter(p=>!p.hasBall&&!p.stunT));
+        const midPool = gameMode==='11v11'
+          ? byR(ati,'MC','MDC','MO','MCD','MCG','MDC2').filter(p=>!p.hasBall&&!p.stunT)
+          : byR(ati,'MC','MDC','MO','MOG','MOD').filter(p=>!p.hasBall&&!p.stunT);
+        const mid=pick(midPool);
         if(mid){kickToP(carrier,mid,1.5);logEvent(`${carrier.name} → ${mid.name}`,teams[ati].color+'aa');}
       } else if(r<.38){
-        const fwdP=pick(byR(ati,'ATT','MO','MOG','MOD'));
+        const fwdPool = gameMode==='11v11'
+          ? byR(ati,'ATT','ATT2','MO','AG','AD')
+          : byR(ati,'ATT','MO','MOG','MOD');
+        const fwdP=pick(fwdPool);
         if(fwdP){kickToP(carrier,fwdP,2.0);logEvent(`Long ballon pour ${fwdP.name} !`,teams[ati].color+'cc');setPhase('ATTACK');}
       } else if(r<.52){
         setPhase('ATTACK');
