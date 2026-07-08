@@ -5003,38 +5003,112 @@ function confirmStartManager(){
 function renderCareerDirector(el){
   const C = careerV2;
   const club = C.club;
-  const region = WORLDS.getRegion('panthalassa',club.region);
+  const region = WORLDS.getRegion(C.nation||'panthalassa', club.region);
   const pyramid = PANTHALASSA.pyramid.find(function(p){return p.id===club.level;});
+  const ss = C.season_stats;
+  const budget = club.budget;
+  const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
   const tabs = ['overview','squad','mercato','finances','infra','staff','calendar'];
-  const tabLabels = {overview:'🏠 Vue',squad:'👥 Effectif',mercato:'🔄 Mercato',
-    finances:'💰 Finances',infra:'🏗️ Infra',staff:'👔 Staff',calendar:'📅 Calendrier'};
+  const tabLabels = {
+    overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato',
+    finances:'💰 Finances', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier'
+  };
+
   let tabBtns = '';
   tabs.forEach(function(tab){
-    tabBtns += '<button class="btn" onclick="renderCareerDirectorTab(\'' + tab + '\')" id="cdtab-' + tab + '" style="font-size:9px;padding:3px 8px;flex:1;min-width:60px">' + tabLabels[tab] + '</button>';
+    tabBtns += '<button id="cdtab-'+tab+'" onclick="renderCareerDirectorTab(\''+tab+'\')"'
+      + ' style="flex:1;padding:10px 4px;background:var(--dark);border:none;border-bottom:3px solid transparent;'
+      + 'color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap">'
+      + tabLabels[tab]+'</button>';
   });
 
-  let html = '<div style="padding:8px;max-width:700px;margin:0 auto">';
-  html += '<div style="background:var(--panel);border:1px solid ' + (region && region.color ? region.color : 'var(--b1)') + ';border-radius:10px;padding:10px;margin-bottom:10px">';
-  html += '<div style="display:flex;align-items:center;gap:10px">';
-  html += '<div style="width:36px;height:36px;border-radius:8px;background:' + club.color + ';display:flex;align-items:center;justify-content:center;font-size:18px">🏟</div>';
-  html += '<div>';
-  html += '<div style="font-size:16px;font-weight:900;color:var(--fg)">' + club.name + '</div>';
-  html += '<div style="font-size:9px;color:var(--muted)">' + (region ? region.name : '') + ' · ' + (pyramid ? pyramid.name : club.level) + ' · Saison ' + C.season + '</div>';
-  html += '</div>';
-  html += '<div style="margin-left:auto;text-align:right">';
-  html += '<div style="font-size:14px;font-weight:900;color:#18c860">🪙 ' + _fmtMoney(club.budget) + '</div>';
-  html += '<div style="font-size:9px;color:var(--muted)">Mercato : ' + _fmtMoney(club.transferBudget) + '</div>';
-  html += '</div></div></div>';
-  html += '<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">' + tabBtns + '</div>';
-  html += '<div id="career-director-content"></div>';
-  html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">';
-  html += '<button class="btn btng" onclick="advanceCareerWeek()" style="flex:1;font-size:10px">⏩ Avancer</button>';
-  html += '<button class="btn" onclick="abandonCareerV2()" style="font-size:9px;color:#e06060;border-color:#e06060">✕ Abandonner</button>';
+  let html = '<div style="min-height:100vh;background:var(--bg,#060e1a);display:flex;flex-direction:column">';
+
+  // ── Header ──────────────────────────────────────────────────────────
+  html += '<div style="background:linear-gradient(135deg,var(--dark) 0%,'+(region?region.color+'22':'#1a2a3a')+' 100%);'
+    + 'border-bottom:2px solid '+(region?region.color:'var(--b1)')+';padding:16px 20px">';
+  html += '<div style="display:flex;align-items:center;gap:14px">';
+  // Logo club
+  html += '<div style="width:52px;height:52px;border-radius:12px;background:'
+    + club.color+';display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;'
+    + 'box-shadow:0 4px 12px '+club.color+'44">🏟</div>';
+  // Infos club
+  html += '<div style="flex:1;min-width:0">';
+  html += '<div style="font-size:22px;font-weight:900;color:var(--fg);letter-spacing:.5px">'+club.name+'</div>';
+  html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">';
+  html += (region?region.name:'?')+' · '+(pyramid?pyramid.name:club.level)+' · Saison '+C.season;
+  html += ' · Semaine '+C.week;
   html += '</div></div>';
+  // Budget
+  html += '<div style="text-align:right;flex-shrink:0">';
+  html += '<div style="font-size:24px;font-weight:900;color:'+budgetCol+'">🪙 '+_fmtMoney(budget)+'</div>';
+  html += '<div style="font-size:10px;color:var(--muted)">Mercato : '+_fmtMoney(club.transferBudget)+'</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Stats rapides sous le header
+  html += '<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">';
+  const statItems = [
+    {label:'Points', val:ss.points, col:'#18c860'},
+    {label:'Victoires', val:ss.wins, col:'#18c860'},
+    {label:'Nuls', val:ss.draws, col:'#f0c028'},
+    {label:'Défaites', val:ss.losses, col:'#e06060'},
+    {label:'Buts +/-', val:(ss.goals_for-ss.goals_against>0?'+':'')+(ss.goals_for-ss.goals_against), col:ss.goals_for>=ss.goals_against?'#18c860':'#e06060'},
+    {label:'Réputation', val:club.reputation+'/100', col:(region?region.color:'var(--gold)')},
+  ];
+  statItems.forEach(function(s){
+    html += '<div style="text-align:center">';
+    html += '<div style="font-size:18px;font-weight:900;color:'+s.col+'">'+s.val+'</div>';
+    html += '<div style="font-size:9px;color:var(--muted)">'+s.label+'</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '</div>';
+
+  // ── Onglets ──────────────────────────────────────────────────────────
+  html += '<div style="display:flex;border-bottom:1px solid var(--b1);background:var(--dark);overflow-x:auto">'+tabBtns+'</div>';
+
+  // ── Contenu ──────────────────────────────────────────────────────────
+  html += '<div id="career-director-content" style="flex:1;padding:16px 20px;overflow-y:auto"></div>';
+
+  // ── Footer ──────────────────────────────────────────────────────────
+  html += '<div style="padding:12px 20px;border-top:1px solid var(--b1);background:var(--dark);display:flex;gap:8px;align-items:center">';
+  html += '<button class="btn" onclick="nav(\'setup\')" style="font-size:11px;padding:6px 14px">← Jeu</button>';
+  html += '<button class="btn btng" onclick="advanceCareerWeek()" style="flex:1;font-size:13px;padding:10px;font-weight:900">⏩ Semaine suivante</button>';
+  html += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:6px 14px">⚡ Simuler match</button>';
+  html += '<button class="btn" onclick="abandonCareerV2()" style="font-size:11px;padding:6px 12px;color:#e06060;border-color:#e06060">✕</button>';
+  html += '</div>';
+  html += '</div>';
+
   el.innerHTML = html;
+
+  // Activer onglet Vue par défaut
   renderCareerDirectorTab('overview');
+
+  // Style onglet actif (après injection DOM)
+  function setActiveTab(tab){
+    document.querySelectorAll('[id^="cdtab-"]').forEach(function(b){
+      b.style.borderBottomColor='transparent';
+      b.style.color='var(--muted)';
+      b.style.background='var(--dark)';
+    });
+    const active = document.getElementById('cdtab-'+tab);
+    if(active && region){
+      active.style.borderBottomColor=region.color;
+      active.style.color='var(--fg)';
+      active.style.background='var(--panel)';
+    }
+  }
+
+  // Réassigner onclick avec highlight
+  tabs.forEach(function(tab){
+    const btn = document.getElementById('cdtab-'+tab);
+    if(btn) btn.addEventListener('click', function(){ setActiveTab(tab); });
+  });
+  setActiveTab('overview');
 }
+
 
 
 
@@ -5058,97 +5132,107 @@ function _renderDirectorOverview(){
   const C = careerV2; const club = C.club;
   const region = WORLDS.getRegion(C.nation||'panthalassa', club.region);
   const ss = C.season_stats;
-  const played = ss.wins + ss.draws + ss.losses;
   const obj = club.board_objectives && club.board_objectives[0];
 
   // Générer fixtures si manquantes
   if(!C.fixtures || C.fixtures.length === 0){
-    _generateSeasonFixtures();
-    saveCareerV2();
+    _generateSeasonFixtures(); saveCareerV2();
   }
-  // Prochain match
+
   const nextFix = (C.fixtures||[]).find(function(f){ return !f.played; });
-
-  // Classement (top 5)
   const standings = (C.standings||[]).slice().sort(function(a,b){
-    return b.Pts - a.Pts || (b.GF-b.GA)-(a.GF-a.GA);
+    return b.Pts-a.Pts || (b.GF-b.GA)-(a.GF-a.GA);
   });
+  const myPos = standings.findIndex(function(s){return s.isPlayer;}) + 1;
+  const accentCol = region ? region.color : 'var(--gold)';
 
-  let h = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  let h = '';
+
+  // ── Rangée 1 : Objectif + Prochain match ────────────────────────────
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
 
   // Objectif
-  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🎯 Objectif</div>';
+  h += '<div style="background:var(--panel);border:1px solid var(--b1);border-left:4px solid '+(obj?'#f0c028':'var(--b1)')+';border-radius:10px;padding:14px">';
+  h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🎯 Objectif</div>';
   if(obj){
-    h += '<div style="font-size:10px;color:var(--fg);margin-bottom:4px">'+obj.desc+'</div>';
-    h += '<div style="font-size:9px;color:#18c860">🪙 Récompense : '+_fmtMoney(obj.reward)+'</div>';
+    h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:6px">'+obj.desc+'</div>';
+    h += '<div style="font-size:11px;color:#18c860">🪙 Récompense : '+_fmtMoney(obj.reward)+'</div>';
   } else {
-    h += '<div style="color:var(--muted);font-size:9px">Aucun objectif</div>';
+    h += '<div style="color:var(--muted);font-size:12px">Aucun objectif</div>';
+  }
+  // Position actuelle
+  if(myPos > 0){
+    const posCol = myPos<=2?'#18c860':myPos<=4?'#f0c028':'#e06060';
+    h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--b1);font-size:12px">';
+    h += 'Position actuelle : <span style="font-size:18px;font-weight:900;color:'+posCol+'">'+myPos+'e</span>';
+    h += '</div>';
   }
   h += '</div>';
 
-  // Stats saison
-  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📊 Saison</div>';
-  h += '<div style="font-size:10px;color:var(--fg)">'+played+' matchs</div>';
-  h += '<div style="font-size:9px;color:var(--muted)">✅ '+ss.wins+'V 🟡 '+ss.draws+'N ❌ '+ss.losses+'D</div>';
-  h += '<div style="font-size:9px;color:var(--muted)">⚽ '+ss.goals_for+' / '+ss.goals_against+'</div>';
-  h += '<div style="font-size:12px;font-weight:900;color:#18c860;margin-top:4px">'+ss.points+' pts</div>';
-  h += '</div>';
-
-  h += '</div>';
-
   // Prochain match
+  h += '<div style="background:var(--panel);border:1px solid var(--b1);border-left:4px solid '+accentCol+';border-radius:10px;padding:14px">';
+  h += '<div style="font-size:11px;font-weight:900;color:'+accentCol+';margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">⚽ Prochain match</div>';
   if(nextFix){
     const isHome = nextFix.homeIsPlayer;
     const opp = isHome ? nextFix.awayName : nextFix.homeName;
-    h += '<div style="background:var(--dark);border:1px solid '+(region?region.color:'var(--b1)')+';border-radius:8px;padding:10px;margin-top:8px">';
-    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px">⚽ Prochain match — J'+nextFix.week+'</div>';
-    h += '<div style="font-size:12px;font-weight:900;text-align:center;margin-bottom:8px">';
-    h += (isHome ? '<span style="color:'+(region?region.color:'#fff')+'">'+club.name+'</span> vs '+opp
-                 : opp+' vs <span style="color:'+(region?region.color:'#fff')+'">'+club.name+'</span>');
+    h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">J'+nextFix.week+'</div>';
+    h += '<div style="font-size:15px;font-weight:900;margin-bottom:6px">';
+    h += isHome ? '<span style="color:'+accentCol+'">'+club.name+'</span> vs '+opp
+               : opp+' vs <span style="color:'+accentCol+'">'+club.name+'</span>';
     h += '</div>';
-    h += '<div style="font-size:9px;color:var(--muted);text-align:center;margin-bottom:8px">'+(isHome?'Domicile':'Extérieur')+'</div>';
+    h += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+(isHome?'🏠 Domicile':'✈️ Extérieur')+'</div>';
     h += '<div style="display:flex;gap:6px">';
-    h += '<button class="btn btng" onclick="playCareerMatch()" style="flex:1;font-size:10px">▶ Jouer le match</button>';
-    h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:9px;padding:3px 8px">⚡ Simuler</button>';
-    h += '</div></div>';
-  } else {
-    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-top:8px;font-size:9px;color:var(--muted);text-align:center">';
-    h += '🏁 Tous les matchs de la saison sont joués !<br>';
-    h += '<button class="btn btng" onclick="endCareerSeasonDirector()" style="margin-top:8px;font-size:10px">Passer à la saison suivante</button>';
+    h += '<button class="btn btng" onclick="playCareerMatch()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
+    h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:8px 12px">⚡ Simuler</button>';
     h += '</div>';
+  } else {
+    h += '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">🏁 Saison terminée !</div>';
+    h += '<button class="btn btng" onclick="endCareerSeasonDirector()" style="width:100%;font-size:12px;padding:8px">Saison suivante →</button>';
   }
+  h += '</div>';
+  h += '</div>';
 
-  // Classement
+  // ── Classement ────────────────────────────────────────────────────────
   if(standings.length > 0){
-    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-top:8px">';
-    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🏆 Classement</div>';
-    h += '<div style="font-size:9px">';
+    h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏆 Classement</div>';
+    h += '<div style="display:grid;grid-template-columns:24px 1fr 40px 40px 40px;gap:0;font-size:10px;color:var(--muted);padding:0 4px 6px;border-bottom:1px solid var(--b1);font-weight:700">';
+    h += '<div>#</div><div>Club</div><div style="text-align:center">J</div><div style="text-align:center">+/-</div><div style="text-align:center">Pts</div>';
+    h += '</div>';
     standings.forEach(function(s, i){
       const isMe = s.isPlayer;
-      const gd = s.GF - s.GA;
-      h += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;'+(isMe?'background:rgba(240,192,40,.1);border-radius:4px;padding:3px 4px':'')+'border-bottom:1px solid var(--b1)">';
-      h += '<div style="width:16px;color:var(--muted);text-align:right">'+(i+1)+'</div>';
-      h += '<div style="flex:1;font-weight:'+(isMe?'900':'400')+';color:'+(isMe?'var(--gold)':'var(--fg)')+'">'+s.name+'</div>';
-      h += '<div style="width:24px;text-align:center;color:var(--muted)">'+s.P+'</div>';
-      h += '<div style="width:24px;text-align:center;color:'+(gd>0?'#18c860':gd<0?'#e06060':'var(--muted)')+'">'+( gd>0?'+':'')+gd+'</div>';
-      h += '<div style="width:28px;text-align:center;font-weight:900;color:'+(isMe?'var(--gold)':'var(--fg)')+'">'+s.Pts+'</div>';
+      const gd = s.GF-s.GA;
+      const gdCol = gd>0?'#18c860':gd<0?'#e06060':'var(--muted)';
+      const posEmoji = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+      const rowBg = isMe ? 'background:'+accentCol+'18;border-radius:6px;' : '';
+      h += '<div style="display:grid;grid-template-columns:24px 1fr 40px 40px 40px;gap:0;align-items:center;padding:7px 4px;border-bottom:1px solid var(--b1)10;'+rowBg+'">';
+      h += '<div style="font-size:11px;color:var(--muted)">'+(posEmoji||(i+1))+'</div>';
+      h += '<div style="font-size:12px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+'">'+s.name+'</div>';
+      h += '<div style="font-size:11px;text-align:center;color:var(--muted)">'+s.P+'</div>';
+      h += '<div style="font-size:11px;text-align:center;color:'+gdCol+'">'+(gd>0?'+':'')+gd+'</div>';
+      h += '<div style="font-size:13px;font-weight:900;text-align:center;color:'+(isMe?accentCol:'var(--fg)')+'">'+s.Pts+'</div>';
       h += '</div>';
     });
-    h += '</div></div>';
+    h += '</div>';
   }
 
-  // Finances rapides
-  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:8px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">';
-  h += '<div style="font-size:9px;color:var(--muted)">💰 Budget</div>';
-  h += '<div style="font-size:12px;font-weight:900;color:#18c860">'+_fmtMoney(club.budget)+'</div>';
-  h += '<div style="font-size:9px;color:var(--muted)">Semaine '+C.week+'</div>';
-  h += '<button class="btn btng" onclick="advanceCareerWeek()" style="font-size:9px;padding:3px 10px">⏩ Semaine suivante</button>';
-  h += '</div>';
+  // ── Events récents ────────────────────────────────────────────────────
+  const recentLog = (C.finances&&C.finances.log||[]).slice(-3).reverse();
+  if(recentLog.length > 0){
+    h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px">';
+    h += '<div style="font-size:11px;font-weight:900;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📋 Activité récente</div>';
+    recentLog.forEach(function(e){
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--b1)10;font-size:11px">';
+      h += '<span style="color:var(--muted)">'+e.desc+'</span>';
+      h += '<span style="font-weight:700;color:'+(e.amount>=0?'#18c860':'#e06060')+'">'+(e.amount>=0?'+':'')+_fmtMoney(e.amount)+'</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
 
   return h;
 }
+
 
 
 function _renderDirectorSquad(){
