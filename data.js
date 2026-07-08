@@ -723,8 +723,6 @@ function ballPredict(timeAhead){
 // ═══════════════════════════════════════════════════════════
 
 // Exposé sur window pour être accessible depuis index.html et tous les scripts
-window.gameMode = '7v7';
-
 // ── Coordonnées normalisées 11v11 — exposées sur window ──────────────
 window.FORMS_COORDS_11V11 = {
   '442':  [[.07,.50],[.22,.15],[.22,.40],[.22,.60],[.22,.85],
@@ -762,6 +760,9 @@ window.FORMS_COORDS_11V11 = {
            [.46,.18],[.46,.40],[.46,.60],[.46,.82],
            [.74,.50]],
 };
+
+window.gameMode = '7v7';
+
 
 function setGameMode(mode){
   window.gameMode = mode;
