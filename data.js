@@ -655,6 +655,8 @@ function formBase(ti,pi){
     f=(forms[T?.strat||T?.strat11]||forms[defaultForm])[pi]||[.5,.5];
   }
   const fx=ti===0?f[0]:1-f[0];
+  // Apply tactical 'width' multiplier
+  const w=strat(ti).width||1;
   const fy2=PCY+(f[1]-.5)*WH*w;
   return{x:fx*WW, y:clamp(fy2,2,WH-2)};
 }
