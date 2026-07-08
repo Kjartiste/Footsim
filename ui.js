@@ -4714,123 +4714,159 @@ function renderCareerV2Choice(){
 
 
 // ── Setup Carrière Dirigeant : choix de la région et du club ─────────
+// ── Flow : Pays → Région → Club ─────────────────────────────────────
+
 function renderCareerDirectorSetup(){
   const el = document.getElementById('career-out'); if(!el) return;
+  _renderCountryStep(el, 'director');
+}
 
-  const regions = WORLDS.getRegions('panthalassa');
-  let regionCards = '';
-  regions.forEach(r => {
-    const wealthStars = '💰'.repeat(r.wealth);
-    const talentStars = '⭐'.repeat(r.talent);
-    const popStars = '👥'.repeat(Math.min(r.population, 3));
-    regionCards += '<div id="dreg-'+r.id+'" onclick="selectDirectorRegion(\''+r.id+'\')"'
-      + ' style="background:var(--panel);border:2px solid var(--b1);border-radius:10px;padding:12px;cursor:pointer;transition:all .2s">'
-      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-      + '<div style="width:12px;height:12px;border-radius:50%;background:'+r.color+';flex-shrink:0"></div>'
-      + '<div style="font-size:12px;font-weight:900;color:var(--fg)">'+r.name+'</div>'
-      + '<div style="font-size:9px;color:var(--muted);margin-left:auto">'+r.type+'</div>'
-      + '</div>'
-      + '<div style="font-size:9px;color:var(--muted);line-height:1.4;margin-bottom:6px">'+r.desc+'</div>'
-      + '<div style="display:flex;gap:8px;font-size:9px">'
-      + '<span>'+wealthStars+'</span><span>'+talentStars+'</span><span>'+popStars+'</span>'
-      + '</div></div>';
+function _renderCountryStep(el, mode){
+  const nations = WORLDS.nations;
+  let h = '<div style="padding:12px;max-width:600px;margin:0 auto">';
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">';
+  h += '<button class="btn" onclick="renderCareerV2Choice()" style="font-size:10px;padding:2px 8px">&larr; Retour</button>';
+  h += '<div style="font-size:15px;font-weight:900;color:var(--gold)">🌍 Choisissez votre pays</div>';
+  h += '</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
+  nations.forEach(function(n){
+    h += '<div class="nation-card" data-nation="' + n.id + '" data-mode="' + mode + '"'
+      + ' style="background:var(--panel);border:2px solid ' + n.color + ';border-radius:12px;padding:14px;cursor:pointer">';
+    h += '<div style="font-size:28px;text-align:center;margin-bottom:6px">' + n.flag + '</div>';
+    h += '<div style="font-size:14px;font-weight:900;color:' + n.color + ';text-align:center">' + n.name + '</div>';
+    h += '<div style="font-size:9px;color:var(--muted);text-align:center;margin-top:4px">' + n.subtitle + '</div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:8px;line-height:1.4">' + n.philosophy.slice(0,80) + '...</div>';
+    h += '<div style="margin-top:8px;font-size:9px;color:' + n.color + '">' + n.regions.length + ' régions · ' + n.pyramid.length + ' niveaux</div>';
+    h += '</div>';
   });
-
-  el.innerHTML = '<div style="padding:12px;max-width:700px;margin:0 auto">'
-    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
-    + '<button class="btn" onclick="renderCareerV2Choice()" style="font-size:10px;padding:2px 8px">&larr; Retour</button>'
-    + '<div style="font-size:16px;font-weight:900;color:var(--gold)">&#x1F3DB; Carri&egrave;re Dirigeant</div>'
-    + '</div>'
-    + '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Choisissez votre r&eacute;gion de d&eacute;part dans l\'empire de Panthalassa :</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:14px">' + regionCards + '</div>'
-    + '<div id="director-club-select" style="display:none">'
-    + '<div style="font-size:11px;color:var(--gold);margin-bottom:8px;font-weight:700">Choisissez votre club :</div>'
-    + '<div id="director-club-list" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px"></div>'
-    + '<button class="btn btng" id="director-start-btn" onclick="confirmStartDirector()" style="width:100%;display:none">&#x25B6; Commencer la carri&egrave;re</button>'
-    + '</div></div>';
-
-  // Ajouter les event listeners après injection dans le DOM
-  regions.forEach(r => {
-    const div = document.getElementById('dreg-'+r.id);
-    if(!div) return;
-    div.addEventListener('mouseover', ()=>{ div.style.borderColor=r.color; div.style.background=r.color+'22'; });
-    div.addEventListener('mouseout',  ()=>{ if(window._selectedDirectorRegion!==r.id){ div.style.borderColor=''; div.style.background=''; } });
+  h += '</div></div>';
+  el.innerHTML = h;
+  document.querySelectorAll('.nation-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      var nid = card.dataset.nation;
+      var m   = card.dataset.mode;
+      window._careerNation = nid;
+      window._careerMode   = m;
+      _renderRegionStep(el, nid, m);
+    });
   });
 }
 
-let _selectedDirectorRegion = null;
-let _selectedDirectorClub = null;
-
-function selectDirectorRegion(regionId){
-  _selectedDirectorRegion = regionId;
-  window._selectedDirectorRegion = regionId;
-
-  // Reset styles
-  document.querySelectorAll('[id^="dreg-"]').forEach(el=>{
-    el.style.borderColor = 'var(--b1)';
-    el.style.background = 'var(--panel)';
+function _renderRegionStep(el, nationId, mode){
+  const nation = WORLDS.get(nationId);
+  if(!el || !nation) return;
+  let h = '<div style="padding:12px;max-width:700px;margin:0 auto">';
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+  h += '<button class="btn" id="back-to-nations" style="font-size:10px;padding:2px 8px">&larr; Retour</button>';
+  h += '<div style="font-size:14px;font-weight:900;color:' + nation.color + '">' + nation.flag + ' ' + nation.name + ' — Région</div>';
+  h += '</div>';
+  h += '<div style="font-size:10px;color:var(--muted);margin-bottom:12px">Vous commencerez tout en bas de la pyramide locale.</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px">';
+  nation.regions.forEach(function(r){
+    var startLevel = _getStartLevel(r);
+    var pyramid = nation.pyramid.find(function(p){return p.id===startLevel;});
+    h += '<div class="region-card" data-region="' + r.id + '"'
+      + ' style="background:var(--panel);border:2px solid var(--b1);border-radius:10px;padding:10px;cursor:pointer;transition:border .15s">';
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+    h += '<div style="width:10px;height:10px;border-radius:50%;background:' + r.color + ';flex-shrink:0"></div>';
+    h += '<div style="font-size:11px;font-weight:900;color:var(--fg)">' + r.name + '</div>';
+    h += '</div>';
+    h += '<div style="font-size:8px;color:var(--muted);margin-bottom:4px">' + r.type + '</div>';
+    h += '<div style="font-size:8px;color:var(--muted);line-height:1.3;margin-bottom:6px">' + r.desc.slice(0,70) + '...</div>';
+    h += '<div style="font-size:8px;color:' + r.color + ';font-weight:700">Départ : ' + (pyramid ? pyramid.name : startLevel) + '</div>';
+    h += '<div style="font-size:8px;margin-top:4px">' + '💰'.repeat(r.wealth) + ' ' + '⭐'.repeat(r.talent) + '</div>';
+    h += '</div>';
   });
-  const sel = document.getElementById('dreg-'+regionId);
-  const region = WORLDS.getRegion('panthalassa',regionId);
-  if(sel && region){
-    sel.style.borderColor = region.color;
-    sel.style.background = region.color+'33';
-  }
+  h += '</div></div>';
+  el.innerHTML = h;
+  document.getElementById('back-to-nations').addEventListener('click', function(){
+    _renderCountryStep(el, mode);
+  });
+  document.querySelectorAll('.region-card').forEach(function(card){
+    var rid = card.dataset.region;
+    var region = WORLDS.getRegion(nationId, rid);
+    card.addEventListener('mouseover', function(){ card.style.borderColor = region ? region.color : ''; });
+    card.addEventListener('mouseout',  function(){ if(window._careerRegion !== rid) card.style.borderColor = ''; });
+    card.addEventListener('click', function(){
+      window._careerRegion = rid;
+      _renderClubStep(el, nationId, rid, mode);
+    });
+  });
+}
 
-  // Afficher les clubs
-  const clubDiv = document.getElementById('director-club-select');
-  const clubList = document.getElementById('director-club-list');
-  if(!clubDiv || !clubList || !region) return;
-
-  clubDiv.style.display = 'block';
-  _selectedDirectorClub = null;
-
-  let clubHtml = '';
-  region.clubNames.slice(0, 9).forEach((name, i) => {
-    clubHtml += '<div id="dclub-'+i+'" onclick="selectDirectorClub(\''+name.replace(/'/g,'&apos;')+'\')"'
-      + ' style="background:var(--dark);border:1px solid var(--b1);border-radius:6px;padding:6px 8px;cursor:pointer;font-size:10px;text-align:center">'
+function _renderClubStep(el, nationId, regionId, mode){
+  const nation = WORLDS.get(nationId);
+  const region = WORLDS.getRegion(nationId, regionId);
+  if(!el || !nation || !region) return;
+  const startLevel = _getStartLevel(region);
+  const pyramid = nation.pyramid.find(function(p){return p.id===startLevel;});
+  const clubs = region.clubNames || [];
+  let h = '<div style="padding:12px;max-width:600px;margin:0 auto">';
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+  h += '<button class="btn" id="back-to-regions" style="font-size:10px;padding:2px 8px">&larr; Retour</button>';
+  h += '<div style="font-size:13px;font-weight:900;color:' + region.color + '">' + region.name + ' — Club</div>';
+  h += '</div>';
+  h += '<div style="background:var(--dark);border:1px solid ' + region.color + '44;border-radius:8px;padding:8px;margin-bottom:12px">';
+  h += '<div style="font-size:10px;color:var(--gold);font-weight:700;margin-bottom:4px">📍 Niveau de départ : ' + (pyramid ? pyramid.name : startLevel) + '</div>';
+  h += '<div style="font-size:9px;color:var(--muted)">Budget : 🪙 ' + _fmtMoney(WORLDS.startBudget(nationId, regionId)) + ' · Réputation : ' + WORLDS.startReputation(startLevel, region) + '/100</div>';
+  h += '</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px">';
+  clubs.forEach(function(name, i){
+    h += '<div class="club-card" data-club="' + i + '" data-name="' + name.replace(/"/g,'&quot;') + '"'
+      + ' style="background:var(--dark);border:2px solid var(--b1);border-radius:8px;padding:8px;cursor:pointer;text-align:center;font-size:10px;font-weight:700">'
       + name + '</div>';
   });
-  clubList.innerHTML = clubHtml;
-
-  // Event listeners souris
-  region.clubNames.slice(0, 9).forEach((name, i) => {
-    const d = document.getElementById('dclub-'+i);
-    if(!d) return;
-    d.addEventListener('mouseover', ()=>{ d.style.borderColor=region.color; });
-    d.addEventListener('mouseout',  ()=>{ if(window._selectedDirectorClub!==name) d.style.borderColor=''; });
-    d.addEventListener('click',     ()=> selectDirectorClub(name));
+  h += '</div>';
+  h += '<button class="btn btng" id="career-start-btn" style="width:100%;display:none">&#x25B6; Commencer la carrière</button>';
+  h += '</div>';
+  el.innerHTML = h;
+  document.getElementById('back-to-regions').addEventListener('click', function(){
+    _renderRegionStep(el, nationId, mode);
   });
-
-  document.getElementById('director-start-btn').style.display = 'none';
-}
-
-function selectDirectorClub(name){
-  _selectedDirectorClub = name;
-  window._selectedDirectorClub = name;
-
-  document.querySelectorAll('[id^="dclub-"]').forEach(el=>{
-    el.style.borderColor = 'var(--b1)';
-    el.style.fontWeight = 'normal';
+  document.querySelectorAll('.club-card').forEach(function(card){
+    var cname = card.dataset.name;
+    card.addEventListener('mouseover', function(){ card.style.borderColor = region.color; });
+    card.addEventListener('mouseout',  function(){ if(window._careerClub !== cname) card.style.borderColor = ''; });
+    card.addEventListener('click', function(){
+      window._careerClub = cname;
+      document.querySelectorAll('.club-card').forEach(function(c){ c.style.borderColor=''; c.style.background='var(--dark)'; });
+      card.style.borderColor = region.color;
+      card.style.background = region.color + '22';
+      var btn = document.getElementById('career-start-btn');
+      if(btn) btn.style.display = 'block';
+    });
   });
-
-  const region = WORLDS.getRegion('panthalassa',_selectedDirectorRegion);
-  const idx = region?.clubNames.indexOf(name) ?? -1;
-  if(idx >= 0){
-    const el = document.getElementById('dclub-'+idx);
-    if(el && region){ el.style.borderColor = region.color; el.style.fontWeight = '900'; }
-  }
-
-  document.getElementById('director-start-btn').style.display = 'block';
+  document.getElementById('career-start-btn').addEventListener('click', function(){
+    confirmStartCareer();
+  });
 }
 
-function confirmStartDirector(){
-  if(!_selectedDirectorRegion || !_selectedDirectorClub){
-    logEvent('❌ Choisissez une région et un club','#e02030');
-    return;
-  }
-  startCareerDirector(_selectedDirectorRegion, _selectedDirectorClub);
+function _getStartLevel(region){
+  if(!region || !region.pyramid) return 'dh';
+  var p = region.pyramid;
+  if(p.district_groups > 0) return 'dh';
+  if(p.has_dh)              return 'dh';
+  if(p.has_r3)              return 'r3';
+  if(p.has_r2)              return 'r2';
+  return 'r1';
 }
+
+function confirmStartCareer(){
+  var nation = window._careerNation || 'panthalassa';
+  var region = window._careerRegion;
+  var club   = window._careerClub;
+  var mode   = window._careerMode || 'director';
+  if(!region || !club){ logEvent('Choisissez une région et un club !', '#e02030'); return; }
+  if(mode === 'director') startCareerDirector(region, club, nation);
+  else startCareerManager(region, nation);
+}
+
+// Compatibilité anciens appels
+function selectDirectorRegion(rid){ _renderRegionStep(document.getElementById('career-out'), window._careerNation||'panthalassa', rid, 'director'); }
+function selectDirectorClub(name){ window._careerClub = name; }
+function confirmStartDirector(){ confirmStartCareer(); }
+
+
 
 // ── Setup Carrière Manager ────────────────────────────────────────────
 function renderCareerManagerSetup(){
