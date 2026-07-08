@@ -417,7 +417,7 @@ function nav(p){
   if(p==='tactic'){renderTactics();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);}
   if(p==='league')renderLeague();
   if(p==='cup')renderCup();
-  if(p==='career'){ if(careerV2) renderCareerV2(); else renderCareer(); }
+  if(p==='career'){ renderCareerV2(); }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -4672,7 +4672,6 @@ function buildCupTeams(count,savedIdxs,npcSel){
 function renderCareerV2(){
   const el = document.getElementById('career-out'); if(!el) return;
   if(!careerV2){ renderCareerV2Choice(); return; }
-
   if(careerV2.type === 'director') renderCareerDirector(el);
   else renderCareerManager(el);
 }
@@ -4732,18 +4731,16 @@ function renderCareerV2Choice(){
       </button>
     </div>
     ` : ''}
-  </div>`;
 }
 
 // ── Setup Carrière Dirigeant : choix de la région et du club ─────────
 function renderCareerDirectorSetup(){
   const el = document.getElementById('career-out'); if(!el) return;
 
-  const regionCards = PANTHALASSA_REGIONS.map(r => {
+  const regionCards = WORLDS.getRegions('panthalassa').map(r => {
     const wealthStars = '💰'.repeat(r.wealth);
     const talentStars = '⭐'.repeat(r.talent);
     const popStars = '👥'.repeat(Math.min(r.population, 3));
-    const diffColor = r.wealth >= 4 ? '#f0c028' : r.wealth >= 3 ? '#18c860' : '#e06060';
 
     return `
     <div onclick="selectDirectorRegion('${r.id}')" id="dreg-${r.id}"
@@ -4802,7 +4799,7 @@ function selectDirectorRegion(regionId){
     el.style.background = 'var(--panel)';
   });
   const sel = document.getElementById('dreg-'+regionId);
-  const region = PANTHALASSA_REGIONS.find(r=>r.id===regionId);
+  const region = WORLDS.getRegion('panthalassa',regionId);
   if(sel && region){
     sel.style.borderColor = region.color;
     sel.style.background = region.color+'33';
@@ -4837,7 +4834,7 @@ function selectDirectorClub(name){
     el.style.fontWeight = 'normal';
   });
 
-  const region = PANTHALASSA_REGIONS.find(r=>r.id===_selectedDirectorRegion);
+  const region = WORLDS.getRegion('panthalassa',_selectedDirectorRegion);
   const idx = region?.clubNames.indexOf(name) ?? -1;
   if(idx >= 0){
     const el = document.getElementById('dclub-'+idx);
@@ -4859,7 +4856,7 @@ function confirmStartDirector(){
 function renderCareerManagerSetup(){
   const el = document.getElementById('career-out'); if(!el) return;
 
-  const regionCards = PANTHALASSA_REGIONS.map(r => `
+  const regionCards = WORLDS.getRegions('panthalassa').map(r => `
     <div onclick="selectManagerRegion('${r.id}')" id="mreg-${r.id}"
          style="background:var(--panel);border:2px solid var(--b1);border-radius:8px;padding:10px;cursor:pointer;transition:all .2s"
          onmouseover="this.style.borderColor='${r.color}'"
@@ -4905,7 +4902,7 @@ function selectManagerRegion(regionId){
   document.querySelectorAll('[id^="mreg-"]').forEach(el=>{
     el.style.borderColor='var(--b1)';
   });
-  const region = PANTHALASSA_REGIONS.find(r=>r.id===regionId);
+  const region = WORLDS.getRegion('panthalassa',regionId);
   const sel = document.getElementById('mreg-'+regionId);
   if(sel && region) sel.style.borderColor = region.color;
 
@@ -4921,7 +4918,7 @@ function confirmStartManager(){
 function renderCareerDirector(el){
   const C = careerV2;
   const club = C.club;
-  const region = PANTHALASSA_REGIONS.find(r=>r.id===club.region);
+  const region = WORLDS.getRegion('panthalassa',club.region);
 
   el.innerHTML = `
   <div style="padding:8px;max-width:700px;margin:0 auto">
@@ -4994,7 +4991,7 @@ function renderCareerDirectorTab(tab){
 
 function _renderDirectorOverview(){
   const C = careerV2; const club = C.club;
-  const region = PANTHALASSA_REGIONS.find(r=>r.id===club.region);
+  const region = WORLDS.getRegion('panthalassa',club.region);
   const ss = C.season_stats;
   const played = ss.wins + ss.draws + ss.losses;
   const obj = club.board_objectives[0];
@@ -5321,7 +5318,7 @@ function _checkMercatoWindow(){
 
 function _triggerRegionEvent(){
   if(!careerV2 || careerV2.type !== 'director') return;
-  const region = PANTHALASSA_REGIONS.find(r=>r.id===careerV2.club.region);
+  const region = WORLDS.getRegion('panthalassa',careerV2.club.region);
   if(!region) return;
 
   // Événements positifs (Les Mers Bénies)
@@ -5398,7 +5395,7 @@ function acceptManagerJob(i){
     name: offer.club,
     region: offer.region,
     level: offer.level,
-    color: PANTHALASSA_REGIONS.find(r=>r.id===offer.region)?.color || '#888',
+    color: WORLDS.getRegion('panthalassa',offer.region)?.color || '#888',
   };
   careerV2.job_offers = [];
   logEvent(`✅ Contrat signé avec ${offer.club} !`,'#18c860');
