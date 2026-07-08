@@ -1298,13 +1298,6 @@ window.addEventListener('orientationchange',()=>setTimeout(resize,200));
 // Prevent default touch scroll on canvas to avoid rubber-band effect
 document.getElementById('canvas-wrap')?.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 loadProfiles();loadLeague();loadSavedTeams();loadCup();loadCareerV2();
-// Afficher l'écran de profils au démarrage si aucun profil actif
-window.addEventListener('load', ()=>{
-  if(!activeProfileId || !profiles[activeProfileId]){
-    // Léger délai pour que le DOM soit prêt
-    setTimeout(()=> renderProfileScreen(), 100);
-  }
-});
 renderTB(0);renderTB(1);renderTactics();syncHUD();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);
 resize();placeKickoff(0);
 requestAnimationFrame(frame);

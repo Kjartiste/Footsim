@@ -481,5 +481,16 @@ input[type=range]:focus{outline:none}
 <script src="visual.js"></script>
 <script src="ui.js"></script>
 <script src="save.js"></script>
+<script>
+// Démarrage — afficher l'écran de profil si pas de profil actif
+(function(){
+  loadProfiles();
+  if(!activeProfileId || !profiles[activeProfileId]){
+    renderProfileScreen();
+  } else {
+    nav('setup');
+  }
+})();
+</script>
 </body>
 </html>
