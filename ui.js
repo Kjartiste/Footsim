@@ -163,22 +163,30 @@ function _renderHtTeams(){
         </div>`;
       }).join('')}`:''}
       <div class="ht-strat">
-        <div class="ht-strat-lbl">Formation ${(window.gameMode!=='11v11')?`
-          <span style="float:right;font-weight:400">
-            <button onclick="event.stopPropagation();htSetFormPhase(${ti},'def')" id="ffp-def-${ti}" style="font-size:8px;padding:1px 6px;border-radius:6px;border:1px solid var(--b1);cursor:pointer;background:${(_htFormPhase[ti]||'def')==='def'?'var(--gold)':'var(--dark)'};color:${(_htFormPhase[ti]||'def')==='def'?'#000':'var(--muted)'};font-weight:700">🛡️ Sans ballon</button>
-            <button onclick="event.stopPropagation();htSetFormPhase(${ti},'atk')" id="ffp-atk-${ti}" style="font-size:8px;padding:1px 6px;border-radius:6px;border:1px solid var(--b1);cursor:pointer;background:${_htFormPhase[ti]==='atk'?'#e02030':'var(--dark)'};color:${_htFormPhase[ti]==='atk'?'#fff':'var(--muted)'};font-weight:700">⚽ Avec ballon</button>
-          </span>`:''}
-        </div>
-        ${(window.gameMode!=='11v11' && (_htFormPhase[ti]||'def')==='atk')?`<div style="font-size:8px;color:var(--muted);margin-bottom:4px">Forme adoptée quand ton équipe a le ballon. Laisse identique à "sans ballon" pour désactiver.</div>`:''}
-        ${STRATS.map(s=>{
+        ${(()=>{
           const phase=_htFormPhase[ti]||'def';
-          const cur=(window.gameMode==='11v11')?(T.strat11||'442'):(phase==='atk'?(T.stratAtk||T.strat||'321'):(T.strat||'321'));
-          return `
+          return `<div class="ht-strat-lbl">Formation
+          <span style="float:right;font-weight:400">
+            <button onclick="event.stopPropagation();htSetFormPhase(${ti},'def')" id="ffp-def-${ti}" style="font-size:8px;padding:1px 6px;border-radius:6px;border:1px solid var(--b1);cursor:pointer;background:${phase==='def'?'var(--gold)':'var(--dark)'};color:${phase==='def'?'#000':'var(--muted)'};font-weight:700">🛡️ Sans ballon</button>
+            <button onclick="event.stopPropagation();htSetFormPhase(${ti},'atk')" id="ffp-atk-${ti}" style="font-size:8px;padding:1px 6px;border-radius:6px;border:1px solid var(--b1);cursor:pointer;background:${phase==='atk'?'#e02030':'var(--dark)'};color:${phase==='atk'?'#fff':'var(--muted)'};font-weight:700">⚽ Avec ballon</button>
+          </span>
+        </div>
+        ${phase==='atk'?`<div style="font-size:8px;color:var(--muted);margin-bottom:4px">Forme adoptée quand ton équipe a le ballon. Laisse identique à "sans ballon" pour désactiver.</div>`:''}`;
+        })()}
+        ${(()=>{
+          const is11=window.gameMode==='11v11', is5=window.gameMode==='5v5';
+          const stratList = is11 ? (window.STRATS_11V11||[]) : is5 ? (window.STRATS_5V5||[]) : STRATS;
+          const phase = _htFormPhase[ti]||'def';
+          const defId = is11 ? (T.strat11||'442') : is5 ? (T.strat5||'121') : (T.strat||'321');
+          const atkId = is11 ? T.strat11Atk : is5 ? T.strat5Atk : T.stratAtk;
+          const cur = phase==='atk' ? (atkId||defId) : defId;
+          return stratList.map(s=>`
           <div class="ht-sc${cur===s.id?' sel':''}" onclick="htSetStrat(${ti},'${s.id}',this)">
             <div style="width:6px;height:6px;border-radius:50%;background:${s.col};flex-shrink:0"></div>
             <span class="ht-sc-n">${s.n}</span>
             <span class="ht-sc-d"> — ${s.d}</span>
-          </div>`;}).join('')}
+          </div>`).join('');
+        })()}
       </div>
     </div>`).join('');
 }
@@ -296,14 +304,15 @@ function htSetFormPhase(ti, phase){
 
 function htSetStrat(ti,sid,el){
   const phase = _htFormPhase[ti] || 'def';
-  if(window.gameMode==='11v11'){
-    teams[ti].strat11 = sid;
-  } else if(phase==='atk'){
+  const is11 = window.gameMode==='11v11', is5 = window.gameMode==='5v5';
+  const defAttr = is11 ? 'strat11' : is5 ? 'strat5' : 'strat';
+  const atkAttr = is11 ? 'strat11Atk' : is5 ? 'strat5Atk' : 'stratAtk';
+  if(phase==='atk'){
     // Formation AVEC ballon. Si on remet la même que "sans ballon", on
     // désactive la double formation (retour au comportement simple).
-    teams[ti].stratAtk = (sid===teams[ti].strat) ? null : sid;
+    teams[ti][atkAttr] = (sid===teams[ti][defAttr]) ? null : sid;
   } else {
-    teams[ti].strat = sid;
+    teams[ti][defAttr] = sid;
   }
   applyFormationRoles(ti); // met à jour posDef/posAtk selon les deux formations
   try{ renderHtTeams(); }catch(e){}

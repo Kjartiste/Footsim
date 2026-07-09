@@ -656,20 +656,30 @@ function applyFormationRoles(ti){
 
   // Assigner les postes selon la formation si l'équipe a le bon nombre de joueurs
   const strat11 = is11v11 ? (T.strat11||'442') : null;
+  const strat11Atk = is11v11 ? (T.strat11Atk||null) : null;
   if(is11v11 && strat11 && FORMS_11V11[strat11] && T.players.length === 11){
-    const positions = FORMS_11V11[strat11];
+    const posDef = FORMS_11V11[strat11];
+    const posAtk = (strat11Atk && FORMS_11V11[strat11Atk]) ? FORMS_11V11[strat11Atk] : null;
     T.players.forEach((p, i) => {
-      if(p && positions[i]) p.pos = positions[i];
+      if(!p) return;
+      if(posDef[i]) p.pos = posDef[i];
+      p.posDef = posDef[i] || p.pos;
+      p.posAtk = posAtk ? (posAtk[i] || p.posDef) : p.posDef;
     });
   }
   // 5v5 : appliquer les postes de la formation aux 5 titulaires pour éviter
   // que des joueurs générés/importés (souvent tous "DC") ne se collent tous
   // dans la même zone. On respecte quand même un gardien unique.
   const strat5 = is5v5 ? (T.strat5||'121') : null;
+  const strat5Atk = is5v5 ? (T.strat5Atk||null) : null;
   if(is5v5 && strat5 && FORMS_5V5[strat5] && T.players.length >= 5){
-    const positions = FORMS_5V5[strat5];
+    const posDef = FORMS_5V5[strat5];
+    const posAtk = (strat5Atk && FORMS_5V5[strat5Atk]) ? FORMS_5V5[strat5Atk] : null;
     T.players.slice(0,5).forEach((p, i) => {
-      if(p && positions[i]) p.pos = positions[i];
+      if(!p) return;
+      if(posDef[i]) p.pos = posDef[i];
+      p.posDef = posDef[i] || p.pos;
+      p.posAtk = posAtk ? (posAtk[i] || p.posDef) : p.posDef;
     });
   }
   // 7v7 : appliquer les postes de la formation choisie (FORM_ROLES). Sans ça,
@@ -709,13 +719,15 @@ function applyFormationRoles(ti){
 function formBase(ti,pi){
   const T = teams[ti];
   // ── DEUX FORMATIONS (avec / sans ballon) ──────────────────────────────
-  // Si l'équipe a une formation d'attaque distincte (T.stratAtk) et qu'un
-  // facteur de possession lissé existe (T._possBias : 0=repli défensif,
-  // 1=phase offensive), on INTERPOLE la position du joueur entre sa place
+  // Si l'équipe a une formation d'attaque distincte et qu'un facteur de
+  // possession lissé existe (T._possBias : 0=repli défensif, 1=phase
+  // offensive), on INTERPOLE la position du joueur entre sa place
   // "sans ballon" (posDef) et "avec ballon" (posAtk). Sinon, comportement
-  // classique à une seule formation.
-  const hasDual = T && T.stratAtk && T.stratAtk !== T.strat &&
-                  gameMode !== '11v11'; // 7v7 / 5v5 pour l'instant
+  // classique à une seule formation. Disponible pour 5v5 / 7v7 / 11v11.
+  const is11v11 = gameMode === '11v11', is5v5 = gameMode === '5v5';
+  const stratDef = is11v11 ? T.strat11 : is5v5 ? T.strat5 : T.strat;
+  const stratAtk = is11v11 ? T.strat11Atk : is5v5 ? T.strat5Atk : T.stratAtk;
+  const hasDual = T && stratAtk && stratAtk !== stratDef;
   if(hasDual){
     const bias = clamp((T._possBias!=null ? T._possBias : (G && G.atkTi===ti ? 1 : 0)), 0, 1);
     const pDef = (players_of(T)[pi] && players_of(T)[pi].posDef) || (players_of(T)[pi] && players_of(T)[pi].pos);
