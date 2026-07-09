@@ -545,19 +545,54 @@ function aiDecide(dt=0.016){
       // TRAITS : "Tire de loin" élargit la zone de frappe ; "Renard" resserre
       // (ne tire que près du but) ; "Ne tire jamais" annule la frappe.
       const _HT=(tid)=>(typeof hasTrait==='function'&&hasTrait(carrier,tid));
+
+      // ── TENDANCE PAR POSTE ───────────────────────────────────────────
+      // Chaque poste a une propension différente à tirer / dribbler / passer.
+      // Un défenseur central sécurise (passe++, tir/dribble--) ; un milieu
+      // récupérateur/relayeur distribue énormément ; un attaquant tente sa
+      // chance (tir/dribble++). Valeurs = multiplicateurs.
+      const _POS_TEND = {
+        GB:  {shoot:0.02, drib:0.05, pass:1.7},
+        DC:  {shoot:0.25, drib:0.35, pass:1.6},  DCD:{shoot:0.25,drib:0.35,pass:1.6}, DCG:{shoot:0.25,drib:0.35,pass:1.6},
+        DD:  {shoot:0.45, drib:0.80, pass:1.4},  DG:{shoot:0.45,drib:0.80,pass:1.4}, LB:{shoot:0.45,drib:0.80,pass:1.4}, RB:{shoot:0.45,drib:0.80,pass:1.4},
+        MDC: {shoot:0.55, drib:0.60, pass:1.7},  MDC2:{shoot:0.55,drib:0.60,pass:1.7},
+        MC:  {shoot:0.85, drib:0.90, pass:1.5},  MCD:{shoot:0.85,drib:0.90,pass:1.5}, MCG:{shoot:0.85,drib:0.90,pass:1.5},
+        MO:  {shoot:1.15, drib:1.25, pass:1.25}, MOG:{shoot:1.0,drib:1.35,pass:1.2}, MOD:{shoot:1.0,drib:1.35,pass:1.2},
+        AG:  {shoot:1.15, drib:1.5,  pass:1.05}, AD:{shoot:1.15,drib:1.5,pass:1.05},
+        ATT: {shoot:1.5,  drib:1.2,  pass:0.9},  ATT2:{shoot:1.5,drib:1.2,pass:0.9},
+      };
+      const _tend = _POS_TEND[carrier.pos] || {shoot:1, drib:1, pass:1.2};
+
+      // ── STYLE TACTIQUE ───────────────────────────────────────────────
+      // possession = beaucoup de passes courtes (conservation) ; direct = plus
+      // de tirs/verticalité ; counter = vertical rapide ; normal = neutre.
+      const _style = (strat(ati).style)||'normal';
+      const _STYLE_TEND = {
+        possession: {shoot:0.75, drib:0.85, pass:1.55},
+        direct:     {shoot:1.30, drib:1.05, pass:0.80},
+        counter:    {shoot:1.20, drib:1.15, pass:0.85},
+        normal:     {shoot:1.00, drib:1.00, pass:1.00},
+      }[_style] || {shoot:1,drib:1,pass:1};
+
+      // TRAITS : "Tire de loin" élargit la zone de frappe ; "Renard" resserre ;
+      // "Ne tire jamais" annule la frappe.
       let _rangeMul = 0.42;
       if(_HT('tire_loin')) _rangeMul = 0.58;
       if(_HT('renard'))    _rangeMul = 0.30;
-      const _shootRange=WW*_rangeMul; // zone offensive selon profil
+      const _shootRange=WW*_rangeMul;
       const canShoot=_distGoal<_shootRange && !_HT('ne_tire_jamais');
-      // "Renard" et "Sang-froid" tentent plus leur chance dans la zone ; le
-      // "Dribbleur" tente plus de dribbles (géré juste après).
-      let _shootFreq = 0.22;
+
+      let _shootFreq = 0.22 * _tend.shoot * _STYLE_TEND.shoot;
       if(_HT('renard')||_HT('sang_froid')) _shootFreq += 0.06;
       if(_HT('ne_tire_jamais')) _shootFreq = 0;
       const shootBase=(canShoot?_shootFreq:0)*_attackEdge(ati,dti);
-      // Fenêtre de dribble élargie pour un "Dribbleur"
-      const _dribWindow = _HT('dribbleur') ? 0.26 : 0.14;
+      // Fenêtre de dribble selon poste + style + trait
+      let _dribWindow = 0.14 * _tend.drib * _STYLE_TEND.drib;
+      if(_HT('dribbleur')) _dribWindow = Math.max(_dribWindow, 0.26);
+      // Fenêtre de PASSE : base 0.42 modulée par le poste et le style. Un MDC en
+      // possession passe énormément ; un ATT en jeu direct passe peu.
+      let _passWindow = 0.42 * _tend.pass * _STYLE_TEND.pass;
+      _passWindow = Math.max(0.15, Math.min(0.75, _passWindow));
       if(r<shootBase){
         doShot(carrier,ati,dti,opp,gk,oppGoalX);
       } else if(r<shootBase+_dribWindow){
@@ -600,7 +635,7 @@ function aiDecide(dt=0.016){
           logEvent(`${opp?.name||''} tacle ${carrier.name} !`,teams[dti].color);
           setPhase('TRANSITION');
         }
-      } else if(r<shootBase+_dribWindow+0.42){
+      } else if(r<shootBase+_dribWindow+_passWindow){
         // ── PASSE (dominante) : le porteur cherche le meilleur relais ────────
         // Grosse fenêtre (42%) pour un jeu de passes fluide. On vise en priorité
         // un coéquipier démarqué vers l'avant ; sinon on recycle en sécurité.
@@ -620,7 +655,7 @@ function aiDecide(dt=0.016){
           if(safe){ kickToP(carrier,safe,1.0); setPhase('BUILDUP'); }
           else setPhase('BUILDUP');
         }
-      } else if(r<shootBase+_dribWindow+0.42+0.12){
+      } else if(r<shootBase+_dribWindow+_passWindow+0.12){
         // ── DUEL PERDU : le porteur se fait presser et perd le ballon ────────
         // (nettement réduit vs avant, et seulement si un adversaire est proche)
         if(opp && Math.hypot(opp.x-carrier.x,opp.y-carrier.y)<6){
