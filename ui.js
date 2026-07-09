@@ -419,10 +419,12 @@ function nav(p){
     teams[1]=_leagueUserTeamBackup[1];
     renderTB(0);renderTB(1);syncHUD();
   }
-  document.querySelectorAll('.ntab').forEach((el,i)=>el.classList.toggle('on',['mode','setup','tactic','match','stats','league','cup','career'][i]===p));
+  document.querySelectorAll('.ntab').forEach((el,i)=>el.classList.toggle('on',['mode','setup','tactic','match','stats','league','cup','career','settings'][i]===p));
   document.querySelectorAll('.spage').forEach(el=>el.classList.remove('on'));
   const sp=document.getElementById(`sp-${p}`);if(sp)sp.classList.add('on');
   if(p==='mode')renderModeScreen();
+  if(p==='setup'){ renderTB(0); renderTB(1); updateModeBtns(); }
+  if(p==='settings')renderSettings();
   if(p==='stats')renderStats();
   if(p==='tactic'){renderTactics();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);}
   if(p==='league')renderLeague();
@@ -476,8 +478,51 @@ function selectGameMode(mode){
 }
 
 // ══════════════════════════════════════════════════════════
-// ÉCRAN DE PROFILS
+// PARAMÈTRES
 // ══════════════════════════════════════════════════════════
+function renderSettings(){
+  const out=document.getElementById('settings-out');
+  if(!out) return;
+  const complet = window.isComplet && window.isComplet();
+  const card=(inner)=>`<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:14px;margin-bottom:12px">${inner}</div>`;
+  const modeCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Mode de statistiques</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Choisis la profondeur du jeu. <b>Lite</b> : 6 statistiques simples, prise en main rapide — c'est le jeu classique.
+      <b>Complet</b> : des dizaines d'attributs détaillés (physique, technique, mental) façon manager. En Lite, les stats détaillées sont ignorées.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="setStatMode('lite')" style="flex:1;padding:12px 8px;border-radius:10px;cursor:pointer;border:2px solid ${!complet?'var(--gold)':'var(--b1)'};background:${!complet?'rgba(240,192,40,.14)':'var(--dark)'};color:${!complet?'var(--gold)':'var(--muted)'}">
+        <div style="font-size:15px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">⚡ LITE</div>
+        <div style="font-size:9px;margin-top:2px;opacity:.85">6 stats · simple & rapide</div>
+      </button>
+      <button onclick="setStatMode('complet')" style="flex:1;padding:12px 8px;border-radius:10px;cursor:pointer;border:2px solid ${complet?'#8840e0':'var(--b1)'};background:${complet?'rgba(136,64,224,.16)':'var(--dark)'};color:${complet?'#b98cf0':'var(--muted)'}">
+        <div style="font-size:15px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">📊 COMPLET</div>
+        <div style="font-size:9px;margin-top:2px;opacity:.85">stats détaillées · profondeur</div>
+      </button>
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin-top:10px;padding:7px 9px;background:var(--panel);border:1px solid var(--b1);border-radius:6px">
+      Mode actuel : <b style="color:${complet?'#b98cf0':'var(--gold)'}">${complet?'COMPLET':'LITE'}</b>${complet?' — les fiches joueurs affichent tous les attributs détaillés.':' — les fiches joueurs affichent les 6 statistiques de base.'}
+    </div>
+  `);
+  out.innerHTML = `
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
+    ${modeCard}
+  `;
+}
+
+// Ré-affiche la fiche joueur actuellement ouverte (si l'éditeur est visible),
+// utilisé quand on change de mode de stats pour rafraîchir l'affichage.
+function _reRenderOpenPlayerEditor(){
+  const modal=document.getElementById('pmodal')||document.getElementById('player-modal');
+  const cnt=document.getElementById('mcnt');
+  if(!cnt) return;
+  if(typeof editTi==='undefined') return;
+  try{
+    if(editCtx==='cup'){ const r=_cteRef(editCupId); if(r){ const arr=editSource==='bench'?(r.ref.bench||[]):editSource==='reserve'?(r.ref.reserves||[]):(r.ref.players||[]); const p=arr[editPi]; if(p)_renderPlayerEditor(p,r.ref,editSource); } }
+    else if(editTi!=null){ const arr=_resolveEditArr(); const p=arr[editPi]; if(p&&teams[editTi])_renderPlayerEditor(p,teams[editTi],editSource); }
+  }catch(e){}
+}
 
 function renderProfileScreen(){
   // Overlay plein écran par-dessus tout
@@ -1718,6 +1763,14 @@ function _resolveEditArr(){
   return editSource==='bench'?teams[editTi].bench:editSource==='reserve'?teams[editTi].reserves:teams[editTi].players;
 }
 
+// Renvoie le joueur actuellement édité dans la fiche (contexte principal ou coupe)
+function editP(){
+  try{
+    if(editCtx==='cup'){ const r=_cteRef(editCupId); if(!r)return null; const arr=editSource==='bench'?(r.ref.bench||[]):editSource==='reserve'?(r.ref.reserves||[]):(r.ref.players||[]); return arr[editPi]||null; }
+    const arr=_resolveEditArr(); return arr[editPi]||null;
+  }catch(e){ return null; }
+}
+
 function _renderPlayerEditor(p,T,source){
   const label={player:'',bench:' (Banc)',reserve:' (Réserviste)'}[source]||'';
   document.getElementById('mttl').textContent=p.name+' · '+p.pos+label;
@@ -1750,13 +1803,50 @@ function _renderPlayerEditor(p,T,source){
     </span>
   </div>
   <div id="paste-stats-hint" style="font-size:9px;color:var(--muted);margin:-3px 0 6px;display:${_copiedStats?'block':'none'}">Copié : ${_copiedStats?Object.entries(_copiedStats).map(([k,v])=>k.toUpperCase()+' '+v).join(' · '):''}</div>
-  ${[['spd','Vitesse'],['sht','Tir'],['def','Défense'],['stam','Endurance'],['tec','Technique'],['res','Résistance bless.']].map(([k,l])=>`
-  <div class="frow"><span class="lbl">${l}</span>
-    <div class="rrow">
-      <input type="range" min="1" max="99" step="1" value="${p.s[k]||50}" id="s_${k}" oninput="document.getElementById('v_${k}').textContent=this.value">
-      <span class="rv" id="v_${k}">${p.s[k]||50}</span>
-    </div>
-  </div>`).join('')}
+  ${(()=>{
+    // MODE LITE : les 6 sliders de base (jeu classique)
+    if(!(window.isComplet && window.isComplet())){
+      return [['spd','Vitesse'],['sht','Tir'],['def','Défense'],['stam','Endurance'],['tec','Technique'],['res','Résistance bless.']].map(([k,l])=>`
+      <div class="frow"><span class="lbl">${l}</span>
+        <div class="rrow">
+          <input type="range" min="1" max="99" step="1" value="${p.s[k]||50}" id="s_${k}" oninput="document.getElementById('v_${k}').textContent=this.value">
+          <span class="rv" id="v_${k}">${p.s[k]||50}</span>
+        </div>
+      </div>`).join('');
+    }
+    // MODE COMPLET : attributs détaillés par catégorie
+    if(typeof ensurePlayerS2==='function') ensurePlayerS2(p);
+    const defs = statDefsFor(p);
+    // Garder les 6 sliders de base présents (cachés) pour ne pas casser la
+    // sauvegarde/lecture des stats socle par le reste du code.
+    const hiddenBase = [['spd'],['sht'],['def'],['stam'],['tec'],['res']].map(([k])=>
+      `<input type="hidden" id="s_${k}" value="${p.s[k]||50}"><span id="v_${k}" style="display:none">${p.s[k]||50}</span>`).join('');
+    const catBlocks = Object.keys(defs).map(catKey=>{
+      const cat = defs[catKey];
+      const avg = (typeof catAverage==='function') ? catAverage(p,catKey) : null;
+      const rows = cat.stats.map(st=>{
+        const v = (p.s2 && p.s2[st.key]!=null) ? p.s2[st.key] : 50;
+        const col = (typeof statColor==='function') ? statColor(v) : '#f0c028';
+        return `<div class="frow" style="padding:2px 0">
+          <span class="lbl" style="font-size:10px">${st.label}</span>
+          <div class="rrow">
+            <input type="range" min="1" max="99" step="1" value="${v}" id="s2_${st.key}"
+              oninput="if(!editP()) return; var pp=editP(); pp.s2=pp.s2||{}; pp.s2['${st.key}']=+this.value; document.getElementById('v2_${st.key}').textContent=this.value; document.getElementById('v2_${st.key}').style.color='${'' }';">
+            <span class="rv" id="v2_${st.key}" style="color:${col}">${v}</span>
+          </div>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:6px;margin:6px 0 3px">
+          <span style="width:8px;height:8px;border-radius:2px;background:${cat.color};display:inline-block"></span>
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;letter-spacing:1px;text-transform:uppercase;color:${cat.color}">${cat.label}</span>
+          ${avg!=null?`<span style="margin-left:auto;font-size:10px;font-weight:800;color:${statColor(avg)}">moy. ${avg}</span>`:''}
+        </div>
+        ${rows}
+      </div>`;
+    }).join('');
+    return hiddenBase + catBlocks;
+  })()}
   <div class="slbl">Sorts & Techniques <span id="sg-count" style="color:var(--gold);font-weight:800">(${(p.spells||[]).length}/3)</span></div>
   <input type="text" id="sg-search" class="inp" placeholder="🔍 Rechercher un sort (nom)…" style="margin-bottom:6px;font-size:11px" oninput="filterSpells(this.value)">
   <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">
@@ -1890,6 +1980,15 @@ function saveP(){
     const el=document.getElementById(`s_${k}`);
     if(el)p.s[k]=parseInt(el.value);
   });
+  // Stats détaillées (mode Complet) : lire tous les sliders s2_ présents
+  if(window.isComplet && window.isComplet()){
+    p.s2 = p.s2 || {};
+    document.querySelectorAll('[id^="s2_"]').forEach(el=>{
+      const key = el.id.slice(3);
+      const v = parseInt(el.value);
+      if(!isNaN(v)) p.s2[key]=v;
+    });
+  }
   // Poste : même règle que partout ailleurs pour le gardien de fortune.
   // On ne l'applique que pour l'équipe en match réel (pas l'édition d'une
   // équipe de coupe hors contexte, éditée sans lien avec un match en cours).

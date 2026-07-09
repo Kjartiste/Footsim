@@ -241,6 +241,7 @@ input[type=range]:focus{outline:none}
     <button class="ntab" onclick="nav('league')"><i>🏆</i> Ligue</button>
     <button class="ntab" onclick="nav('cup')"><i>🥇</i> Coupe</button>
     <button class="ntab" onclick="nav('career')"><i>🎽</i> Carrière</button>
+    <button class="ntab" onclick="nav('settings')"><i>⚙️</i> Paramètres</button>
   </div>
   <div class="sdivider"></div>
 
@@ -257,6 +258,11 @@ input[type=range]:focus{outline:none}
       <button class="btn" id="btn-restart" style="flex:1;justify-content:center;font-size:10px">↺ Recommencer</button>
       <button class="btn" id="btn-rescue" style="flex:1;justify-content:center;font-size:10px;color:#f0c028;border-color:#f0c02844">🔧 Réparer</button>
     </div>
+  </div>
+
+  <!-- SETTINGS PAGE -->
+  <div id="sp-settings" class="spage">
+    <div id="settings-out" style="padding:4px"></div>
   </div>
 
   <!-- CUP PAGE -->
@@ -495,6 +501,7 @@ input[type=range]:focus{outline:none}
 <script src="panthalassa.js"></script>
 <script src="worlds_index.js"></script>
 <script src="data.js"></script>
+<script src="stats_ext.js"></script>
 <script src="engine.js"></script>
 <script src="ia.js"></script>
 <script src="visual.js"></script>
@@ -513,6 +520,7 @@ input[type=range]:focus{outline:none}
     }
     try{
       loadProfiles();
+      if(typeof ensureAllS2==='function') ensureAllS2();
       if(!activeProfileId || !profiles[activeProfileId]){
         renderProfileScreen();
       } else {
