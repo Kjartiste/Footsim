@@ -479,6 +479,24 @@ const MAX_SPD=8.5,MIN_SPD=2.5,BALL_FRIC=.965,SEP=2.2,PICK_R=1.9;
 function physStep(dt,rawDt){
   const now=Date.now()*.001;
 
+  // ── FACTEUR DE POSSESSION LISSÉ (deux formations avec/sans ballon) ────
+  // Chaque équipe glisse progressivement de sa forme défensive (0) vers sa
+  // forme offensive (1) selon qu'elle a le ballon, et selon l'avancement du
+  // jeu dans le camp adverse. Le lissage évite toute téléportation.
+  [0,1].forEach(ti=>{
+    const T=teams[ti]; if(!T) return;
+    if(T._possBias==null) T._possBias = 0;
+    const hasBall = G.atkTi===ti;
+    let target = 0;
+    if(hasBall){
+      const b=G.ball;
+      const prog = ti===0 ? (b.x/WW) : (1 - b.x/WW); // 0 (mon camp) → 1 (camp adverse)
+      target = clamp(0.45 + prog*0.75, 0, 1);
+    }
+    const rate = target > T._possBias ? 0.9 : 0.6;
+    T._possBias = lerp(T._possBias, target, clamp(dt*rate*3, 0, 1));
+  });
+
   // ── Mode 11v11 : physique complète avec fonctionnalités 7v7 ──────────
   // NOTE : le 11v11 utilise désormais le MÊME moteur riche que le 7v7
   // (mouvement organique, tirs spatiaux, tacles, marquage). L'ancienne

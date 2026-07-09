@@ -677,10 +677,16 @@ function applyFormationRoles(ti){
   // incohérent (défenseurs éparpillés, etc.). On applique aux 7 titulaires.
   if(!is11v11 && !is5v5){
     const strat7 = T.strat || '321';
+    const strat7Atk = T.stratAtk || null;
     if(FORM_ROLES[strat7] && T.players.length >= 7){
-      const positions = FORM_ROLES[strat7];
+      const posDef = FORM_ROLES[strat7];
+      const posAtk = (strat7Atk && FORM_ROLES[strat7Atk]) ? FORM_ROLES[strat7Atk] : null;
       T.players.slice(0,7).forEach((p, i) => {
-        if(p && positions[i]) p.pos = positions[i];
+        if(!p) return;
+        if(posDef[i]) p.pos = posDef[i];
+        // Deux formations : mémoriser le poste dans chaque phase
+        p.posDef = posDef[i] || p.pos;
+        p.posAtk = posAtk ? (posAtk[i] || p.posDef) : p.posDef;
       });
     }
   }
@@ -702,9 +708,31 @@ function applyFormationRoles(ti){
 
 function formBase(ti,pi){
   const T = teams[ti];
+  // ── DEUX FORMATIONS (avec / sans ballon) ──────────────────────────────
+  // Si l'équipe a une formation d'attaque distincte (T.stratAtk) et qu'un
+  // facteur de possession lissé existe (T._possBias : 0=repli défensif,
+  // 1=phase offensive), on INTERPOLE la position du joueur entre sa place
+  // "sans ballon" (posDef) et "avec ballon" (posAtk). Sinon, comportement
+  // classique à une seule formation.
+  const hasDual = T && T.stratAtk && T.stratAtk !== T.strat &&
+                  gameMode !== '11v11'; // 7v7 / 5v5 pour l'instant
+  if(hasDual){
+    const bias = clamp((T._possBias!=null ? T._possBias : (G && G.atkTi===ti ? 1 : 0)), 0, 1);
+    const pDef = (players_of(T)[pi] && players_of(T)[pi].posDef) || (players_of(T)[pi] && players_of(T)[pi].pos);
+    const pAtk = (players_of(T)[pi] && players_of(T)[pi].posAtk) || pDef;
+    const dPos = _formBaseForPos(ti, pi, pDef);
+    const aPos = _formBaseForPos(ti, pi, pAtk);
+    return { x: lerp(dPos.x, aPos.x, bias), y: lerp(dPos.y, aPos.y, bias) };
+  }
+  return _formBaseForPos(ti, pi, null);
+}
+function players_of(T){ return T && T.players ? T.players : []; }
 
-  // Placement basé sur le POSTE individuel (cohérent avec l'IA de mouvement
-  // qui s'appuie sur p.pos). Chaque mode a sa propre grille de coordonnées.
+// Calcule la position de formation d'un joueur, en substituant éventuellement
+// son poste (posOverride) — utilisé pour les deux formations avec/sans ballon.
+function _formBaseForPos(ti,pi,posOverride){
+  const T = teams[ti];
+
   const posMap = window.gameMode === '5v5'   ? (window.POS_COORDS_5V5   || POS_COORDS)
                : window.gameMode === '11v11' ? (window.POS_COORDS_11V11 || POS_COORDS)
                : POS_COORDS;
@@ -713,53 +741,53 @@ function formBase(ti,pi){
     : null;
   const players = T && T.players ? T.players : [];
   const p = players[pi];
+  const myPos = posOverride || (p && p.pos);
   let f;
-  if(p && p.pos && posMap[p.pos]){
-    const base = posMap[p.pos];
-    // ── RÉPARTITION PAR LIGNE (anti-asymétrie) ────────────────────────
-    // Problème signalé : "DC DD" laisse un côté vide, "DC DC" reste central.
-    // Solution : on regroupe les joueurs par LIGNE (même profondeur/rôle) et on
-    // les étale uniformément sur la largeur, en gardant leur biais de poste
-    // (un DD penche à droite, un DG à gauche) comme ordre de tri. La ligne
-    // couvre ainsi toujours tout le terrain, quelle que soit la combinaison.
+  if(p && myPos && posMap[myPos]){
+    const base = posMap[myPos];
     const _lineOf = (pos)=>{
       if(['DC','DCD','DCG','DD','DG','LB','RB','FIXO'].includes(pos)) return 'DEF';
       if(['MDC','MDC2','MC','MCD','MCG'].includes(pos)) return 'MID';
       if(['MO','MOG','MOD','AG','AD','ALA_L','ALA_R'].includes(pos)) return 'ATT_MID';
       if(['ATT','ATT2','PIVOT'].includes(pos)) return 'FWD';
-      return pos; // GB et autres : pas de regroupement
+      return pos;
     };
-    const myLine = _lineOf(p.pos);
-    let f;
+    // Poste "actif" de chaque joueur pour le calcul de ligne : si on est en
+    // train de calculer une formation donnée (override), on utilise le poste
+    // correspondant de CHAQUE joueur (posDef/posAtk) pour rester cohérent.
+    const _activePosOf = (q)=>{
+      if(!posOverride) return q.pos;
+      // déterminer si on calcule la formation d'attaque ou de défense
+      // en comparant l'override au poste d'attaque du joueur courant
+      const wantAtk = (p.posAtk && posOverride===p.posAtk);
+      return wantAtk ? (q.posAtk||q.pos) : (q.posDef||q.pos);
+    };
+    const myLine = _lineOf(myPos);
     if(myLine==='DEF' || myLine==='MID'){
-      // Récupérer tous les joueurs de la même ligne, triés par biais latéral
-      // nominal (leur y de poste) pour garder gauche/centre/droite cohérents.
       const lineMates = [];
       for(let i=0;i<players.length;i++){
         const q=players[i];
-        if(q && q.pos && posMap[q.pos] && _lineOf(q.pos)===myLine){
-          lineMates.push({i, y: posMap[q.pos][1]});
+        const qp=_activePosOf(q);
+        if(q && qp && posMap[qp] && _lineOf(qp)===myLine){
+          lineMates.push({i, y: posMap[qp][1]});
         }
       }
       lineMates.sort((a,b)=> a.y - b.y || a.i - b.i);
       const n = lineMates.length;
       const k = lineMates.findIndex(o=>o.i===pi);
-      // Profondeur moyenne de la ligne (x) pour l'aligner proprement
-      let sumX=0; lineMates.forEach(o=>sumX+=posMap[players[o.i].pos][0]);
+      let sumX=0; lineMates.forEach(o=>sumX+=posMap[_activePosOf(players[o.i])][0]);
       const lineX = sumX/n;
       if(n>1 && k>=0){
-        // Étaler sur ~78% de la largeur, centré
         const spreadHalf = 0.39;
-        const t = (k-(n-1)/2)/((n-1)/2||1); // -1 … +1
+        const t = (k-(n-1)/2)/((n-1)/2||1);
         const fy = clamp(0.5 + t*spreadHalf, 0.08, 0.92);
         f = [lineX, fy];
       } else {
         f = [base[0], base[1]];
       }
     } else {
-      // Autres lignes : ancien étalement par poste identique
       const sameIdx = [];
-      for(let i=0;i<players.length;i++){if(players[i]&&players[i].pos===p.pos)sameIdx.push(i);}
+      for(let i=0;i<players.length;i++){if(players[i]&&_activePosOf(players[i])===myPos)sameIdx.push(i);}
       const n = sameIdx.length;
       let fy = base[1];
       if(n>1){

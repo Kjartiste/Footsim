@@ -1432,6 +1432,7 @@ function exportTeamData(t,nameOverride){
     color:t.color,
     img:t.img||'',
     strat:t.strat,
+    stratAtk:t.stratAtk||null,
     players:(t.players||[]).map(clean),
     bench:(t.bench||[]).map(clean),
     reserves:(t.reserves||[]).map(clean),
