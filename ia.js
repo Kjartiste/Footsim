@@ -760,17 +760,28 @@ function aiDecide(dt=0.016){
       // La technique du tireur est DÉTERMINANTE sur coup franc : un spécialiste
       // passe le mur et marque souvent, un mauvais tireur n'a quasi aucune
       // chance. Le tir (sht) et surtout la technique (tec) pèsent lourd.
-      const atkS=((sh.s.sht+(sh._hm||0))+sh.s.tec*.70+irng(-10,10))*ast.atk*fatMul(sh);
-      const defS=((gk?gk.s.def*fatMul(gk):50+irng(-8,8))+wallDef)*dst.def*1.08;
+      // Les multiplicateurs tactiques (ast.atk/dst.def) sont PLAFONNÉS ici :
+      // un coup franc dépend d'abord du duel tireur/mur/gardien, pas des
+      // réglages d'équipe — sans ce garde-fou, un mode "Attaque" + style
+      // "Direct" + bonus de synergie pouvait faire grimper ast.atk au-delà
+      // de 2.5-3 (aucun plafond global), ce qui, combiné à l'exposant 2.0
+      // ci-dessous, rendait le coup franc quasi automatique.
+      const _fkAtkMul=Math.min(1.5,Math.max(0.7,ast.atk));
+      const _fkDefMul=Math.min(1.5,Math.max(0.7,dst.def));
+      const atkS=((sh.s.sht+(sh._hm||0))+sh.s.tec*.70+irng(-10,10))*_fkAtkMul*fatMul(sh);
+      const defS=((gk?gk.s.def*fatMul(gk):50+irng(-8,8))+wallDef)*_fkDefMul*1.08;
       kickTo(oppGoalX,PCY+rng(-5.5,5.5),2.2);
       logEvent(`Coup franc de ${sh.name}...`,teams[ati].color+'bb');
       setTimeout(()=>{
         if(!G.running)return;
         G.shots[ati]++;sh.mSh++;
         G._fkWall=null; // le mur se dissout une fois le coup franc tiré
-        // Courbe raide (exposant 2.0) : creuse fortement l'écart entre bons et
-        // mauvais tireurs. Plancher très bas, plafond généreux pour les élites.
-        if(Math.random()<(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,2.0);return Math.min(0.78,Math.max(0.004,0.09+(_r-1)*0.14));})()){goalScored(sh,ati,oppGoalX,G._lastPasser?.[ati]);}
+        // Courbe modérée (exposant 1.5, au lieu de 2.0) : creuse toujours
+        // l'écart bon/mauvais tireur, mais sans effet loupe extrême. Plafond
+        // ramené à 42% (un coup franc direct reste rare à convertir, même
+        // pour un excellent tireur face à un mauvais gardien) et base/pente
+        // abaissées pour un taux de conversion moyen réaliste (~7-9%).
+        if(Math.random()<(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.5);return Math.min(0.42,Math.max(0.01,0.07+(_r-1)*0.11));})()){goalScored(sh,ati,oppGoalX,G._lastPasser?.[ati]);}
         else{logEvent(`Coup franc repoussé par ${gk?.name||'GB'}`,teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}
       },580/speedMult);
       break;
