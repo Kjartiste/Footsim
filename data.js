@@ -645,19 +645,15 @@ function applyFormationRoles(ti){
 
 function formBase(ti,pi){
   const T = teams[ti];
-  const is11 = window.gameMode === '11v11';
 
-  if(is11){
-    // Mode 11v11 : coordonnées normalisées simples, comme la version épurée
-    const strat11 = T && T.strat11 ? T.strat11 : '442';
-    const forms = window.FORMS_COORDS_11V11 || {};
-    const coords = (forms[strat11] || forms['442'] || [])[pi] || [.5,.5];
-    const fx = ti===0 ? coords[0] : 1-coords[0];
-    return {x: fx*WW, y: coords[1]*WH};
-  }
-
-  // Mode 7v7 / 5v5 : système avec POS_COORDS et étalement
-  const posMap = window.gameMode === '5v5' ? (window.POS_COORDS_5V5 || POS_COORDS) : POS_COORDS;
+  // Placement basé sur le POSTE individuel (cohérent avec l'IA de mouvement
+  // qui s'appuie sur p.pos). Chaque mode a sa propre grille de coordonnées.
+  const posMap = window.gameMode === '5v5'   ? (window.POS_COORDS_5V5   || POS_COORDS)
+               : window.gameMode === '11v11' ? (window.POS_COORDS_11V11 || POS_COORDS)
+               : POS_COORDS;
+  const fallbackForms = window.gameMode === '11v11'
+    ? (window.FORMS_COORDS_11V11 && window.FORMS_COORDS_11V11[(T&&T.strat11)||'442'])
+    : null;
   const players = T && T.players ? T.players : [];
   const p = players[pi];
   let f;
@@ -669,11 +665,18 @@ function formBase(ti,pi){
     let fy = base[1];
     if(n>1){
       const k = sameIdx.indexOf(pi);
-      const spread = Math.min(0.34, 0.10*n);
+      // En 11v11 plusieurs joueurs partagent un même poste générique (4 DC,
+      // 4 MC…) : on les étale davantage pour former de vraies lignes.
+      const maxSpread = window.gameMode==='11v11' ? 0.60 : 0.34;
+      const perPlayer = window.gameMode==='11v11' ? 0.16 : 0.10;
+      const spread = Math.min(maxSpread, perPlayer*n);
       const t = (k-(n-1)/2)/Math.max(1,(n-1));
       fy = Math.max(.06, Math.min(.94, base[1]+t*spread*2));
     }
     f = [base[0], fy];
+  } else if(fallbackForms && fallbackForms[pi]){
+    // Repli 11v11 : coordonnées de slot de la formation
+    f = fallbackForms[pi];
   } else {
     f = (FORMS[T && T.strat ? T.strat : '321'] || FORMS['321'])[pi] || [.5,.5];
   }
@@ -849,19 +852,29 @@ function setGameMode(mode){
   if(typeof updateModeBtns === 'function') updateModeBtns();
 }
 
+// Applique les VRAIES dimensions de terrain (variables module WW/WH/…) pour
+// un mode donné, puis recalcule les constantes dérivées. Sans ça, le 11v11
+// se jouait sur un terrain 75×50 avec 22 joueurs entassés.
+function _setFieldDims(w,h,psx,paw,pah,goalHalf){
+  WW=w; WH=h;
+  PCX=WW/2; PCY=WH/2;
+  PSX=psx; PA_W=paw; PA_H=pah;
+  GY1=PCY-goalHalf; GY2=PCY+goalHalf;
+}
+
 function _applyMode5v5(){
-  // Appliquer les constantes 5v5
   Object.assign(window, CONSTANTS_5V5);
+  _setFieldDims(60, 40, 7, 10, 20, 2.5);
 }
 
 function _applyMode7v7(){
-  // Restaurer les constantes 7v7 originales
   Object.assign(window, CONSTANTS_7V7);
+  _setFieldDims(75, 50, 9, 12, 26, 3.0);
 }
 
 function _applyMode11v11(){
-  // Appliquer les constantes 11v11
   Object.assign(window, CONSTANTS_11V11);
+  _setFieldDims(105, 68, 11, 16.5, 40.3, 3.66);
 }
 
 // ── Constantes 5v5 (futsal / foot à 5) ───────────────────────────────
@@ -931,6 +944,7 @@ const POS_COORDS_11V11 = {
   ATT:  [.80,.50],
   ATT2: [.80,.40],
 };
+window.POS_COORDS_11V11 = POS_COORDS_11V11;
 
 // ── Positions de base pour chaque formation 11v11 ─────────────────────
 // Liste ordonnée : [GB, puis tous les autres dans l'ordre formation]

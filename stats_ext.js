@@ -179,6 +179,56 @@ function catAverage(p, catKey){
   return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
 }
 
+// ── PONT VERS LE MOTEUR (mode Complet) ────────────────────────────────
+// En mode Lite : renvoie la stat de base telle quelle (jeu inchangé).
+// En mode Complet : renvoie la stat de base AJUSTÉE par les sous-stats
+// pertinentes de p.s2, pour que deux joueurs de même note se comportent
+// différemment. L'ajustement est borné pour rester équilibré.
+//
+// Chaque stat de base est "affinée" par une petite sélection de sous-stats
+// qui comptent vraiment pour cette facette du jeu.
+const _STATOF_MAP = {
+  // base : [sous-stats qui l'affinent]
+  spd:  ['accel','vitesse','agilite'],
+  sht:  ['finition','sangFroid','tir'],
+  def:  ['tacle','marquage','anticipation','placement'],
+  tec:  ['controle','dribble','passeC','vision','flair'],
+  stam: ['endurance','activite','recup'],
+  res:  ['force','equilibre','determination','resBless'],
+};
+// Version gardien : def/tec pointent vers les attributs de GB
+const _STATOF_MAP_GK = {
+  spd:  ['accel','agilite','reflexes'],
+  sht:  ['degagement','relances'],
+  def:  ['reflexes','prises','unContreUn','placementGk'],
+  tec:  ['jeuPied','relances','communication'],
+  stam: ['endurance','recup'],
+  res:  ['force','sorties','courage'],
+};
+
+function statOf(p, baseKey){
+  const base = (p && p.s && p.s[baseKey]!=null) ? p.s[baseKey] : 50;
+  // Mode Lite → stat brute, moteur identique au jeu actuel
+  if(!(window.GS && window.GS.statMode==='complet')) return base;
+  if(!p || !p.s2) return base;
+  const map = (p.pos==='GB') ? _STATOF_MAP_GK : _STATOF_MAP;
+  const subs = map[baseKey];
+  if(!subs || !subs.length) return base;
+  let sum=0, n=0;
+  for(const k of subs){ const v=p.s2[k]; if(v!=null){ sum+=v; n++; } }
+  if(!n) return base;
+  const detailed = sum/n;
+  // Mélange : 55% détaillé + 45% base, pour que le socle reste cohérent
+  // (un joueur à sht 80 ne devient pas soudainement médiocre) tout en
+  // laissant les sous-stats peser réellement sur le comportement.
+  const blended = detailed*0.55 + base*0.45;
+  return Math.max(1, Math.min(99, Math.round(blended)));
+}
+
+window.statOf = statOf;
+window._STATOF_MAP = _STATOF_MAP;
+window._STATOF_MAP_GK = _STATOF_MAP_GK;
+
 // Exposer sur window pour les autres scripts
 Object.assign(window, {
   GS_DEFAULTS, loadSettings, saveSettings, setStatMode,

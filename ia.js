@@ -538,17 +538,24 @@ function aiDecide(dt=0.016){
       // Fréquence de tir modulée par le rapport de force : une équipe nettement
       // supérieure se crée PLUS d'occasions (elle arrive mieux à se mettre en
       // position de frappe), pas seulement une meilleure conversion par tir.
-      const shootBase=0.22*_attackEdge(ati,dti);
+      // GARDE-FOU : on ne tire que depuis une distance crédible du but adverse.
+      // Avant, un porteur pouvait déclencher une frappe depuis sa propre moitié
+      // (surtout sur le grand terrain 11v11) et marquer — désormais interdit.
+      const _distGoal=Math.abs(carrier.x-oppGoalX);
+      const _shootRange=WW*0.42; // ~zone offensive : moitié adverse + un peu
+      const canShoot=_distGoal<_shootRange;
+      const shootBase=(canShoot?0.22:0)*_attackEdge(ati,dti);
       if(r<shootBase){
         doShot(carrier,ati,dti,opp,gk,oppGoalX);
       } else if(r<shootBase+.14){
         // Dribble — speed matters significantly (winger blowing past defender), fatigue penalizes both
         // Confrontation : Technique+Vitesse du porteur vs Défense+Vitesse du défenseur
         // Large écart de randomisation = parfois le faible passe, parfois le fort rate
-        const atkSpd  = carrier.s.spd;
-        const atkTec  = carrier.s.tec;
-        const defDef  = opp ? opp.s.def : 30;
-        const defSpd  = opp ? opp.s.spd : 30;
+        const _Sd=(p,k)=>(typeof statOf==='function'?statOf(p,k):(p&&p.s&&p.s[k]!=null?p.s[k]:50));
+        const atkSpd  = _Sd(carrier,'spd');
+        const atkTec  = _Sd(carrier,'tec');
+        const defDef  = opp ? _Sd(opp,'def') : 30;
+        const defSpd  = opp ? _Sd(opp,'spd') : 30;
         // Score dribble : combinaison tec+vitesse avec bruit élevé (football ≠ maths)
         const atkD=(atkTec*0.6+atkSpd*0.4+irng(-15,15))*ast.atk*fatMul(carrier)*(carrier._invis>0?3.5:1);
         // Score défense : def+vitesse pour couper la trajectoire
@@ -716,17 +723,23 @@ function doShot(sh,ati,dti,def2,gk,goalX){
   const ast2=strat(ati),dst2=strat(dti);
   // QUALITÉ DU TIR : puissance (sht) + finition technique (tec) + angle (spd).
   // La technique est déterminante — un joueur technique trouve la lucarne.
-  const atkS=((sh.s.sht+(sh._hm||0))*.7+(sh.s.tec||50)*.55+(sh.s.spd||50)*.15+irng(-10,10))*ast2.atk*fatMul(sh);
+  const _S=(p,k)=>(typeof statOf==='function'?statOf(p,k):(p.s&&p.s[k]!=null?p.s[k]:50));
+  const atkS=((_S(sh,'sht')+(sh._hm||0))*.7+(_S(sh,'tec'))*.55+(_S(sh,'spd'))*.15+irng(-10,10))*ast2.atk*fatMul(sh);
   // QUALITÉ DE L'ARRÊT : positionnement du gardien (def) + réflexes (spd) +
   // gêne d'un défenseur qui revient (def + un peu de tec pour bien se placer).
-  const gkPart = gk ? ((gk.s.def||50)*.62 + (gk.s.spd||50)*.55)*fatMul(gk) : 50;
-  const defHelp = def2 ? (( (def2.s.def||50) + (def2.s.tec||50)*.4 )*.15)*fatMul(def2) : 0;
+  const gkPart = gk ? ((_S(gk,'def'))*.62 + (_S(gk,'spd'))*.55)*fatMul(gk) : 50;
+  const defHelp = def2 ? (( (_S(def2,'def')) + (_S(def2,'tec'))*.4 )*.15)*fatMul(def2) : 0;
   const defS=(gkPart+defHelp+irng(-8,8))*dst2.def;
   const gy=clamp(PCY+rng(-5,5),GY1-1.5,GY2+1.5);
+  // Facteur distance : plus le tireur est loin du but visé, plus la frappe est
+  // difficile à cadrer/convertir. Un tir depuis sa propre moitié devient quasi
+  // impossible (évite les buts absurdes de très loin, surtout en 11v11).
+  const _dGoal=Math.abs(sh.x-goalX);
+  const _distFactor=clamp(1 - Math.max(0,_dGoal-WW*0.18)/(WW*0.5), 0.05, 1);
   kickTo(goalX,gy,2.6);freeB();
   setTimeout(()=>{
     if(!G.running)return;
-    const prob_normal=(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.3);return Math.min(0.68,Math.max(0.04,0.17+(_r-1)*0.13));})();
+    const prob_normal=(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.3);return Math.min(0.68,Math.max(0.04,0.17+(_r-1)*0.13))*_distFactor;})();
     if(Math.random()<prob_normal){
       goalScored(sh,ati,goalX,G._lastPasser?.[ati]);
     } else {

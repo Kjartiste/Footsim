@@ -662,7 +662,8 @@ function physStep(dt,rawDt){
     p.tx = isPresser ? lerp(p.tx, clamp(ballPred.x, 1, WW-1), 0.35) : lerp(p.tx, t.x, tLerp);
     p.ty = isPresser ? lerp(p.ty, clamp(ballPred.y, 1, WH-1), 0.35) : lerp(p.ty, t.y, tLerp);
 
-    const baseMax=MIN_SPD+(MAX_SPD-MIN_SPD)*(p.s.spd/99);
+    const _spdStat = (typeof statOf==='function') ? statOf(p,'spd') : (p.s.spd||50);
+    const baseMax=MIN_SPD+(MAX_SPD-MIN_SPD)*(_spdStat/99);
     // Spell buffs/debuffs: timers en temps de JEU (dt = rawDt×speedMult)
     // → la durée reste constante en minutes de match quelle que soit la vitesse
     if(p._spdDebuff>0){p._spdDebuff=Math.max(0,p._spdDebuff-dt*60);}
