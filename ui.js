@@ -1333,7 +1333,28 @@ function _prepareTeamsForMode(){
     // 7v7 : garantir 7 titulaires (utile après un passage par le 5v5)
     [0,1].forEach(function(ti){ _ensureTeamSize7v7(ti); });
   }
+  // Générer les stats détaillées (mode Complet) et garantir les champs de
+  // mouvement sur tous les joueurs (y compris ceux générés en complément).
+  if(typeof ensureAllS2==='function'){ try{ ensureAllS2(); }catch(e){} }
+  [0,1].forEach(function(ti){ (teams[ti].players||[]).forEach(_ensureMotionFields); });
 }
+
+// Garantit qu'un joueur possède tous les champs de position/mouvement, pour
+// qu'il ne reste jamais figé (x/y/vx… undefined → NaN → immobile).
+function _ensureMotionFields(p){
+  if(!p) return;
+  const num=(k,def)=>{ if(typeof p[k]!=='number'||isNaN(p[k])) p[k]=def; };
+  num('x',0); num('y',0); num('vx',0); num('vy',0); num('tx',0); num('ty',0);
+  num('stunT',0); num('runT',0); num('runCool',0); num('tackleCool',0);
+  if(typeof p.wPhaseX!=='number') p.wPhaseX=Math.random();
+  if(typeof p.wPhaseY!=='number') p.wPhaseY=Math.random();
+  if(typeof p.wSpeed!=='number') p.wSpeed=1.2+Math.random()*0.6;
+  if(typeof p.bobPhase!=='number') p.bobPhase=Math.random()*Math.PI*2;
+  if(typeof p.hp!=='number'||isNaN(p.hp)) p.hp=100;
+  if(typeof p.mp!=='number'||isNaN(p.mp)) p.mp=100;
+  if(typeof p.injLevel!=='number') p.injLevel=0;
+}
+window._ensureMotionFields=_ensureMotionFields;
 
 // Ramène l'effectif de terrain à 7 titulaires (complète depuis le banc si besoin)
 function _ensureTeamSize7v7(ti){
@@ -1349,7 +1370,7 @@ function _ensureTeamSize7v7(ti){
       T.players.push(p);
     } else if(window.WORLDS && WORLDS.generatePlayer){
       const pos = fillPos[(T.players.length-1) % fillPos.length] || 'MC';
-      const p = WORLDS.generatePlayer('panthalassa','solgrath',pos,pos+'_'+T.players.length,'dh');
+      const p = WORLDS.generatePlayer('panthalassa','solgrath',pos,randPlayerName(),fillLevelForTeam(T));
       if(p) T.players.push(p); else break;
     } else break;
   }
@@ -1392,7 +1413,7 @@ function _ensureTeamSize5v5(ti){
       T.players.push(p);
     } else if(window.WORLDS && WORLDS.generatePlayer){
       const pos = fillPos[(T.players.length-1) % fillPos.length] || 'MC';
-      const p = WORLDS.generatePlayer(nation, region, pos, pos+'_'+T.players.length, 'dh');
+      const p = WORLDS.generatePlayer(nation, region, pos, randPlayerName(), fillLevelForTeam(T));
       if(p) T.players.push(p); else break;
     } else break;
   }
@@ -1426,7 +1447,7 @@ function _ensureTeamSize11v11(ti){
     const gb = existing.find(p=>p.pos==='GB') || existing[0];
     if(gb){ gb.pos='GB'; T.players.push(gb); existing.splice(existing.indexOf(gb),1); }
     else {
-      const p = WORLDS.generatePlayer(nation, region, 'GB', 'Gardien', 'dh');
+      const p = WORLDS.generatePlayer(nation, region, 'GB', randPlayerName(), fillLevelForTeam(T));
       if(p) T.players.push(p);
     }
 
@@ -1436,7 +1457,7 @@ function _ensureTeamSize11v11(ti){
       const found = existing.find(p=>p.pos===pos||p.pos==='DC'||p.pos==='DD'||p.pos==='DG');
       if(found){ found.pos=pos; T.players.push(found); existing.splice(existing.indexOf(found),1); }
       else {
-        const p = WORLDS.generatePlayer(nation, region, pos, pos+'_'+T.players.length, 'dh');
+        const p = WORLDS.generatePlayer(nation, region, pos, randPlayerName(), fillLevelForTeam(T));
         if(p) T.players.push(p);
       }
     });
@@ -1447,7 +1468,7 @@ function _ensureTeamSize11v11(ti){
       const found = existing.find(p=>p.pos==='MC'||p.pos==='MDC'||p.pos==='MO'||p.pos==='MOG'||p.pos==='MOD');
       if(found){ found.pos=pos; T.players.push(found); existing.splice(existing.indexOf(found),1); }
       else {
-        const p = WORLDS.generatePlayer(nation, region, pos, 'Milieu_'+T.players.length, 'dh');
+        const p = WORLDS.generatePlayer(nation, region, pos, randPlayerName(), fillLevelForTeam(T));
         if(p) T.players.push(p);
       }
     });
@@ -1458,7 +1479,7 @@ function _ensureTeamSize11v11(ti){
       const found = existing.find(p=>p.pos==='ATT'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD');
       if(found){ found.pos=pos; T.players.push(found); existing.splice(existing.indexOf(found),1); }
       else {
-        const p = WORLDS.generatePlayer(nation, region, pos, 'Attaquant_'+T.players.length, 'dh');
+        const p = WORLDS.generatePlayer(nation, region, pos, randPlayerName(), fillLevelForTeam(T));
         if(p) T.players.push(p);
       }
     });
@@ -1473,7 +1494,7 @@ function _ensureTeamSize11v11(ti){
     // Compléter si toujours pas 11
     while(T.players.length < 11){
       const slotPos = slots442[T.players.length] || 'MC';
-      const p = WORLDS.generatePlayer(nation, region, slotPos, slotPos+'_fill_'+T.players.length, 'dh');
+      const p = WORLDS.generatePlayer(nation, region, slotPos, randPlayerName(), fillLevelForTeam(T));
       if(p) T.players.push(p);
     }
   }
@@ -1482,7 +1503,7 @@ function _ensureTeamSize11v11(ti){
   const benchSlots = ['GB','MC','ATT','DC','MO','DD','DG'];
   while(T.bench.length < 7){
     const pos = benchSlots[T.bench.length % benchSlots.length];
-    const p = WORLDS.generatePlayer(nation, region, pos, 'Banc_'+T.bench.length, 'dh');
+    const p = WORLDS.generatePlayer(nation, region, pos, randPlayerName(), fillLevelForTeam(T));
     if(p){ p.onBench=true; T.bench.push(p); }
   }
 }
@@ -2318,7 +2339,43 @@ function deleteFromRoster(idx){savedTeams.splice(idx,1);persistSavedTeams();rend
 // LEAGUE MODE
 // ═══════════════════════════════════════════════════════════
 const AI_NAMES=['Dupont','Martin','Lebrun','Girard','Chevalier','Morel','Fournier','Lambert',
-  'Perrin','Laurent','Garcia','Torres','Romero','Silva','Costa','Ferreira','Diaz','Santos'];
+  'Perrin','Laurent','Garcia','Torres','Romero','Silva','Costa','Ferreira','Diaz','Santos',
+  'Moreau','Simon','Michel','Leroy','Roux','David','Bertrand','Robert','Richard','Petit',
+  'Durand','Dubois','Moreno','Fernandez','Lopez','Gomez','Marino','Bianchi','Rossi','Greco',
+  'Meyer','Weber','Schmitt','Bauer','Wagner','Muller','Klein','Hansen','Nielsen','Larsen',
+  'Novak','Horvat','Kovac','Petrov','Ivanov','Popa','Adeyemi','Okafor','Traore','Diallo',
+  'Nakamura','Tanaka','Kim','Park','Chen','Wang','Ali','Hassan','Aziz','Haddad'];
+// Renvoie un nom aléatoire (utilisé pour les joueurs générés en complément
+// d'effectif). Évite les doublons via un set optionnel.
+function randPlayerName(used){
+  const pool = AI_NAMES;
+  for(let tries=0; tries<12; tries++){
+    const n = pool[Math.floor(Math.random()*pool.length)];
+    if(!used || !used.has(n)){ if(used) used.add(n); return n; }
+  }
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+window.randPlayerName = randPlayerName;
+
+// Estime un "niveau" de génération (dh…d1) à partir de l'OVR moyen d'une
+// équipe, pour que les joueurs de complément aient des stats cohérentes avec
+// le reste de l'effectif (plus de joueurs "district" ridicules dans une bonne
+// équipe).
+function fillLevelForTeam(T){
+  try{
+    const ps=(T&&T.players?T.players:[]).filter(p=>p&&p.s);
+    if(!ps.length) return 'r1';
+    const ovr=ps.reduce((a,p)=>{const v=Object.values(p.s);return a+(v.reduce((x,y)=>x+y,0)/v.length);},0)/ps.length;
+    if(ovr>=78) return 'd1';
+    if(ovr>=66) return 'd2';
+    if(ovr>=55) return 'd3';
+    if(ovr>=44) return 'r1';
+    if(ovr>=33) return 'r2';
+    if(ovr>=22) return 'r3';
+    return 'dh';
+  }catch(e){ return 'r1'; }
+}
+window.fillLevelForTeam = fillLevelForTeam;
 const AI_TEAM_DEFS=[
   {name:'FC Verdun',       color:'#18c860'},{name:'AS Lumière',      color:'#f0c028'},
   {name:'SC Mystère',      color:'#8840e0'},{name:'RC Tonnerre',     color:'#f07020'},

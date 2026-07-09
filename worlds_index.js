@@ -123,6 +123,14 @@ const WORLDS = {
       hp: 100, mp: 100,
       injLevel: 0, injT: 0,
       yc: 0, red: false,
+      // Champs de position / mouvement — SANS EUX un joueur généré reste figé
+      // (x/y undefined → NaN → aucune mise à jour de position).
+      x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0,
+      stunT: 0, hasBall: false,
+      runT: 0, runCool: 0, tackleCool: 0,
+      wPhaseX: Math.random(), wPhaseY: Math.random(), wSpeed: 1.2 + Math.random()*0.6,
+      bobPhase: Math.random()*Math.PI*2,
+      mSh: 0, mTk: 0, mPass: 0, mGoal: 0,
       _hm: Math.round((Math.random()+Math.random()-1)*8),
       _fm: Math.round(Math.random()*6),
       ini: (name||'??').slice(0,2).toUpperCase(),
