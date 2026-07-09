@@ -334,8 +334,8 @@ const ROLE=['GB','DC','DD','DG','MC','MC','ATT'];
 // Postes assignés par formation (7 joueurs, index 0-6)
 const FORM_ROLES={
   '321': ['GB','DC','DD','DG','MC','MC','ATT'],
-  '231': ['GB','DD','DG','MC','MC','MO','ATT'],
-  '1212':['GB','DD','DG','MDC','MC','MC','ATT'],        // losange
+  '231': ['GB','DC','DC','MC','MC','MO','ATT'],
+  '1212':['GB','DC','DC','MDC','MC','MC','ATT'],        // losange
   '312': ['GB','DG','DC','DD','MDC','ATT','ATT'],
   '123': ['GB','DC','MC','MC','AG','ATT','AD'],
   '411': ['GB','DG','DC','DC','DD','MC','ATT'],
@@ -343,7 +343,7 @@ const FORM_ROLES={
   '51':  ['GB','DG','DC','DC','DC','DD','ATT'],
   '141': ['GB','DC','MOG','MC','MC','MOD','ATT'],
   '33':  ['GB','DC','DD','DG','AG','AD','ATT'],
-  '24':  ['GB','DG','DD','AG','ATT','ATT','AD'],
+  '24':  ['GB','DC','DC','AG','ATT','ATT','AD'],
   '600': ['GB','DG','DC','DC','DC','DC','DD'],
   '222': ['GB','DC','DC','MOG','MOD','ATT','ATT'],
   '133': ['GB','DC','DD','DG','MDC','MDC','MO'],
@@ -1013,7 +1013,7 @@ window.FORMS_COORDS_5V5 = {
 // Formations 5v5 : liste ordonnée des postes [GB, ...4 joueurs de champ]
 const FORMS_5V5 = {
   '121': ['GB','DC','MOG','MOD','ATT'],
-  '22':  ['GB','DD','DG','AG','AD'],
+  '22':  ['GB','DC','DC','AG','AD'],
   '112': ['GB','DC','MC','AG','AD'],
   '31':  ['GB','DD','DC','DG','ATT'],
   '13':  ['GB','DC','AG','MO','AD'],
