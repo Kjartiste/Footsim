@@ -272,7 +272,7 @@ const ROLE=['GB','DC','DD','DG','MC','MC','ATT'];
 // Postes assignés par formation (7 joueurs, index 0-6)
 const FORM_ROLES={
   '321': ['GB','DC','DD','DG','MC','MC','ATT'],
-  '231': ['GB','DC','DG','MC','MC','MO','ATT'],
+  '231': ['GB','DC','DC','MC','MC','MO','ATT'],
   '222': ['GB','DC','DC','MOG','MOD','ATT','ATT'],  // GB + 2DC + 2MO latéraux + 2ATT
   '133': ['GB','DC','DD','DG','MDC','MDC','MO'],
 };
