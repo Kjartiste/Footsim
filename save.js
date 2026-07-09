@@ -3039,6 +3039,20 @@ function recordCareerMatchResult(s0,s1){
       pp.injLevel=mp.injLevel||0; pp.injT=mp.injT||0;
       pp.yc=mp.yc||0; pp.red=mp.red||false;
       pp.hp=mp.hp||100; pp.mp=mp.mp||100;
+      // ── BLESSURE DE CARRIÈRE ─────────────────────────────────────────
+      // Une blessure contractée en match rend le joueur indisponible plusieurs
+      // semaines selon sa gravité. La résistance aux blessures réduit la durée.
+      if((mp.injLevel||0) > 0){
+        const resStat = (pp.s2 && pp.s2.resBless!=null) ? pp.s2.resBless : (pp.s && pp.s.res!=null ? pp.s.res : 50);
+        const resMul = 1 - (resStat/99)*0.4;              // bon "résistance" → guérit plus vite
+        const baseWeeks = {1:[1,2], 2:[2,4], 3:[4,9]}[mp.injLevel] || [1,2];
+        const wk = Math.max(1, Math.round((baseWeeks[0] + Math.random()*(baseWeeks[1]-baseWeeks[0])) * resMul));
+        // On garde la blessure la plus longue si le joueur en avait déjà une
+        pp._injWeeks = Math.max(pp._injWeeks||0, wk);
+        pp._injLevelCareer = mp.injLevel;
+        pp._missNextMatch = true;
+        if(typeof careerLog==='function') careerLog(`🤕 ${pp.name} blessé — indisponible ${pp._injWeeks} sem.`, INJ_COLORS?.[mp.injLevel]||'#e06060');
+      }
     });
   };
   syncBack(C.playerClub.players, teams[0]?.players);
@@ -3061,6 +3075,22 @@ function recordCareerMatchResult(s0,s1){
     careerLog('💼 -'+fmtG(totalWeekly(C))+' charges sem.'+C.week,'#444');
   }
   if(PC.budget<0){careerLog('⚠️ CRISE FINANCIERE ! Vendez des joueurs.','#e02030');}
+  // ── RÉCUPÉRATION HEBDOMADAIRE DES BLESSÉS ────────────────────────────
+  // Chaque semaine, les joueurs blessés se rapprochent du retour. Quand le
+  // compteur atteint 0, le joueur est de nouveau disponible.
+  (C.playerClub.players||[]).concat(C.playerClub.bench||[], C.playerClub.reserves||[]).forEach(p=>{
+    if(p && p._injWeeks>0){
+      p._injWeeks--;
+      if(p._injWeeks<=0){
+        p._injWeeks=0; p._missNextMatch=false; p.injLevel=0; p.injT=0; p._injLevelCareer=0;
+        if(typeof careerLog==='function') careerLog(`✅ ${p.name} est rétabli et de nouveau disponible.`, '#18c860');
+      } else {
+        p._missNextMatch=true;
+        // Guérison progressive du niveau affiché
+        if(p._injWeeks<=1) p.injLevel=Math.min(p.injLevel||1,1);
+      }
+    }
+  });
   C.week++;
   window._careerFixRef=null; window._careerOppClub=null;
   // Check if all matches played → auto end of season

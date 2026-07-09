@@ -1615,7 +1615,7 @@ function renderTB(ti){
   };
   const pOvr=p=>{const s=p.s||{};const vals=Object.values(s);return vals.length?Math.round(vals.reduce((a,v)=>a+v,0)/vals.length):50;};
   const mkProw=(p,pi,source)=>{
-    const miss=p._missNextMatch?'<span style="font-size:9px;color:#e02030" title="Blessé - indisponible prochain match"> 🚫</span>':'';
+    const miss=p._missNextMatch?`<span style="font-size:9px;color:#e02030" title="Blessé${p._injWeeks>0?' - indisponible '+p._injWeeks+' semaine'+(p._injWeeks>1?'s':''):' - indisponible prochain match'}"> 🚫${p._injWeeks>0?'<span style="font-size:8px;color:#e06060">'+p._injWeeks+'sem</span>':''}</span>`:'';
     const inj=p.injLevel>0?`<span style="font-size:9px;color:${INJ_COLORS[p.injLevel]}">${['','🤕','🚑','🆘'][p.injLevel]}</span>`:'';
     return `
     <div class="prow" style="display:flex;align-items:center;gap:4px">
