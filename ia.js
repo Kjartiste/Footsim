@@ -112,6 +112,61 @@ function mentalitySpellMult(ti,isAtkSpell){
   if(mode==='defend') return isAtkSpell?0.65:1.45;
   return 1;
 }
+// ── DRIBBLE PARTAGÉ (BUILDUP + ATTACK) ──────────────────────────────────
+// Tentative de dribble du porteur face au défenseur le plus proche (opp).
+// Extrait de la branche ATTACK pour être réutilisable en BUILDUP. Renvoie
+// true si le dribble a réussi (le porteur garde le ballon et avance), false
+// s'il l'a perdu (le défenseur récupère, phase déjà basculée en TRANSITION).
+// `keepPhase` : si fourni, phase à laquelle rester en cas de succès (sinon on
+// laisse l'appelant décider). En cas d'échec on passe toujours en TRANSITION.
+function _attemptDribble(carrier,ati,dti,opp,ast,dst){
+  const _Sd=(p,k)=>(typeof statOf==='function'?statOf(p,k):(p&&p.s&&p.s[k]!=null?p.s[k]:50));
+  const atkSpd  = _Sd(carrier,'spd');
+  const atkTec  = _Sd(carrier,'tec');
+  const defDef  = opp ? _Sd(opp,'def') : 30;
+  const defSpd  = opp ? _Sd(opp,'spd') : 30;
+  const atkD=(atkTec*0.6+atkSpd*0.4+irng(-15,15))*(ast?.atk||1)*fatMul(carrier)*(carrier._invis>0?3.5:1);
+  const defD=(opp?(defDef*0.55+defSpd*0.45+irng(-15,15))*fatMul(opp):25+irng(-15,15))*(dst?.def||1);
+  const dribProb=(()=>{
+    const rr=Math.max(0.1,atkD)/Math.max(0.1,defD);
+    return Math.min(0.82,Math.max(0.12, 0.35+Math.log(rr)*0.28));
+  })();
+  spawnTackle(G.ball.x,G.ball.y);
+  if(Math.random()<dribProb){
+    carrier.mTk++;
+    const MOVES=['Roulette','Elastico','Crochet','Step-over','Feinte','Sombrero','Rabona'];
+    const moveName=MOVES[~~(Math.random()*MOVES.length)];
+    for(let i=0;i<20;i++){
+      const a=Math.random()*Math.PI*2,s=rng(.5,1.8);
+      G.ptcl.push({t:'s',x:carrier.x,y:carrier.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+        l:35,m:35,col:pick(['#8840e0','#d090ff','#f0c028','#fff']),sz:rng(.2,.55)});
+    }
+    G.ptcl.push({t:'ring_expand',x:carrier.x,y:carrier.y,col:'#8840e0',maxR:4,l:22,m:22});
+    G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-3,tx:'⚡ '+moveName,col:'#d090ff',l:52,m:52,sz:1.5});
+    logEvent(`🌀 ${carrier.name} — ${moveName} sur ${opp?.name||'défenseur'} !`,'#d090ff');
+    return true;
+  } else {
+    G.tackles[dti]++;
+    if(opp){giveB(opp);G.atkTi=dti;}
+    if(carrier&&Math.random()<0.12*(1-carrier.s.res/99))injurePlayer(ati,carrier,true);
+    logEvent(`${opp?.name||''} tacle ${carrier.name} !`,teams[dti].color);
+    setPhase('TRANSITION');
+    return false;
+  }
+}
+
+// Le porteur est-il "acculé" : ses meilleures lignes de passe sont-elles
+// fortement bloquées ? Renvoie true si même la meilleure option de passe est
+// serrée (peu d'espace), signal pour tenter un dribble plutôt que forcer.
+function _passLanesBlocked(carrier,ati){
+  if(typeof getBestPassOptions!=='function') return false;
+  const opts=getBestPassOptions(carrier,ati,{maxDist:WW*0.6});
+  if(!opts.length) return true;                  // aucune option → acculé
+  // Regarde les 2 meilleures : si toutes deux ont ≥1 défenseur sur la ligne, bloqué.
+  const top=opts.slice(0,2);
+  return top.every(o=>o.blocked>=1);
+}
+
 function aiDecide(dt=0.016){
   if(G.phase==='HALFTIME'||G.phase==='END'||G._celebrating)return;
   G.phTick++;
@@ -486,29 +541,128 @@ function aiDecide(dt=0.016){
       }
       // Support spells can fire from buildup
       if(spell&&SUPPORT_SPELLS.has(spell.id)){doSpell(carrier,ati,dti,spell,oppGoalX);return;}
+
+      // ── TENDANCES DE CONSTRUCTION (poste + style) ────────────────────────
+      // La construction n'est plus purement aléatoire : le poste du porteur et
+      // le style d'équipe pondèrent dribble / passe tranchante / long ballon /
+      // bascule directe en attaque. Un DC sécurise, un milieu construit, un
+      // ailier/attaquant porte le ballon plus volontiers.
+      const _bStyle=(strat(ati).style)||'normal';
+      const _bCat=_posCategory(carrier.pos);
+      // Propension au dribble en construction selon le poste (bien plus faible
+      // qu'en attaque : on remonte surtout à la passe, mais casser une ligne
+      // balle au pied redevient possible).
+      const _dribBuild = ({gk:0.0,def:0.05,dmc:0.10,mid:0.14,mo:0.20,att:0.22}[_bCat]) ?? 0.12;
+      let _dribW = _dribBuild * ({possession:0.85,tikitaka:0.9,direct:1.1,counter:1.15,normal:1}[_bStyle]||1);
+      if(typeof hasTrait==='function' && hasTrait(carrier,'dribbleur')) _dribW=Math.max(_dribW,0.22);
+
+      // Chaîne de passes en cours : plus elle est courte, plus on privilégie
+      // encore la construction (passe/dribble) avant toute verticalité ; plus
+      // elle est longue, plus on autorise le long ballon / la bascule en ATTACK.
+      const _bChain=(typeof chainLen==='function')?chainLen(ati):0;
+      const _verticalReady=Math.min(1, _bChain/4); // 0 à 0→ 1 à 4+ passes
+
+      // Interception RÉDUITE (14% → ~8%, encore atténuée si chaîne courte pour
+      // laisser les séquences se développer). Dépend aussi du pressing adverse.
+      const _pressD=(strat(dti).press!=null?strat(dti).press:0.5);
+      let _interW = 0.08 * (0.7+_pressD*0.6);
+      _interW *= (0.75+_verticalReady*0.5); // une chaîne longue s'expose un peu plus
+      _interW = Math.max(0.04, Math.min(0.13, _interW));
+
+      // Long ballon / bascule directe : n'ouvrent vraiment qu'avec une chaîne
+      // déjà installée (sinon on garde et on construit).
+      const _directW = (0.10+0.14*_verticalReady) * ({direct:1.5,counter:1.4,possession:0.55,tikitaka:0.6,normal:1}[_bStyle]||1);
+
+      const _oppD=opp?Math.hypot(opp.x-carrier.x,opp.y-carrier.y):1e9;
+
       const r=Math.random();
-      if(r<.22){
-        const midPool = window.gameMode==='11v11'
-          ? byR(ati,'MC','MDC','MO','MCD','MCG','MDC2').filter(p=>!p.hasBall&&!p.stunT)
-          : byR(ati,'MC','MDC','MO','MOG','MOD').filter(p=>!p.hasBall&&!p.stunT);
-        const mid=(typeof pickTactical==='function')?pickTactical(carrier,ati,midPool):pick(midPool);
-        if(mid){kickToP(carrier,mid,1.5);logEvent(`${carrier.name} → ${mid.name}`,teams[ati].color+'aa');}
-      } else if(r<.38){
+      let _acc=0;
+
+      // 1) DRIBBLE en construction — soit tirage dans la fenêtre, soit RÉACTIF
+      //    quand le porteur est pressé et que ses lignes de passe sont bouchées.
+      const _blockedLanes = _passLanesBlocked(carrier,ati);
+      const _forcedDribble = _oppD<6.5 && _blockedLanes && _bCat!=='gk' && _bCat!=='def';
+      _acc+=_dribW;
+      if(r<_acc || (_forcedDribble && Math.random()<0.5)){
+        if(_attemptDribble(carrier,ati,dti,opp,ast,dst)){
+          // Dribble réussi : le porteur a cassé une ligne, on passe à l'attaque
+          // s'il est déjà avancé, sinon on continue de construire.
+          const adv = ati===0 ? carrier.x>WW*0.55 : carrier.x<WW*0.45;
+          setPhase(adv?'ATTACK':'BUILDUP');
+        }
+        return;
+      }
+
+      // 2) PASSE TACTIQUE (troisième homme > renversement > meilleure option) —
+      //    désormais disponible EN CONSTRUCTION, pas seulement en attaque.
+      const _passW = 0.42;
+      _acc+=_passW;
+      if(r<_acc){
+        const _tacDec=(typeof tacticalPassDecision==='function')?tacticalPassDecision(carrier,ati):null;
+        const tgt=_tacDec?_tacDec.target:((typeof bestPassTarget==='function')?bestPassTarget(carrier,ati,{forward:true}):null)
+                  || ((typeof pickTactical==='function')?pickTactical(carrier,ati,ap.filter(p=>!p.hasBall)):pick(ap.filter(p=>!p.hasBall)));
+        if(tgt){
+          const prog = ati===0 ? (tgt.x-carrier.x) : (carrier.x-tgt.x);
+          const spd = prog>WW*0.08 ? 1.7 : 1.2;
+          kickToP(carrier,tgt,spd);
+          if(_tacDec && _tacDec.kind==='third_man_setup'){
+            // ── UNE-DEUX / TROISIÈME HOMME en construction ──────────────────
+            // Le relais (tgt) joue en une touche pour le troisième homme (follow)
+            // qui a démarré dans son dos : petite temporisation puis remise.
+            const follow=_tacDec.follow;
+            logEvent(`${carrier.name} → ${tgt.name}, une-deux pour ${follow?.name||'?'} !`,teams[ati].color+'cc');
+            setTimeout(()=>{
+              if(!G.running||G.phase==='HALFTIME'||G.phase==='END')return;
+              if(follow&&!follow.red&&follow.hp>0 && G.owner===tgt.id){
+                kickToP(tgt,follow,1.9);
+                logEvent(`↳ Remise pour ${follow.name} !`,teams[ati].color+'bb');
+                setPhase('ATTACK');
+              }
+            },260/speedMult);
+          } else if(_tacDec && _tacDec.kind==='switch'){
+            logEvent(`↔ Renversement de ${carrier.name} → ${tgt.name} !`,teams[ati].color+'cc');
+            setPhase('ATTACK');
+          } else if(prog>WW*0.12){
+            logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa');
+            setPhase('ATTACK');
+          } else {
+            logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa');
+          }
+        }
+        return;
+      }
+
+      // 3) LONG BALLON / VERTICALITÉ (s'ouvre surtout chaîne installée)
+      _acc+=_directW;
+      if(r<_acc){
         const fwdPool = window.gameMode==='11v11'
           ? byR(ati,'ATT','ATT2','MO','AG','AD')
           : byR(ati,'ATT','MO','MOG','MOD');
         const fwdP=(typeof pickTactical==='function')?pickTactical(carrier,ati,fwdPool):pick(fwdPool);
         if(fwdP){kickToP(carrier,fwdP,2.0);logEvent(`Long ballon pour ${fwdP.name} !`,teams[ati].color+'cc');setPhase('ATTACK');}
-      } else if(r<.52){
-        setPhase('ATTACK');
-      } else if(r<.66){
+        else setPhase('ATTACK');
+        return;
+      }
+
+      // 4) BASCULE DIRECTE en attaque (chaîne installée = équipe "arrivée")
+      const _toAttackW = 0.08+0.12*_verticalReady;
+      _acc+=_toAttackW;
+      if(r<_acc){ setPhase('ATTACK'); return; }
+
+      // 5) INTERCEPTION adverse (réduite)
+      _acc+=_interW;
+      if(r<_acc){
         const inter=pick(byR(dti,'MC','MDC','DD').filter(p=>!p.stunT));
         if(inter){
           freeB();
           setTimeout(()=>{if(G.running&&!inter.red&&inter.hp>0){giveB(inter);G.atkTi=dti;setPhase('TRANSITION');}},180/speedMult);
           logEvent(`Interception de ${inter.name} !`,teams[dti].color);
         }
-      } else {
+        return;
+      }
+
+      // 6) CIRCULATION (conservation) — par défaut on fait tourner le ballon.
+      {
         const circPool=ap.filter(p=>!p.hasBall);
         const p2=(typeof pickTactical==='function')?pickTactical(carrier,ati,circPool):pick(circPool);
         if(p2){kickToP(carrier,p2,1.2);logEvent(`${teams[ati].name} fait circuler`,teams[ati].color+'55');}
@@ -589,6 +743,33 @@ function aiDecide(dt=0.016){
       let _shootFreq = 0.22 * _tend.shoot * _STYLE_TEND.shoot;
       if(_HT('renard')||_HT('sang_froid')) _shootFreq += 0.06;
       if(_HT('ne_tire_jamais')) _shootFreq = 0;
+      // ── QUALITÉ D'OCCASION (chaîne de passes + espace devant le but) ──────
+      // On veut que les buts viennent plus souvent d'une action CONSTRUITE que
+      // d'un tir isolé. Deux leviers :
+      //  a) chaîne de passes en cours : peu de passes ⇒ on tempère le tir (on
+      //     encourage à construire encore) ; chaîne étoffée ⇒ l'équipe est
+      //     "arrivée" et on autorise/encourage la frappe de qualité.
+      //  b) dégagement devant le but : moins il y a d'adversaires entre le
+      //     porteur et le but, meilleure est l'occasion → tir favorisé.
+      const _chain = (typeof chainLen==='function') ? chainLen(ati) : 0;
+      // Facteur chaîne : 0 passe → 0.60 ; 2 → ~0.9 ; 4+ → jusqu'à ~1.35.
+      const _chainShotMul = Math.min(1.35, 0.60 + _chain*0.16);
+      // Nombre d'adversaires "dans le couloir" entre le porteur et le but.
+      let _blockersToGoal=0;
+      {
+        const gx=oppGoalX, gy=PCY;
+        const dgx=gx-carrier.x, dgy=gy-carrier.y, dg=Math.hypot(dgx,dgy)||1;
+        for(const o of dp){
+          const t=((o.x-carrier.x)*dgx+(o.y-carrier.y)*dgy)/(dg*dg);
+          if(t>0.05&&t<1){
+            const px=carrier.x+dgx*t, py=carrier.y+dgy*t;
+            if(Math.hypot(o.x-px,o.y-py)<3.5) _blockersToGoal++;
+          }
+        }
+      }
+      // Occasion nette (≤1 adversaire dans l'axe) → bonus ; couloir bouché → malus.
+      const _laneMul = _blockersToGoal<=1 ? 1.15 : _blockersToGoal===2 ? 0.85 : 0.6;
+      _shootFreq *= _chainShotMul * _laneMul;
       const shootBase=(canShoot?_shootFreq:0)*_attackEdge(ati,dti);
       // Fenêtre de dribble selon poste + style + trait
       let _dribWindow = 0.14 * _tend.drib * _STYLE_TEND.drib;
@@ -600,49 +781,31 @@ function aiDecide(dt=0.016){
       if(r<shootBase){
         doShot(carrier,ati,dti,opp,gk,oppGoalX);
       } else if(r<shootBase+_dribWindow){
-        // Dribble — speed matters significantly (winger blowing past defender), fatigue penalizes both
-        // Confrontation : Technique+Vitesse du porteur vs Défense+Vitesse du défenseur
-        // Large écart de randomisation = parfois le faible passe, parfois le fort rate
-        const _Sd=(p,k)=>(typeof statOf==='function'?statOf(p,k):(p&&p.s&&p.s[k]!=null?p.s[k]:50));
-        const atkSpd  = _Sd(carrier,'spd');
-        const atkTec  = _Sd(carrier,'tec');
-        const defDef  = opp ? _Sd(opp,'def') : 30;
-        const defSpd  = opp ? _Sd(opp,'spd') : 30;
-        // Score dribble : combinaison tec+vitesse avec bruit élevé (football ≠ maths)
-        const atkD=(atkTec*0.6+atkSpd*0.4+irng(-15,15))*ast.atk*fatMul(carrier)*(carrier._invis>0?3.5:1);
-        // Score défense : def+vitesse pour couper la trajectoire
-        const defD=(opp?(defDef*0.55+defSpd*0.45+irng(-15,15))*fatMul(opp):25+irng(-15,15))*dst.def;
-        // Probabilité de succès basée sur le ratio (pas juste atkD>defD)
-        const dribProb=(()=>{
-          const r=Math.max(0.1,atkD)/Math.max(0.1,defD);
-          return Math.min(0.82,Math.max(0.12, 0.35+Math.log(r)*0.28));
-        })();
-        spawnTackle(G.ball.x,G.ball.y);
-        if(Math.random()<dribProb){
-          carrier.mTk++; // reuse mTk as dribble-success counter
-          // Spawn skill move particles — purple trail burst
-          const MOVES=['Roulette','Elastico','Crochet','Step-over','Feinte','Sombrero','Rabona'];
-          const moveName=MOVES[~~(Math.random()*MOVES.length)];
-          for(let i=0;i<20;i++){
-            const a=Math.random()*Math.PI*2,s=rng(.5,1.8);
-            G.ptcl.push({t:'s',x:carrier.x,y:carrier.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
-              l:35,m:35,col:pick(['#8840e0','#d090ff','#f0c028','#fff']),sz:rng(.2,.55)});
-          }
-          G.ptcl.push({t:'ring_expand',x:carrier.x,y:carrier.y,col:'#8840e0',maxR:4,l:22,m:22});
-          G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-3,tx:'⚡ '+moveName,col:'#d090ff',l:52,m:52,sz:1.5});
-          logEvent(`🌀 ${carrier.name} — ${moveName} sur ${opp?.name||'défenseur'} !`,'#d090ff');
-        } else {
-          G.tackles[dti]++;
-          if(opp){giveB(opp);G.atkTi=dti;}
-          // Tackle injury chance for the carrier
-          if(carrier&&Math.random()<0.12*(1-carrier.s.res/99))injurePlayer(ati,carrier,true);
-          logEvent(`${opp?.name||''} tacle ${carrier.name} !`,teams[dti].color);
-          setPhase('TRANSITION');
-        }
+        // Dribble — confrontation Technique+Vitesse porteur vs Défense+Vitesse
+        // défenseur, via le helper partagé (réutilisé en BUILDUP). Succès = le
+        // porteur garde le ballon et reste à l'attaque.
+        _attemptDribble(carrier,ati,dti,opp,ast,dst);
       } else if(r<shootBase+_dribWindow+_passWindow){
         // ── PASSE (dominante) : le porteur cherche le meilleur relais ────────
         // Grosse fenêtre (42%) pour un jeu de passes fluide. On vise en priorité
         // un coéquipier démarqué vers l'avant ; sinon on recycle en sécurité.
+        // DRIBBLE RÉACTIF : si les lignes de passe sont fortement bloquées ET
+        // qu'un adversaire est proche, un joueur techniquement à l'aise préfère
+        // tenter de casser la ligne en dribble plutôt que forcer une passe
+        // risquée. On borne la probabilité pour ne pas transformer chaque passe
+        // pressée en dribble (ça reste une réaction, pas la norme).
+        const _oppDistP=opp?Math.hypot(opp.x-carrier.x,opp.y-carrier.y):1e9;
+        if(_oppDistP<7 && _passLanesBlocked(carrier,ati)){
+          const _tec=(typeof statOf==='function'?statOf(carrier,'tec'):(carrier.s?.tec||50));
+          // Plus le joueur est technique / dribbleur, plus il tente ; base 45%.
+          let _reactP=0.45 + Math.max(0,_tec-55)*0.006;
+          if(_HT('dribbleur')) _reactP+=0.20;
+          if(_HT('renard')||carrier.pos==='DC'||carrier.pos==='GB') _reactP*=0.4; // les sécurisants forcent moins le dribble
+          if(Math.random()<Math.min(0.85,_reactP)){
+            _attemptDribble(carrier,ati,dti,opp,ast,dst);
+            return;
+          }
+        }
         const _tacDec = (typeof tacticalPassDecision==='function') ? tacticalPassDecision(carrier,ati) : null;
         const tgt = _tacDec ? _tacDec.target : ((typeof bestPassTarget==='function') ? bestPassTarget(carrier,ati,{forward:true}) : null);
         // Traits : "Passes en profondeur" cherche loin devant ; "Une-deux" joue vite/court.

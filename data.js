@@ -848,9 +848,34 @@ function giveB(p){
     if(prevTi===ti) G._lastPasser[ti]=prev; // passe dans la même équipe
   }
   allP().forEach(q=>q.hasBall=false);
+  // ── COMPTEUR DE PASSES DE POSSESSION (chaîne de construction) ──────────
+  // G._chainCount[ti] = nb de passes réussies dans la possession en cours de
+  // l'équipe ti. Il s'incrémente quand le ballon passe d'un joueur à un autre
+  // de la MÊME équipe (passe réussie), et se remet à 0 quand la possession
+  // change de camp (perte de balle / récupération adverse). Sert à distinguer
+  // une action "construite" (chaîne longue) d'un tir précoce (chaîne courte),
+  // cf. modulation du tir / des passes tranchantes dans ia.js.
+  if(!G._chainCount) G._chainCount=[0,0];
+  if(prev && prev!==p){
+    const prevTi2 = (prev._dominated>0&&prev._dominatedBy!=null)?prev._dominatedBy:(inTeam(teams[0],prev)?0:1);
+    if(prevTi2===ti){
+      // Passe réussie dans la même équipe → la chaîne s'allonge.
+      G._chainCount[ti]=(G._chainCount[ti]||0)+1;
+    } else {
+      // Le ballon change de camp → nouvelle possession : reset des deux.
+      G._chainCount[ti]=0;
+      G._chainCount[prevTi2]=0;
+    }
+  } else if(!prev){
+    // Reprise de balle "à froid" (ballon libre récupéré) : nouvelle possession.
+    G._chainCount[ti]=0;
+  }
   G.owner=p.id;p.hasBall=true;
   G.atkTi=ti;
+  p._expectingBall=false; // il a le ballon désormais, plus besoin d'aller le chercher
 }
+// Longueur de la chaîne de passes en cours pour l'équipe ti (0 si aucune).
+function chainLen(ti){ return (G._chainCount&&G._chainCount[ti])||0; }
 function freeB(){allP().forEach(p=>p.hasBall=false);G.owner=null;}
 function kickTo(tx,ty,spd=2.2){
   freeB();
@@ -860,9 +885,36 @@ function kickTo(tx,ty,spd=2.2){
 }
 function kickToP(from,to,spd=1.8){
   freeB();
-  const dx=to.x-G.ball.x,dy=to.y-G.ball.y,d=Math.hypot(dx,dy)||1;
+  const dist0=Math.hypot(to.x-G.ball.x,to.y-G.ball.y)||1;
+  // ── Anticipation (lead pass) ────────────────────────────────────────
+  // Le récepteur continue de courir pendant que le ballon vole : viser sa
+  // position figée fait "rater" les passes dans la course. On vise donc un
+  // peu devant lui selon sa vitesse actuelle, borné pour ne jamais viser un
+  // point hors de portée réaliste.
+  const rvx=to.vx||0, rvy=to.vy||0, rSpeed=Math.hypot(rvx,rvy);
+  const leadAmount = rSpeed>0.3 ? Math.min(dist0*0.22, rSpeed*1.4) : 0;
+  let aimX = rSpeed>0.3 ? to.x+(rvx/rSpeed)*leadAmount : to.x;
+  let aimY = rSpeed>0.3 ? to.y+(rvy/rSpeed)*leadAmount : to.y;
+  // ── Précision ────────────────────────────────────────────────────────
+  // Un peu de dispersion selon la technique du passeur et la distance de la
+  // passe (une longue passe d'un joueur peu technique est moins fiable
+  // qu'une passe courte d'un bon technicien) — jamais un laser parfait.
+  const tec = (from && from.s && typeof from.s.tec==='number') ? from.s.tec : 60;
+  const distFactor = Math.min(1, dist0/40);
+  const errAmp = (1-tec/99)*1.6*distFactor + 0.15;
+  aimX += (Math.random()-.5)*2*errAmp;
+  aimY += (Math.random()-.5)*2*errAmp;
+  const dx=aimX-G.ball.x,dy=aimY-G.ball.y,d=Math.hypot(dx,dy)||1;
   G.ball.vx=(dx/d)*spd;G.ball.vy=(dy/d)*spd;
   G.ball.spin=spd*2;
+  // Le récepteur "voit" la passe partir : il va activement à la rencontre
+  // du ballon (point d'arrivée visé) au lieu d'attendre sur sa position de
+  // formation — voir la priorité correspondante dans roleTarget (engine.js).
+  if(to){
+    to._expectingBall=true;
+    to._expectX=aimX; to._expectY=aimY;
+    to._expectT=1.6;
+  }
 }
 
 // Trouve une position d'ESPACE LIBRE près du joueur pour se démarquer et

@@ -299,10 +299,16 @@ function shouldPress(player, carrier, myTi, oppTi){
 // bestPassTarget (data.js) si jamais rien n'est trouvé ici.
 function tacticalPassDecision(carrier, ati){
   if(!carrier) return null;
+  // Style possession/tikitaka combine davantage ; direct/counter moins.
+  const _style=(typeof strat==='function' && strat(ati) && strat(ati).style)||'normal';
+  const _comboBias = ({possession:1.15,tikitaka:1.2,direct:0.8,counter:0.85}[_style])||1;
+  // Usage relevé (troisième homme / renversement) : ~0.72 / ~0.78 de base au
+  // lieu de 0.5 / 0.6 — quand le pattern est trouvé, on l'exploite bien plus
+  // souvent, ce qui donne des séquences combinées reconnaissables.
   const tm=findThirdManOption(carrier,ati);
-  if(tm && Math.random()<0.5) return {target:tm.via, kind:'third_man_setup', follow:tm.target};
+  if(tm && Math.random()<Math.min(0.9,0.72*_comboBias)) return {target:tm.via, kind:'third_man_setup', follow:tm.target};
   const sw=findSwitchOption(carrier,ati);
-  if(sw && Math.random()<0.6) return {target:sw, kind:'switch'};
+  if(sw && Math.random()<Math.min(0.92,0.78*_comboBias)) return {target:sw, kind:'switch'};
   const best=bestPassOption(carrier,ati,{forward:true});
   if(best) return {target:best, kind:'best'};
   return null;

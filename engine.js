@@ -1,6 +1,19 @@
 // ═══════════════════════════════════════════════════
 // ENGINE.JS — Moteur physique, roleTarget, physStep
 // ═══════════════════════════════════════════════════
+// Décalage organique CONTINU dans le temps, pour remplacer les rng(a,b)
+// recalculés indépendamment à CHAQUE frame dans certaines formules de
+// position. Un rng() par frame donne un target qui saute aléatoirement en
+// permanence — même lissé ensuite par un lerp de vitesse, ça se traduit par
+// un léger tremblement/vibration visible sur les joueurs statiques ou en
+// maintien de position. Un sinus à phase propre par joueur garde la même
+// variété organique mais évolue en douceur.
+function smoothOffset(p,key,lo,hi,speed){
+  const phaseKey='_sph_'+key;
+  if(p[phaseKey]==null) p[phaseKey]=Math.random()*Math.PI*2;
+  const s=Math.sin(Date.now()*.001*speed+p[phaseKey]);
+  return lo+(s*0.5+0.5)*(hi-lo);
+}
 function roleTarget(ti,p,pi){
   if(p.red)return{x:-5,y:PCY};
   const b=G.ball,isAtk=G.atkTi===ti;
@@ -106,6 +119,9 @@ function roleTarget(ti,p,pi){
     if(phaseOK&&ballAhead&&Math.random()<0.42*runFreq*roleRunMod){
       p.runT=1.2+Math.random()*1.4;
       p.runCool=(1.6+Math.random()*1.8)/runFreq;
+      // Point de départ + durée totale mémorisés pour courber la trajectoire
+      // (voir plus bas) au lieu d'une ligne droite parfaite.
+      p.runStartX=p.x; p.runStartY=p.y; p.runDur=p.runT; p.runCurveSign=Math.random()<0.5?1:-1;
       // APPEL DE BALLE : ~55% du temps, le joueur se démarque dans l'espace
       // libre pour offrir une option de passe (mouvement naturel). Sinon, course
       // classique en profondeur vers le but adverse.
@@ -116,10 +132,17 @@ function roleTarget(ti,p,pi){
         p.runTx = clamp(spot.x, 4, WW-4);
         p.runTy = clamp(spot.y, 3, WH-3);
       } else {
+        // Positionnement collectif : si un coéquipier court déjà vers la même
+        // moitié du terrain (haut/bas), on privilégie l'autre côté pour ne pas
+        // empiler deux courses dans le même couloir.
+        const mateRunningTop    = actP(ti).some(q=>q!==p && q.runT>0 && q.runTy<PCY);
+        const mateRunningBottom = actP(ti).some(q=>q!==p && q.runT>0 && q.runTy>=PCY);
         const myWidth=(strat(ti).width)||1.0;
         const flankBias=myWidth>1?(myWidth-1)*2.5:0;
         const axisBias=myWidth<1?(1-myWidth)*2.5:0;
-        const baseSide=p.pos==='AG'?-1:p.pos==='AD'?1:(Math.random()-.5)*1.8;
+        let baseSide=p.pos==='AG'?-1:p.pos==='AD'?1:(Math.random()-.5)*1.8;
+        if(mateRunningTop && !mateRunningBottom) baseSide=Math.abs(baseSide)||1;
+        else if(mateRunningBottom && !mateRunningTop) baseSide=-(Math.abs(baseSide)||1);
         const sideBias=baseSide*(1+flankBias)-Math.sign(baseSide)*axisBias;
         const lateralSpread=rng(3,14)*(0.5+myWidth*0.6);
         p.runTx=clamp(oppGoalX+(ti===0?-rng(3,18):rng(3,18)),4,WW-4);
@@ -127,8 +150,25 @@ function roleTarget(ti,p,pi){
       }
     }
   }
+  // Une passe est en vol vers ce joueur : priorité à l'aller-chercher plutôt
+  // qu'à la position de formation ou même une course en cours — c'est ce qui
+  // donne l'impression qu'un joueur "vient" contrôler le ballon.
+  if(isAtk&&!p.hasBall&&p._expectingBall){
+    return{x:clamp(p._expectX,2,WW-2),y:clamp(p._expectY,2,WH-2)};
+  }
+
   if(p.runT>0){
-    return{x:p.runTx+wX*.6,y:p.runTy+wY*.6};
+    // Légère courbe (façon "course en banane") au lieu d'une ligne droite
+    // parfaite entre le point de départ et la cible — plus proche d'un vrai
+    // appel de balle qui casse la ligne défensive progressivement.
+    const dur=p.runDur||1;
+    const progress=clamp(1-(p.runT/dur),0,1);
+    const bend=Math.sin(progress*Math.PI)*1.6; // nul au départ/à l'arrivée, max au milieu
+    const dxr=p.runTx-(p.runStartX??p.runTx), dyr=p.runTy-(p.runStartY??p.runTy);
+    const dlen=Math.hypot(dxr,dyr)||1;
+    const perpX=-dyr/dlen, perpY=dxr/dlen;
+    const curveSign=p.runCurveSign||1;
+    return{x:p.runTx+perpX*bend*curveSign+wX*.6,y:p.runTy+perpY*bend*curveSign+wY*.6};
   }
 
   if(isAtk){
@@ -145,13 +185,13 @@ function roleTarget(ti,p,pi){
       case 'BUILDUP':{
         if(p.hasBall){
           const curve=Math.sin(now*2.4+p.wPhaseX)*2.5;
-          return{x:clamp(b.x+fwd*rng(2,5)+wX*.4,2,WW-2),y:clamp(b.y+curve+wY*.6,1,WH-1)};
+          return{x:clamp(b.x+fwd*smoothOffset(p,'bu_push',2,5,0.5)+wX*.4,2,WW-2),y:clamp(b.y+curve+wY*.6,1,WH-1)};
         }
         // Off-ball: mids push up with midPush; attackers hold attDepth higher
         const isAttacker=p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD';
         const isMid=p.pos==='MC'||p.pos==='MDC'||p.pos==='MDC2'||p.pos==='MCD'||p.pos==='MCG';
         const depthBonus=isAttacker?attDepth:isMid?attDepth*midPush*.4:0;
-        return{x:clamp(fb.x+fwd*(rng(0,4)+depthBonus)+wX,2,WW-2),y:clamp(fb.y+wY,1,WH-1)};
+        return{x:clamp(fb.x+fwd*(smoothOffset(p,'bu_depth',0,4,0.4)+depthBonus)+wX,2,WW-2),y:clamp(fb.y+wY,1,WH-1)};
       }
       case 'ATTACK':{
         if(p.hasBall){
@@ -162,7 +202,8 @@ function roleTarget(ti,p,pi){
         if(p.pos==='MOG'||p.pos==='MOD'){
           // Lateral midfielders hug the flanks
           const cycle=Math.sin(now*1.2+p.wPhaseX);
-          const boxPush=ti===0?-rng(4,12)-attDepth*.6:rng(4,12)+attDepth*.6;
+          const _bp=smoothOffset(p,'mo_box',4,12,0.35);
+          const boxPush=ti===0?-_bp-attDepth*.6:_bp+attDepth*.6;
           const mogWidth=strat(ti).width||1.0;
           const sideY=p.pos==='MOG'
             ?clamp(PCY*(0.3-(mogWidth-1)*0.12)+cycle*2+wY*.5,1,PCY*.6)
@@ -172,7 +213,8 @@ function roleTarget(ti,p,pi){
         if(p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD'){
           // Strikers prowl in box — direct tactics push deeper into box
           const cycle=Math.sin(now*1.2+p.wPhaseX);
-          const boxPush=ti===0?-rng(2,16)-attDepth:rng(2,16)+attDepth;
+          const _bp=smoothOffset(p,'att_box',2,16,0.28);
+          const boxPush=ti===0?-_bp-attDepth:_bp+attDepth;
           return{x:clamp(oppGoalX+boxPush+wX*.7,2,WW-2),
                  y:clamp(PCY+cycle*9+wY*1.2,2,WH-2)};
         }
@@ -184,22 +226,23 @@ function roleTarget(ti,p,pi){
         }
         if(p.pos==='MC'||p.pos==='MDC'){
           // Mids support attack proportional to midPush
-          return{x:clamp(fb.x+fwd*(rng(3,9)*midPush)+wX,2,WW-2),y:clamp(fb.y+wY*1.5,2,WH-2)};
+          return{x:clamp(fb.x+fwd*(smoothOffset(p,'mc_push',3,9,0.35)*midPush)+wX,2,WW-2),y:clamp(fb.y+wY*1.5,2,WH-2)};
         }
         // Defenders push up only modestly for high-press tactics
-        return{x:clamp(fb.x+fwd*rng(3,9)*(.7+press*.6)+wX,2,WW-2),y:clamp(fb.y+wY*1.5,2,WH-2)};
+        return{x:clamp(fb.x+fwd*smoothOffset(p,'def_push',3,9,0.3)*(.7+press*.6)+wX,2,WW-2),y:clamp(fb.y+wY*1.5,2,WH-2)};
       }
       case 'TRANSITION':{
         if(p.hasBall){
-          return{x:clamp(b.x+fwd*rng(5,11)+wX*.4,2,WW-2),y:clamp(b.y+wY*1.2,2,WH-2)};
+          return{x:clamp(b.x+fwd*smoothOffset(p,'tr_push',5,11,0.5)+wX*.4,2,WW-2),y:clamp(b.y+wY*1.2,2,WH-2)};
         }
         if(p.pos==='ATT'||p.pos==='ATT2'||p.pos==='MO'||p.pos==='AG'||p.pos==='AD'){
           // Counter-attack: depth-tactic attackers run further into space
-          const counterDepth=ti===0?-rng(4,20)-attDepth*1.5:rng(4,20)+attDepth*1.5;
+          const _cd=smoothOffset(p,'tr_depth',4,20,0.32);
+          const counterDepth=ti===0?-_cd-attDepth*1.5:_cd+attDepth*1.5;
           return{x:clamp(oppGoalX+counterDepth+wX,2,WW-2),
-                 y:clamp(PCY+rng(-WH*0.2,WH*0.2)+wY,2,WH-2)};
+                 y:clamp(PCY+smoothOffset(p,'tr_y',-WH*0.2,WH*0.2,0.25)+wY,2,WH-2)};
         }
-        return{x:clamp(fb.x+fwd*(rng(2,7)*midPush)+wX,2,WW-2),y:clamp(fb.y+wY*1.2,2,WH-2)};
+        return{x:clamp(fb.x+fwd*(smoothOffset(p,'tr_mid',2,7,0.35)*midPush)+wX,2,WW-2),y:clamp(fb.y+wY*1.2,2,WH-2)};
       }
       case 'CORNER':
         if(p.pos==='GB'||p.pos==='DD'||p.pos==='DG')return{x:fb.x,y:fb.y};
@@ -372,7 +415,10 @@ function roleTarget(ti,p,pi){
           // moins les latéraux suivent le ballon et plus ils restent ancrés
           // sur lineAnchor (donc dans/près de la surface en bloc bas extrême).
           const followBall = clamp(0.25 + lineDepth*0.18, 0.05, 0.50);
-          const tx = lerp(lineAnchor, pred.x, followBall + effectivePress*0.18);
+          let tx = lerp(lineAnchor, pred.x, followBall + effectivePress*0.18);
+          // Cohésion de ligne : se rapprocher un peu de la profondeur moyenne
+          // des autres défenseurs pour éviter un latéral décalé tout seul.
+          if(G._defLineX && G._defLineX[ti]!=null) tx=lerp(tx,G._defLineX[ti],0.22);
           // DD/DG rentrent franchement vers l'axe pour soutenir le DC
           // Plus le danger est grand ou le ballon est central, plus ils rentrent
           // + compactPull (curseur Largeur) : un bloc resserré (width<1) les
@@ -413,7 +459,8 @@ function roleTarget(ti,p,pi){
         // ══════════════════════════════════════════════════
         if(p.pos==='DC'||p.pos==='DCD'||p.pos==='DCG'){
           const followBallDC = clamp(0.28 + lineDepth*0.20, 0.05, 0.55);
-          const tx = lerp(lineAnchor, pred.x, followBallDC + effectivePress*0.18);
+          let tx = lerp(lineAnchor, pred.x, followBallDC + effectivePress*0.18);
+          if(G._defLineX && G._defLineX[ti]!=null) tx=lerp(tx,G._defLineX[ti],0.18);
           const is222dc = teams[ti].strat==='222';
           const dcCentral = clamp(0.35+compactPull*0.7, 0.05, 0.95);
           const dcY = is222dc
@@ -425,7 +472,8 @@ function roleTarget(ti,p,pi){
         // LB/RB : comme DD/DG
         if(p.pos==='DD'||p.pos==='DG'||p.pos==='LB'||p.pos==='RB'){
           const followBall = clamp(0.25 + lineDepth*0.18, 0.05, 0.50);
-          const tx = lerp(lineAnchor, pred.x, followBall + effectivePress*0.18);
+          let tx = lerp(lineAnchor, pred.x, followBall + effectivePress*0.18);
+          if(G._defLineX && G._defLineX[ti]!=null) tx=lerp(tx,G._defLineX[ti],0.22);
           const ballCentrality = 1 - Math.abs(G.ball.y - PCY) / PCY;
           const centralBias = clamp((ballInDanger?0.80:0.50+ballCentrality*0.20)+compactPull*0.5, 0.10, 0.95);
           const ty = lerp(p.y, PCY, centralBias*0.5);
@@ -665,6 +713,9 @@ function physStep(dt,rawDt){
     if(p.runT>0)p.runT=Math.max(0,p.runT-dt);
     if(p.runCool>0)p.runCool=Math.max(0,p.runCool-dt);
     if(p.tackleCool>0)p.tackleCool=Math.max(0,p.tackleCool-dt);
+    // Fenêtre pendant laquelle un joueur visé par une passe va activement
+    // à la rencontre du ballon (voir kickToP / roleTarget)
+    if(p._expectT>0){p._expectT=Math.max(0,p._expectT-dt);if(p._expectT<=0)p._expectingBall=false;}
 
     // Smoothly update target — quite reactive so the wandering and jitter read visually
     // Un joueur dominé se positionne pour l'équipe qui le contrôle.
@@ -791,6 +842,7 @@ function physStep(dt,rawDt){
   if(G._gkSpellCool){G._gkSpellCool[0]=Math.max(0,(G._gkSpellCool[0]||0)-dt);G._gkSpellCool[1]=Math.max(0,(G._gkSpellCool[1]||0)-dt);}
   if(!G._pressNearest) G._pressNearest=[null,null];
   if(!G._pressOrder) G._pressOrder=[[],[]];
+  if(!G._defLineX) G._defLineX=[null,null];
   if(Math.random()<0.28){ // ~17fps refresh — pressing réactif
     [0,1].forEach(ti=>{
       const mp=actP(ti).filter(q=>q.pos!=='GB');
@@ -800,6 +852,11 @@ function physStep(dt,rawDt){
       const sorted=mp.map(q=>({q,d:Math.hypot(q.x-G.ball.x,q.y-G.ball.y)})).sort((a,b)=>a.d-b.d).map(o=>o.q);
       G._pressOrder[ti]=sorted;
       G._pressNearest[ti]=sorted[0]||null;
+      // Profondeur moyenne de la ligne défensive — sert à garder les
+      // défenseurs alignés entre eux plutôt que chacun décalé indépendamment
+      // (voir usage dans roleTarget, branche défensive).
+      const defs=mp.filter(q=>['DC','DCD','DCG','DD','DG','LB','RB'].includes(q.pos));
+      if(defs.length) G._defLineX[ti]=defs.reduce((s,q)=>s+q.x,0)/defs.length;
     });
   }
   // Ball
