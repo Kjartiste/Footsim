@@ -100,7 +100,7 @@ const SPELLS=[
   // Kraland malédictions
   {id:'epuise',  n:'Épuisement',       t:'epuise',   pow:0,  mp:20, prob:.09, col:'#546e7a', pc:'#cfd8dc', desc:'Drain dénergie - les adversaires saffaiblissent, le lanceur se régénère.'},
   {id:'maledic', n:'Malédiction',      t:'maledic',  pow:0,  mp:26, prob:.07, col:'#4a148c', pc:'#e1bee7', desc:'Malédiction ancienne - un adversaire est ralenti et affaibli pour toute laction.'},
-  {id:'chance',  n:'Chance',           t:'chance',   pow:0,  mp:16, prob:.10, col:'#f9a825', pc:'#fff9c4', desc:'Coup de dé - un sort aléatoire se déclenche. Le meilleur comme le pire.'},
+  {id:'chance',  n:'Chance',           t:'chance',   pow:0,  mp:16, prob:.10, col:'#f9a825', pc:'#fff9c4', desc:'Coup de dé - une petite frappe tentée au hasard vers le but adverse. Faible, mais qui sait…'},
   {id:'hoquet',  n:'Hoquet',           t:'hoquet',   pow:0,  mp:14, prob:.11, col:'#a5d6a7', pc:'#e8f5e9', desc:'Hic ! Un adversaire a le hoquet - son prochain tir part complètement à côté.'},
   // ── Nouveaux sorts ───────────────────────────────────────────────
   {id:'spindash', n:'Spin Dash',            t:'spindash', pow:35, mp:22, prob:.10, col:'#2979ff', pc:'#82b1ff', desc:'Vrille fulgurante a travers la defense. Traverse tous les defenseurs et tire en sortie de roulade.'},
@@ -192,10 +192,22 @@ const STRATS=[
   // attDepth: how far forward attackers push when off the ball (-2 to +6 meters)
   // midPush: how aggressively mids support the attack
   // runFreq: how often off-the-ball runs trigger (multiplier)
-  {id:'321',  n:'3-2-1',          d:'Classique équilibré',          atk:1.00,def:1.00, press:.50, width:1.00, attDepth:0,  midPush:1.00, runFreq:1.00, col:'#1878e8'},
-  {id:'231',  n:'2-3-1 Offensif', d:'Milieu renforcé, pressing',    atk:1.18,def:.86,  press:.85, width:1.15, attDepth:2,  midPush:1.35, runFreq:1.35, col:'#f0c028'},
-  {id:'222',  n:'3-2-2 Direct',   d:'Gardien sweeper, 2 DC, 2 MO, 2 ATT', atk:1.25,def:.80,  press:.90, width:.85,  attDepth:4,  midPush:1.20, runFreq:1.50, col:'#e02030'},
-  {id:'133',  n:'1-3-3 Milieu', d:'3 défenseurs, 2 MDC, 1 MO — gardien sweeper',    atk:.78, def:1.30, press:.18, width:.80,  attDepth:-2, midPush:.55,  runFreq:.65, col:'#18c860'},
+  {id:'321',  n:'3-2-1',          d:'Équilibré — le standard',       atk:1.00,def:1.00, press:.50, width:1.00, attDepth:0,  midPush:1.00, runFreq:1.00, col:'#1878e8'},
+  {id:'231',  n:'2-3-1',          d:'Possession, milieu renforcé',   atk:1.12,def:.92,  press:.72, width:1.12, attDepth:2,  midPush:1.30, runFreq:1.25, col:'#f0c028'},
+  {id:'1212', n:'2-1-2-1',        d:'Technique, losange au milieu',  atk:1.10,def:.98,  press:.62, width:.90,  attDepth:1,  midPush:1.20, runFreq:1.15, col:'#8840e0'},
+  {id:'312',  n:'3-1-2',          d:'Direct, bloc + 2 pointes',      atk:1.15,def:1.05, press:.45, width:.90,  attDepth:2,  midPush:.95,  runFreq:1.25, col:'#00bcd4'},
+  {id:'123',  n:'1-2-3',          d:'Tout pour l\'attaque',          atk:1.42,def:.60,  press:.95, width:1.28, attDepth:6,  midPush:1.55, runFreq:1.75, col:'#e91e63'},
+  {id:'411',  n:'4-1-1',          d:'Bloc bas défensif',             atk:.82, def:1.28,  press:.24, width:.85,  attDepth:-2, midPush:.65,  runFreq:.75, col:'#607d8b'},
+  {id:'402',  n:'4-0-2',          d:'Contre — 4 déf, 2 pointes',     atk:.95, def:1.22,  press:.20, width:.82,  attDepth:2,  midPush:.70,  runFreq:1.10, col:'#455a64'},
+  {id:'51',   n:'5-1',            d:'Ultra défensif — bus devant le but', atk:.65,def:1.50, press:.12, width:.95, attDepth:-4, midPush:.40, runFreq:.50, col:'#18c860'},
+  {id:'141',  n:'1-4-1',          d:'Domination du milieu',          atk:1.14,def:.90,  press:.78, width:1.15, attDepth:2,  midPush:1.40, runFreq:1.30, col:'#ff9800'},
+  {id:'33',   n:'3-3',            d:'Pressing total — 3 déf, 3 devant', atk:1.22,def:.88, press:.92, width:1.22, attDepth:4,  midPush:1.45, runFreq:1.55, col:'#ff6d00'},
+  {id:'24',   n:'2-4',            d:'Désespérée — 2 déf, 4 attaquants', atk:1.48,def:.55, press:.98, width:1.30, attDepth:7,  midPush:1.60, runFreq:1.85, col:'#d500f9'},
+  {id:'600',  n:'6-0-0',          d:'Défendre à tout prix',          atk:.40, def:1.70,  press:.08, width:1.00, attDepth:-6, midPush:.25,  runFreq:.35, col:'#37474f'},
+  // Formations conservées (compat parties existantes) + variantes
+  {id:'222',  n:'2-2-2',          d:'Équilibré compact, deux lignes de 2', atk:1.02,def:1.05, press:.55, width:.95, attDepth:0, midPush:1.05, runFreq:1.05, col:'#26a69a'},
+  {id:'133',  n:'1-3-3',          d:'Milieu bas — 3 déf, 3 relayeurs', atk:.85, def:1.25, press:.30, width:.90, attDepth:0, midPush:.80, runFreq:.85, col:'#5c6bc0'},
+  {id:'1332', n:'1-3-3 Offensif', d:'3 déf, 3 milieux hauts très projetés', atk:1.20,def:.95, press:.85, width:1.18, attDepth:4, midPush:1.45, runFreq:1.50, col:'#ab47bc'},
 ];
 
 // formations: [pct_forward, pct_side] — 0=own goal, 1=opp goal
@@ -205,9 +217,31 @@ const STRATS=[
 // que soit la stratégie choisie (321/231/222/133 = juste des "bases").
 const FORMS={
   '321': [[.08,.50],[.26,.20],[.26,.50],[.26,.80],[.52,.33],[.52,.67],[.76,.50]],
-  '231': [[.08,.50],[.26,.30],[.26,.70],[.48,.18],[.48,.50],[.48,.82],[.76,.50]],
+  '231': [[.08,.50],[.26,.30],[.26,.70],[.48,.22],[.48,.50],[.48,.78],[.76,.50]],
+  // 2-1-2-1 losange : 2 déf, 1 sentinelle, 2 relayeurs, 1 pointe
+  '1212':[[.08,.50],[.24,.32],[.24,.68],[.42,.50],[.60,.30],[.60,.70],[.80,.50]],
+  // 3-1-2 : 3 déf, 1 sentinelle, 2 pointes
+  '312': [[.08,.50],[.25,.22],[.25,.50],[.25,.78],[.46,.50],[.72,.34],[.72,.66]],
+  // 1-2-3 : 1 déf, 2 milieux, 3 attaquants
+  '123': [[.08,.50],[.26,.50],[.46,.32],[.46,.68],[.72,.20],[.72,.50],[.72,.80]],
+  // 4-1-1 : 4 déf, 1 milieu, 1 pointe
+  '411': [[.08,.50],[.24,.16],[.24,.39],[.24,.61],[.24,.84],[.50,.50],[.76,.50]],
+  // 4-0-2 : 4 déf, 0 milieu, 2 pointes
+  '402': [[.08,.50],[.24,.16],[.24,.39],[.24,.61],[.24,.84],[.72,.34],[.72,.66]],
+  // 5-1 : 5 déf, 1 pointe (bus)
+  '51':  [[.08,.50],[.22,.12],[.22,.31],[.22,.50],[.22,.69],[.22,.88],[.74,.50]],
+  // 1-4-1 : 1 déf, 4 milieux, 1 pointe (domination du milieu)
+  '141': [[.08,.50],[.26,.50],[.50,.16],[.50,.39],[.50,.61],[.50,.84],[.78,.50]],
+  // 3-3 : 3 déf, 3 devant (2 ailiers + 1 att) — pressing total
+  '33':  [[.08,.50],[.26,.22],[.26,.50],[.26,.78],[.68,.22],[.68,.78],[.72,.50]],
+  // 2-4 : 2 déf, 4 attaquants — désespérée
+  '24':  [[.08,.50],[.26,.34],[.26,.66],[.62,.16],[.62,.39],[.62,.61],[.62,.84]],
+  // 6-0-0 : 6 défenseurs — défendre à tout prix
+  '600': [[.08,.50],[.22,.10],[.22,.28],[.22,.44],[.22,.56],[.22,.72],[.22,.90]],
+  // Conservées
   '222': [[.14,.50],[.27,.35],[.27,.65],[.50,.28],[.50,.72],[.72,.28],[.72,.72]],
   '133': [[.10,.50],[.28,.20],[.28,.50],[.28,.80],[.48,.30],[.48,.70],[.65,.50]],
+  '1332':[[.08,.50],[.26,.22],[.26,.50],[.26,.78],[.58,.26],[.58,.50],[.58,.74]],
 };
 // Coordonnées de base PAR POSTE INDIVIDUEL (indépendantes de la formation) :
 // [profondeur 0..1 (0=but propre, 1=but adverse), côté 0..1 (0=gauche,1=droite)]
@@ -300,9 +334,20 @@ const ROLE=['GB','DC','DD','DG','MC','MC','ATT'];
 // Postes assignés par formation (7 joueurs, index 0-6)
 const FORM_ROLES={
   '321': ['GB','DC','DD','DG','MC','MC','ATT'],
-  '231': ['GB','DC','DG','MC','MC','MO','ATT'],
-  '222': ['GB','DC','DC','MOG','MOD','ATT','ATT'],  // GB + 2DC + 2MO latéraux + 2ATT
+  '231': ['GB','DD','DG','MC','MC','MO','ATT'],
+  '1212':['GB','DD','DG','MDC','MC','MC','ATT'],        // losange
+  '312': ['GB','DG','DC','DD','MDC','ATT','ATT'],
+  '123': ['GB','DC','MC','MC','AG','ATT','AD'],
+  '411': ['GB','DG','DC','DC','DD','MC','ATT'],
+  '402': ['GB','DG','DC','DC','DD','ATT','ATT'],
+  '51':  ['GB','DG','DC','DC','DC','DD','ATT'],
+  '141': ['GB','DC','MOG','MC','MC','MOD','ATT'],
+  '33':  ['GB','DC','DD','DG','AG','AD','ATT'],
+  '24':  ['GB','DG','DD','AG','ATT','ATT','AD'],
+  '600': ['GB','DG','DC','DC','DC','DC','DD'],
+  '222': ['GB','DC','DC','MOG','MOD','ATT','ATT'],
   '133': ['GB','DC','DD','DG','MDC','MDC','MO'],
+  '1332':['GB','DC','DD','DG','MOG','MO','MOD'],
 };
 
 function mkPlayers(ti){
@@ -659,27 +704,73 @@ function formBase(ti,pi){
   let f;
   if(p && p.pos && posMap[p.pos]){
     const base = posMap[p.pos];
-    const sameIdx = [];
-    for(let i=0;i<players.length;i++){if(players[i]&&players[i].pos===p.pos)sameIdx.push(i);}
-    const n = sameIdx.length;
-    let fy = base[1];
-    if(n>1){
-      const k = sameIdx.indexOf(pi);
-      // En 11v11 plusieurs joueurs partagent un même poste générique (4 DC,
-      // 4 MC…) : on les étale davantage pour former de vraies lignes.
-      const maxSpread = window.gameMode==='11v11' ? 0.60 : 0.34;
-      const perPlayer = window.gameMode==='11v11' ? 0.16 : 0.10;
-      const spread = Math.min(maxSpread, perPlayer*n);
-      const t = (k-(n-1)/2)/Math.max(1,(n-1));
-      fy = Math.max(.06, Math.min(.94, base[1]+t*spread*2));
+    // ── RÉPARTITION PAR LIGNE (anti-asymétrie) ────────────────────────
+    // Problème signalé : "DC DD" laisse un côté vide, "DC DC" reste central.
+    // Solution : on regroupe les joueurs par LIGNE (même profondeur/rôle) et on
+    // les étale uniformément sur la largeur, en gardant leur biais de poste
+    // (un DD penche à droite, un DG à gauche) comme ordre de tri. La ligne
+    // couvre ainsi toujours tout le terrain, quelle que soit la combinaison.
+    const _lineOf = (pos)=>{
+      if(['DC','DCD','DCG','DD','DG','LB','RB','FIXO'].includes(pos)) return 'DEF';
+      if(['MDC','MDC2','MC','MCD','MCG'].includes(pos)) return 'MID';
+      if(['MO','MOG','MOD','AG','AD','ALA_L','ALA_R'].includes(pos)) return 'ATT_MID';
+      if(['ATT','ATT2','PIVOT'].includes(pos)) return 'FWD';
+      return pos; // GB et autres : pas de regroupement
+    };
+    const myLine = _lineOf(p.pos);
+    let f;
+    if(myLine==='DEF' || myLine==='MID'){
+      // Récupérer tous les joueurs de la même ligne, triés par biais latéral
+      // nominal (leur y de poste) pour garder gauche/centre/droite cohérents.
+      const lineMates = [];
+      for(let i=0;i<players.length;i++){
+        const q=players[i];
+        if(q && q.pos && posMap[q.pos] && _lineOf(q.pos)===myLine){
+          lineMates.push({i, y: posMap[q.pos][1]});
+        }
+      }
+      lineMates.sort((a,b)=> a.y - b.y || a.i - b.i);
+      const n = lineMates.length;
+      const k = lineMates.findIndex(o=>o.i===pi);
+      // Profondeur moyenne de la ligne (x) pour l'aligner proprement
+      let sumX=0; lineMates.forEach(o=>sumX+=posMap[players[o.i].pos][0]);
+      const lineX = sumX/n;
+      if(n>1 && k>=0){
+        // Étaler sur ~78% de la largeur, centré
+        const spreadHalf = 0.39;
+        const t = (k-(n-1)/2)/((n-1)/2||1); // -1 … +1
+        const fy = clamp(0.5 + t*spreadHalf, 0.08, 0.92);
+        f = [lineX, fy];
+      } else {
+        f = [base[0], base[1]];
+      }
+    } else {
+      // Autres lignes : ancien étalement par poste identique
+      const sameIdx = [];
+      for(let i=0;i<players.length;i++){if(players[i]&&players[i].pos===p.pos)sameIdx.push(i);}
+      const n = sameIdx.length;
+      let fy = base[1];
+      if(n>1){
+        const k = sameIdx.indexOf(pi);
+        const maxSpread = window.gameMode==='11v11' ? 0.60 : 0.34;
+        const perPlayer = window.gameMode==='11v11' ? 0.16 : 0.10;
+        const spread = Math.min(maxSpread, perPlayer*n);
+        const t = (k-(n-1)/2)/Math.max(1,(n-1));
+        fy = Math.max(.06, Math.min(.94, base[1]+t*spread*2));
+      }
+      f = [base[0], fy];
     }
-    f = [base[0], fy];
+    return _finishFormBase(ti, f);
   } else if(fallbackForms && fallbackForms[pi]){
-    // Repli 11v11 : coordonnées de slot de la formation
-    f = fallbackForms[pi];
+    return _finishFormBase(ti, fallbackForms[pi]);
   } else {
-    f = (FORMS[T && T.strat ? T.strat : '321'] || FORMS['321'])[pi] || [.5,.5];
+    const f = (FORMS[T && T.strat ? T.strat : '321'] || FORMS['321'])[pi] || [.5,.5];
+    return _finishFormBase(ti, f);
   }
+}
+
+// Applique l'orientation d'équipe + largeur tactique à une coordonnée normalisée
+function _finishFormBase(ti, f){
   const fx = ti===0 ? f[0] : 1-f[0];
   const _st = (typeof strat === 'function') ? strat(ti) : null;
   const w = _st && _st.width ? _st.width : 1;

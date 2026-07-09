@@ -575,12 +575,15 @@ function aiDecide(dt=0.016){
         normal:     {shoot:1.00, drib:1.00, pass:1.00},
       }[_style] || {shoot:1,drib:1,pass:1};
 
-      // TRAITS : "Tire de loin" élargit la zone de frappe ; "Renard" resserre ;
-      // "Ne tire jamais" annule la frappe.
-      let _rangeMul = 0.42;
-      if(_HT('tire_loin')) _rangeMul = 0.58;
-      if(_HT('renard'))    _rangeMul = 0.30;
-      const _shootRange=WW*_rangeMul;
+      // ZONE DE FRAPPE dépendante du mode. On veut forcer la construction :
+      // en 11v11, ne tirer que dans/près de la surface ; en 5v5, plus permissif.
+      const _boxW = (typeof PA_W==='number' && PA_W>0) ? PA_W : WW*0.16;
+      const _md = window.gameMode || '7v7';
+      // marge de tir au-delà de la surface (resserrée : on ne tire pas du milieu)
+      let _shootReach = _md==='11v11' ? _boxW*0.55 : _md==='5v5' ? _boxW*1.1 : _boxW*0.8;
+      if(_HT('tire_loin')) _shootReach *= 1.7;   // les tireurs de loin tentent plus loin
+      if(_HT('renard'))    _shootReach *= 0.6;   // le renard ne tire que tout près
+      const _shootRange = _boxW + _shootReach;
       const canShoot=_distGoal<_shootRange && !_HT('ne_tire_jamais');
 
       let _shootFreq = 0.22 * _tend.shoot * _STYLE_TEND.shoot;
@@ -832,15 +835,30 @@ function doShot(sh,ati,dti,def2,gk,goalX){
     if(hasTrait(sh,'guerrier') && (G.minute||0)>=75) _traitShotMul*=1.08;
   }
   const gy=clamp(PCY+rng(-5,5),GY1-1.5,GY2+1.5);
-  // Facteur distance : plus le tireur est loin du but visé, plus la frappe est
-  // difficile à cadrer/convertir. Un tir depuis sa propre moitié devient quasi
-  // impossible (évite les buts absurdes de très loin, surtout en 11v11).
+  // Facteur distance RÉALISTE et dépendant du mode. Référence = la surface de
+  // réparation (PA_W, propre à chaque mode). Un tir depuis l'intérieur de la
+  // surface est pleinement converti ; au-delà, la conversion chute vite, et
+  // très vite en 11v11 (grand terrain) où un but de loin doit être rare :
+  //   • dans la surface (≤ PA_W)                → facteur ~1
+  //   • jusqu'à ~2× la surface                  → décroissance forte
+  //   • au-delà                                 → quasi nul
+  // On module la sévérité selon le mode : 5v5 permissif, 11v11 sévère.
   const _dGoal=Math.abs(sh.x-goalX);
-  const _distFactor=clamp(1 - Math.max(0,_dGoal-WW*0.18)/(WW*0.5), 0.05, 1);
+  const _boxDepth = (typeof PA_W==='number' && PA_W>0) ? PA_W : WW*0.16;
+  const _mode = window.gameMode || '7v7';
+  // Zone "pleine conversion" : dans la surface + une petite marge → facteur 1.
+  // Au-delà, décroissance qui devient sévère surtout en 11v11.
+  const _fullZone = _boxDepth * 1.25;                     // conversion pleine jusque-là
+  const _falloff  = _mode==='11v11' ? _boxDepth*1.1 : _mode==='5v5' ? _boxDepth*2.2 : _boxDepth*1.7;
+  const _over = Math.max(0, _dGoal - _fullZone);          // distance au-delà de la zone pleine
+  let _distFactor = _over<=0 ? 1 : 1 - Math.pow(_over/(_over+_falloff), 1.1);
+  _distFactor = clamp(_distFactor, 0.02, 1);
+  // Coup de grâce en 11v11 : au-delà de ~2.2× la surface, quasi impossible
+  if(_mode==='11v11' && _dGoal > _boxDepth*2.2) _distFactor *= 0.2;
   kickTo(goalX,gy,2.6);freeB();
   setTimeout(()=>{
     if(!G.running)return;
-    const prob_normal=(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.3);return Math.min(0.75,Math.max(0.04,(0.17+(_r-1)*0.13)*_traitShotMul))*_distFactor;})();
+    const prob_normal=(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.3);return Math.min(0.80,Math.max(0.06,(0.24+(_r-1)*0.14)*_traitShotMul))*_distFactor;})();
     if(Math.random()<prob_normal){
       goalScored(sh,ati,goalX,G._lastPasser?.[ati]);
     } else {
@@ -1403,16 +1421,38 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Chance (Hasard) — effet aléatoire parmi tous les sorts ──
   } else if(sp.id==='chance'){
-    const pool=['fire','fireball','thunder','eldritch','soin','amitie','tornado','suggest','epuise','transe','spindash','dragon','cyclon','divine','aile'];
-    const pickedId=pick(pool);
-    const random=SPELLS.find(x=>x.id===pickedId);
-    if(random&&random.id!=='chance'&&random.id!==sp.id){
-      G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-4,tx:'CHANCE: '+random.n,col:'#f9a825',l:55,m:55,sz:1.4});
-      G.ptcl.push({t:'ring_expand',x:carrier.x,y:carrier.y,col:'#f9a825',maxR:7,l:28,m:28});
-      logEvent(`🎲 ${carrier.name} — ${sp.n} → ${random.n} !`,'#f9a825');
-      doSpell(carrier,ati,dti,random,goalX);return;// lance le sort pigé
-    }
-    setPhase('BUILDUP');
+    // TIR ALÉATOIRE FAIBLE vers le but ADVERSE (jamais son propre gardien).
+    // Petite frappe tentée au hasard : parfois ça surprend le gardien, souvent
+    // non. La trajectoire est bruitée (d'où le côté "chanceux").
+    const oppGoalX = ati===0 ? WW : 0;
+    const oppGk = (byR(dti,'GB')[0]) || null;
+    // Puissance volontairement faible + aléa
+    const power = 10 + irng(0,14);
+    const atkS = (carrier.s.sht*0.4 + power + irng(-6,6)) * (strat(ati).atk||1);
+    const defS = oppGk ? (oppGk.s.def*0.7 + irng(-6,6)) * (strat(dti).def||1) : 40;
+    // Cible : cadre adverse avec dispersion (la "chance")
+    const gy = clamp(PCY + rng(-6,6), GY1-1.0, GY2+1.0);
+    G.shots[ati]++; carrier.mSh++;
+    G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-4,tx:'🎲 TIR CHANCEUX',col:'#f9a825',l:50,m:50,sz:1.2});
+    logEvent(`🎲 ${carrier.name} tente un tir chanceux !`,'#f9a825');
+    kickTo(oppGoalX,gy,2.4); freeB();
+    setTimeout(()=>{
+      if(!G.running)return;
+      // conversion faible : distance + rapport de force, plafonnée bas
+      const _dGoal=Math.abs(carrier.x-oppGoalX);
+      const _box=(typeof PA_W==='number'&&PA_W>0)?PA_W:12;
+      const _distF=clamp(1-Math.max(0,_dGoal-_box*1.25)/(_box*3),0.05,1);
+      const _r=Math.pow(Math.max(1,atkS)/Math.max(1,defS),1.2);
+      const prob=Math.min(0.28,Math.max(0.03,0.10+(_r-1)*0.08))*_distF;
+      if(Math.random()<prob){
+        goalScored(carrier,ati,oppGoalX,null);
+      } else {
+        // raté/arrêté → dégagement du gardien adverse
+        if(oppGk){giveB(oppGk);}
+        G.atkTi=dti; setPhase('GOALKICK');
+      }
+    }, 300/speedMult);
+    return;
 
   // ── Hoquet (Bouletitude) — le porteur adverse rate son prochain tir ─
   } else if(sp.id==='hoquet'){
