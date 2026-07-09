@@ -542,12 +542,25 @@ function aiDecide(dt=0.016){
       // Avant, un porteur pouvait déclencher une frappe depuis sa propre moitié
       // (surtout sur le grand terrain 11v11) et marquer — désormais interdit.
       const _distGoal=Math.abs(carrier.x-oppGoalX);
-      const _shootRange=WW*0.42; // ~zone offensive : moitié adverse + un peu
-      const canShoot=_distGoal<_shootRange;
-      const shootBase=(canShoot?0.22:0)*_attackEdge(ati,dti);
+      // TRAITS : "Tire de loin" élargit la zone de frappe ; "Renard" resserre
+      // (ne tire que près du but) ; "Ne tire jamais" annule la frappe.
+      const _HT=(tid)=>(typeof hasTrait==='function'&&hasTrait(carrier,tid));
+      let _rangeMul = 0.42;
+      if(_HT('tire_loin')) _rangeMul = 0.58;
+      if(_HT('renard'))    _rangeMul = 0.30;
+      const _shootRange=WW*_rangeMul; // zone offensive selon profil
+      const canShoot=_distGoal<_shootRange && !_HT('ne_tire_jamais');
+      // "Renard" et "Sang-froid" tentent plus leur chance dans la zone ; le
+      // "Dribbleur" tente plus de dribbles (géré juste après).
+      let _shootFreq = 0.22;
+      if(_HT('renard')||_HT('sang_froid')) _shootFreq += 0.06;
+      if(_HT('ne_tire_jamais')) _shootFreq = 0;
+      const shootBase=(canShoot?_shootFreq:0)*_attackEdge(ati,dti);
+      // Fenêtre de dribble élargie pour un "Dribbleur"
+      const _dribWindow = _HT('dribbleur') ? 0.26 : 0.14;
       if(r<shootBase){
         doShot(carrier,ati,dti,opp,gk,oppGoalX);
-      } else if(r<shootBase+.14){
+      } else if(r<shootBase+_dribWindow){
         // Dribble — speed matters significantly (winger blowing past defender), fatigue penalizes both
         // Confrontation : Technique+Vitesse du porteur vs Défense+Vitesse du défenseur
         // Large écart de randomisation = parfois le faible passe, parfois le fort rate
@@ -587,24 +600,44 @@ function aiDecide(dt=0.016){
           logEvent(`${opp?.name||''} tacle ${carrier.name} !`,teams[dti].color);
           setPhase('TRANSITION');
         }
-      } else if(r<.50){
-        const wing=pick(byR(ati,'ATT','MO','MOG','MOD').filter(p=>!p.hasBall));
-        if(wing){kickToP(carrier,wing,1.7);logEvent(`Centre de ${carrier.name} → ${wing.name}`,teams[ati].color+'bb');}
-      } else if(r<.63){
-        const mid=pick(byR(ati,'MC','MDC').filter(p=>!p.hasBall));
-        if(mid){kickToP(carrier,mid,.9);logEvent(`${carrier.name} recycle`,teams[ati].color+'55');setPhase('BUILDUP');}
-      } else if(r<.76){
-        if(opp){
+      } else if(r<shootBase+_dribWindow+0.42){
+        // ── PASSE (dominante) : le porteur cherche le meilleur relais ────────
+        // Grosse fenêtre (42%) pour un jeu de passes fluide. On vise en priorité
+        // un coéquipier démarqué vers l'avant ; sinon on recycle en sécurité.
+        const tgt = (typeof bestPassTarget==='function') ? bestPassTarget(carrier,ati,{forward:true}) : null;
+        // Traits : "Passes en profondeur" cherche loin devant ; "Une-deux" joue vite/court.
+        const _HT2=(tid)=>(typeof hasTrait==='function'&&hasTrait(carrier,tid));
+        if(tgt){
+          const prog = ati===0 ? (tgt.x-carrier.x) : (carrier.x-tgt.x);
+          const deep = _HT2('passe_prof') && prog>WW*0.12;
+          const spd = deep ? 2.2 : (prog>WW*0.08 ? 1.7 : 1.1);
+          kickToP(carrier,tgt,spd);
+          if(prog>WW*0.10){ logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa'); setPhase('ATTACK'); }
+          else { logEvent(`${carrier.name} temporise → ${tgt.name}`,teams[ati].color+'55'); setPhase('BUILDUP'); }
+        } else {
+          // Personne de démarqué : passe de sécurité vers un milieu/défenseur
+          const safe=pick(byR(ati,'MC','MDC','DC','DD','DG').filter(p=>!p.hasBall));
+          if(safe){ kickToP(carrier,safe,1.0); setPhase('BUILDUP'); }
+          else setPhase('BUILDUP');
+        }
+      } else if(r<shootBase+_dribWindow+0.42+0.12){
+        // ── DUEL PERDU : le porteur se fait presser et perd le ballon ────────
+        // (nettement réduit vs avant, et seulement si un adversaire est proche)
+        if(opp && Math.hypot(opp.x-carrier.x,opp.y-carrier.y)<6){
+          G.tackles[dti]++;
           freeB();
           setTimeout(()=>{if(G.running&&opp&&!opp.red&&opp.hp>0){giveB(opp);G.atkTi=dti;setPhase('TRANSITION');}},160/speedMult);
           logEvent(`${opp.name} récupère le ballon !`,teams[dti].color);
+        } else {
+          // Pas de pressing proche → on garde et on avance
+          setPhase('ATTACK');
         }
       } else {
+        // ── FAUTE SUBIE (rare) : coup franc pour l'équipe en possession ──────
         G.fouls[dti]++;
         if(opp)opp.stunT=irng(4,7);
         spawnTackle(G.ball.x,G.ball.y);
-        // Foul injury chance
-        if(carrier&&Math.random()<0.18*(1-carrier.s.res/99))injurePlayer(ati,carrier,true);
+        if(carrier&&Math.random()<0.10*(1-carrier.s.res/99))injurePlayer(ati,carrier,true);
         const cr=Math.random();
         if(cr<.08&&opp){
           opp.yc++;
@@ -730,6 +763,15 @@ function doShot(sh,ati,dti,def2,gk,goalX){
   const gkPart = gk ? ((_S(gk,'def'))*.62 + (_S(gk,'spd'))*.55)*fatMul(gk) : 50;
   const defHelp = def2 ? (( (_S(def2,'def')) + (_S(def2,'tec'))*.4 )*.15)*fatMul(def2) : 0;
   const defS=(gkPart+defHelp+irng(-8,8))*dst2.def;
+  // TRAITS de finition : "Sang-froid" et "Renard" (près du but) augmentent la
+  // conversion. "Homme des grands soirs" booste dans le money-time.
+  let _traitShotMul=1;
+  if(typeof hasTrait==='function'){
+    if(hasTrait(sh,'sang_froid')) _traitShotMul*=1.15;
+    if(hasTrait(sh,'renard') && Math.abs(sh.x-goalX)<WW*0.18) _traitShotMul*=1.20;
+    if(hasTrait(sh,'clutch') && (G.minute||0)>=75) _traitShotMul*=1.15;
+    if(hasTrait(sh,'guerrier') && (G.minute||0)>=75) _traitShotMul*=1.08;
+  }
   const gy=clamp(PCY+rng(-5,5),GY1-1.5,GY2+1.5);
   // Facteur distance : plus le tireur est loin du but visé, plus la frappe est
   // difficile à cadrer/convertir. Un tir depuis sa propre moitié devient quasi
@@ -739,7 +781,7 @@ function doShot(sh,ati,dti,def2,gk,goalX){
   kickTo(goalX,gy,2.6);freeB();
   setTimeout(()=>{
     if(!G.running)return;
-    const prob_normal=(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.3);return Math.min(0.68,Math.max(0.04,0.17+(_r-1)*0.13))*_distFactor;})();
+    const prob_normal=(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.3);return Math.min(0.75,Math.max(0.04,(0.17+(_r-1)*0.13)*_traitShotMul))*_distFactor;})();
     if(Math.random()<prob_normal){
       goalScored(sh,ati,goalX,G._lastPasser?.[ati]);
     } else {
@@ -769,25 +811,59 @@ function _spellDurMult(caster){
 }
 function doSpell(carrier,ati,dti,sp,goalX){
   const mult=_spellDurMult(carrier);
-  if(Math.abs(mult-1)<0.001){ return _doSpellRaw(carrier,ati,dti,sp,goalX); }
+  const complet = window.GS && window.GS.statMode==='complet';
+  // En Lite sans modif de durée : chemin direct (comportement actuel).
+  if(!complet && Math.abs(mult-1)<0.001){ return _doSpellRaw(carrier,ati,dti,sp,goalX); }
   // Snapshot des timers d'effet AVANT le sort, sur tous les joueurs concernés.
   const everyone=[...actP(0),...actP(1)];
   const before=new Map();
   everyone.forEach(p=>{const rec={};_SPELL_DUR_FIELDS.forEach(f=>{rec[f]=p[f]||0;});before.set(p,rec);});
   const ret=_doSpellRaw(carrier,ati,dti,sp,goalX);
-  // Applique le multiplicateur uniquement à l'AUGMENTATION de durée causée par
-  // ce sort (on ne touche pas aux effets préexistants).
+  // Applique :
+  //  • le multiplicateur de durée du lanceur (technique) à toute augmentation ;
+  //  • la RÉSISTANCE MAGIQUE de la cible (mode Complet) : un joueur résistant
+  //    subit des malus (debuffs) écourtés. On considère comme "malus" tout
+  //    champ d'effet sauf les buffs positifs du lanceur.
+  const POSITIVE_FIELDS = new Set(['_atkBuff','_defBuff','_aile','_sylvestre','_sixsens','_auraDivine']);
   everyone.forEach(p=>{
     const rec=before.get(p);if(!rec)return;
+    const isEnemyOfCaster = (actP(dti).indexOf(p)>=0);
+    let resMul = (complet && isEnemyOfCaster && typeof magResistMult==='function') ? magResistMult(p) : 1;
+    // Trait "Anti-magie" : forte résistance supplémentaire aux sorts subis
+    if(complet && isEnemyOfCaster && typeof hasTrait==='function' && hasTrait(p,'anti_magie')) resMul*=0.6;
     _SPELL_DUR_FIELDS.forEach(f=>{
       const now=p[f]||0, prev=rec[f]||0;
-      if(now>prev){ p[f]=prev+(now-prev)*mult; }
+      if(now>prev){
+        let inc=(now-prev)*mult;
+        // Réduire seulement les malus subis par un adversaire résistant
+        if(resMul!==1 && !POSITIVE_FIELDS.has(f)) inc*=resMul;
+        p[f]=prev+inc;
+      }
     });
   });
   return ret;
 }
 function _doSpellRaw(carrier,ati,dti,sp,goalX){
-  carrier.mp=Math.max(0,carrier.mp-sp.mp);carrier.mSp++;
+  // ── Attributs magiques (mode Complet, sinon neutres) ─────────────────
+  // Coût en mana modulé par le "Contrôle du mana" + trait "Mage-né".
+  let _mCost = (typeof magCostMult==='function') ? magCostMult(carrier) : 1;
+  if(typeof hasTrait==='function' && hasTrait(carrier,'mage_ne')) _mCost*=0.75;
+  carrier.mp=Math.max(0,carrier.mp-sp.mp*_mCost);carrier.mSp++;
+  // Instabilité : un sort peut RATER (fizzle) — l'énergie est dépensée mais
+  // le sort échoue. La maîtrise réduit ce risque ; le trait "Magie instable"
+  // l'augmente.
+  let _fizzle = (typeof magFizzleChance==='function') ? magFizzleChance(carrier) : 0;
+  if(typeof hasTrait==='function' && hasTrait(carrier,'instable')) _fizzle=Math.max(_fizzle,0.12)+0.06;
+  if(_fizzle>0 && Math.random()<_fizzle){
+    if(typeof spawnSpell==='function'){ try{ spawnSpell(carrier.x,carrier.y,sp); }catch(e){} }
+    if(typeof logEvent==='function') logEvent(`✨ Le sort de ${carrier.name} se dissipe… (instabilité)`, '#8840e0aa');
+    if(G.ptcl) G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-4,tx:'raté !',col:'#8840e0',l:45,m:45,sz:1.0});
+    // Le sort échoue : on rend la main sans effet (l'attaque continue)
+    if(G.phase==='ATTACK'||G.phase==='BUILDUP'){ /* garde la possession */ }
+    return;
+  }
+  // Puissance des sorts offensifs modulée par l'"Affinité magique".
+  const _mPow = (typeof magPowerMult==='function') ? magPowerMult(carrier) : 1;
 
   // ── Sorts offensifs (tirs) ──────────────────────────────
   if(['fire','ice','thunder','eldritch','fireball','illusion','tech','serre'].includes(sp.id)){
@@ -803,7 +879,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const def2=pick(byR(dti,'DD','DC','DG'));
     const gk2=byR(dti,'GB')[0];
     G.shots[ati]++;carrier.mSh++;
-    let atkS=((carrier.s.sht+(carrier._hm||0))+sp.pow+irng(-8,8))*strat(ati).atk*fatMul(carrier);
+    let atkS=((carrier.s.sht+(carrier._hm||0))+sp.pow*_mPow+irng(-8,8))*strat(ati).atk*fatMul(carrier);
     let defS=((gk2?(gk2.s.def)*fatMul(gk2):28)+(def2?def2.s.def*.2*fatMul(def2):0)+irng(-8,8))*strat(dti).def;
 
     // ── RÉACTION : Souffle du Dragon (Aurelthar) — 25% coupe le tir de moitié

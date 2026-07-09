@@ -722,6 +722,76 @@ function kickToP(from,to,spd=1.8){
   G.ball.spin=spd*2;
 }
 
+// Trouve une position d'ESPACE LIBRE près du joueur pour se démarquer et
+// offrir une option de passe : on échantillonne quelques points autour de lui
+// (biaisés vers l'avant) et on garde celui le plus éloigné des adversaires
+// tout en restant à portée de passe du porteur. Rend les appels de balle
+// naturels au lieu de foncer bêtement vers le but.
+function openSpaceTarget(p, ti, ballX, ballY){
+  const fwd = ti===0 ? 1 : -1;
+  const opps = actP(1-ti);
+  let best=null, bestScore=-1e9;
+  for(let k=0;k<8;k++){
+    const ang = (k/8)*Math.PI*2;
+    const rad = 6 + Math.random()*10;
+    let cx = Math.max(3, Math.min(WW-3, p.x + Math.cos(ang)*rad));
+    let cy = Math.max(3, Math.min(WH-3, p.y + Math.sin(ang)*rad));
+    let nearOpp=1e9;
+    for(const o of opps){ const d=Math.hypot(o.x-cx,o.y-cy); if(d<nearOpp)nearOpp=d; }
+    const prog = (cx - p.x)*fwd;
+    const distBall = Math.hypot(cx-ballX, cy-ballY);
+    if(distBall > WW*0.5) continue;
+    const tooClose = distBall < 5 ? -20 : 0;
+    const score = nearOpp*1.6 + prog*0.7 - Math.abs(distBall-WW*0.22)*0.3 + tooClose;
+    if(score>bestScore){ bestScore=score; best={x:cx,y:cy}; }
+  }
+  return best;
+}
+
+// Choisit le MEILLEUR destinataire de passe pour le porteur : un coéquipier
+// démarqué, de préférence vers l'avant et pas trop loin. Renvoie null si
+// personne de correct (le porteur gardera/dribblera). Rend le jeu bien plus
+// fluide : les joueurs se cherchent au lieu de perdre le ballon.
+function bestPassTarget(carrier, ati, opts){
+  opts = opts || {};
+  const forward = opts.forward!==false;   // privilégier l'avant par défaut
+  const maxDist = opts.maxDist || (WW*0.55);
+  const goalX = ati===0 ? WW : 0;          // but adverse
+  const mates = actP(ati).filter(p=>p && p!==carrier && !p.hasBall && p.pos!=='GB');
+  if(!mates.length) return null;
+  const opps = actP(1-ati);
+  let best=null, bestScore=-1e9;
+  for(const m of mates){
+    const dx=m.x-carrier.x, dy=m.y-carrier.y;
+    const dist=Math.hypot(dx,dy)||1;
+    if(dist>maxDist) continue;
+    if(dist<3) continue; // trop proche, inutile
+    // Progression vers le but adverse (positive = passe vers l'avant)
+    const prog = ati===0 ? (m.x-carrier.x) : (carrier.x-m.x);
+    // Démarquage : distance au défenseur le plus proche du destinataire
+    let nearOpp=1e9;
+    for(const o of opps){ const dd=Math.hypot(o.x-m.x,o.y-m.y); if(dd<nearOpp)nearOpp=dd; }
+    // Ligne de passe dégagée ? pénaliser un défenseur entre le porteur et la cible
+    let blocked=0;
+    for(const o of opps){
+      // projection du défenseur sur le segment carrier→m
+      const t=((o.x-carrier.x)*dx+(o.y-carrier.y)*dy)/(dist*dist);
+      if(t>0.1 && t<0.95){
+        const px=carrier.x+dx*t, py=carrier.y+dy*t;
+        const perp=Math.hypot(o.x-px,o.y-py);
+        if(perp<2.2){ blocked+=1; }
+      }
+    }
+    // Score : démarquage + progression - distance - lignes bloquées
+    let score = nearOpp*1.4 + (forward?prog*0.9:0) - dist*0.35 - blocked*22;
+    // Un destinataire bien placé devant le but est très intéressant
+    const mToGoal=Math.abs(m.x-goalX);
+    if(mToGoal<WW*0.28) score += 12;
+    if(score>bestScore){ bestScore=score; best=m; }
+  }
+  return best;
+}
+
 // ═══════════════════════════════════════════════════════════
 // ROLE TARGETS
 // ═══════════════════════════════════════════════════════════

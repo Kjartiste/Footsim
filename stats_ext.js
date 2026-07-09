@@ -93,6 +93,18 @@ const STAT_DEFS = {
       {key:'flair',        label:'Flair (créativité)', base:'tec'},
     ],
   },
+  magie: {
+    label: 'Magie', color: '#8840e0',
+    stats: [
+      {key:'affinite',     label:'Affinité magique',   base:'tec'},
+      {key:'manaCtrl',     label:'Contrôle du mana',   base:'stam'},
+      {key:'maitrise',     label:'Maîtrise des sorts', base:'tec'},
+      {key:'resMagie',     label:'Résistance magique', base:'res'},
+      {key:'manaRegen',    label:'Régén. de mana',     base:'stam'},
+      {key:'instabilite',  label:'Instabilité',        base:'sht'},
+      {key:'aura',         label:'Aura',               base:'res'},
+    ],
+  },
 };
 
 // Feuille de stats spécifique aux gardiens (poste GB) : remplace la catégorie
@@ -114,6 +126,7 @@ const GK_STAT_DEFS = {
     ],
   },
   mental: STAT_DEFS.mental,
+  magie: STAT_DEFS.magie,
 };
 
 // Liste plate {key -> def} pour lookups rapides
@@ -228,6 +241,46 @@ function statOf(p, baseKey){
 window.statOf = statOf;
 window._STATOF_MAP = _STATOF_MAP;
 window._STATOF_MAP_GK = _STATOF_MAP_GK;
+
+// ── HELPERS MAGIE (mode Complet) ──────────────────────────────────────
+// Tous renvoient une valeur NEUTRE en mode Lite (le système de sorts reste
+// exactement celui du jeu actuel). En Complet, ils modulent les sorts selon
+// les attributs magiques du lanceur (p.s2).
+function _mag(p, key, def){
+  if(!(window.GS && window.GS.statMode==='complet')) return null; // neutre en Lite
+  if(!p || !p.s2 || p.s2[key]==null) return null;
+  return p.s2[key];
+}
+// Multiplicateur de PUISSANCE d'un sort (affinité) : 0.8 → 1.25
+function magPowerMult(p){
+  const v=_mag(p,'affinite'); if(v==null) return 1;
+  return 0.8 + (v/99)*0.45;
+}
+// Multiplicateur de COÛT en mana (contrôle du mana) : 1.2 → 0.75
+function magCostMult(p){
+  const v=_mag(p,'manaCtrl'); if(v==null) return 1;
+  return 1.2 - (v/99)*0.45;
+}
+// Multiplicateur de RÉGÉNÉRATION de mana : 0.7 → 1.6
+function magRegenMult(p){
+  const v=_mag(p,'manaRegen'); if(v==null) return 1;
+  return 0.7 + (v/99)*0.9;
+}
+// Chance qu'un sort RATE à cause de l'instabilité (0 → ~18%), atténuée par la
+// maîtrise. Renvoie une probabilité d'échec.
+function magFizzleChance(p){
+  const inst=_mag(p,'instabilite'); if(inst==null) return 0;
+  const mait=_mag(p,'maitrise')||50;
+  const raw=(inst/99)*0.18;                 // instabilité pure
+  const control=(mait/99)*0.12;             // la maîtrise réduit le risque
+  return Math.max(0, raw - control);
+}
+// Réduction de l'effet d'un sort SUBI (résistance magique) : 1 → 0.6
+function magResistMult(target){
+  const v=_mag(target,'resMagie'); if(v==null) return 1;
+  return 1 - (v/99)*0.4;
+}
+Object.assign(window, { magPowerMult, magCostMult, magRegenMult, magFizzleChance, magResistMult });
 
 // Exposer sur window pour les autres scripts
 Object.assign(window, {

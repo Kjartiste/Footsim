@@ -502,6 +502,7 @@ input[type=range]:focus{outline:none}
 <script src="worlds_index.js"></script>
 <script src="data.js"></script>
 <script src="stats_ext.js"></script>
+<script src="traits.js"></script>
 <script src="engine.js"></script>
 <script src="ia.js"></script>
 <script src="visual.js"></script>
@@ -521,6 +522,7 @@ input[type=range]:focus{outline:none}
     try{
       loadProfiles();
       if(typeof ensureAllS2==='function') ensureAllS2();
+      if(typeof ensureAllProfiles==='function') ensureAllProfiles();
       if(!activeProfileId || !profiles[activeProfileId]){
         renderProfileScreen();
       } else {

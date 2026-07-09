@@ -103,18 +103,28 @@ function roleTarget(ti,p,pi){
     p.pos==='MC'||p.pos==='MCD'||p.pos==='MCG')){
     const ballAhead=ti===0?b.x>p.x-5:b.x<p.x+5;
     const phaseOK=G.phase==='ATTACK'||G.phase==='TRANSITION'||G.phase==='BUILDUP';
-    if(phaseOK&&ballAhead&&Math.random()<0.35*runFreq*roleRunMod){
-      p.runT=1.4+Math.random()*1.6;
-      p.runCool=(2.0+Math.random()*2)/runFreq;  // pressing teams recover faster
-      const myWidth=(strat(ti).width)||1.0;
-      // Width: >1 = jeu sur les ailes, <1 = jeu dans l'axe
-      const flankBias=myWidth>1?(myWidth-1)*2.5:0;       // pousse vers les flancs
-      const axisBias=myWidth<1?(1-myWidth)*2.5:0;        // pousse vers le centre
-      const baseSide=p.pos==='AG'?-1:p.pos==='AD'?1:(Math.random()-.5)*1.8;
-      const sideBias=baseSide*(1+flankBias)-Math.sign(baseSide)*axisBias;
-      const lateralSpread=rng(3,14)*(0.5+myWidth*0.6);   // amplitude latérale selon largeur
-      p.runTx=clamp(oppGoalX+(ti===0?-rng(3,18):rng(3,18)),4,WW-4);
-      p.runTy=clamp(PCY+sideBias*lateralSpread,3,WH-3);
+    if(phaseOK&&ballAhead&&Math.random()<0.42*runFreq*roleRunMod){
+      p.runT=1.2+Math.random()*1.4;
+      p.runCool=(1.6+Math.random()*1.8)/runFreq;
+      // APPEL DE BALLE : ~55% du temps, le joueur se démarque dans l'espace
+      // libre pour offrir une option de passe (mouvement naturel). Sinon, course
+      // classique en profondeur vers le but adverse.
+      const owner = (typeof ownerP==='function') ? ownerP() : null;
+      const wantSpace = owner && owner!==p && Math.random()<0.55 && typeof openSpaceTarget==='function';
+      const spot = wantSpace ? openSpaceTarget(p, ti, b.x, b.y) : null;
+      if(spot){
+        p.runTx = clamp(spot.x, 4, WW-4);
+        p.runTy = clamp(spot.y, 3, WH-3);
+      } else {
+        const myWidth=(strat(ti).width)||1.0;
+        const flankBias=myWidth>1?(myWidth-1)*2.5:0;
+        const axisBias=myWidth<1?(1-myWidth)*2.5:0;
+        const baseSide=p.pos==='AG'?-1:p.pos==='AD'?1:(Math.random()-.5)*1.8;
+        const sideBias=baseSide*(1+flankBias)-Math.sign(baseSide)*axisBias;
+        const lateralSpread=rng(3,14)*(0.5+myWidth*0.6);
+        p.runTx=clamp(oppGoalX+(ti===0?-rng(3,18):rng(3,18)),4,WW-4);
+        p.runTy=clamp(PCY+sideBias*lateralSpread,3,WH-3);
+      }
     }
   }
   if(p.runT>0){
@@ -731,7 +741,8 @@ function physStep(dt,rawDt){
     const pressDrain=myPressStr||0.5;
     const isPressingNow=G.gegenT&&G.gegenT[ti]>0?1.4:pressDrain;
     p.hp=Math.max(0,p.hp-.009*dt*60*(1.1-p.s.stam/99)*(0.7+isPressingNow*0.5));
-    p.mp=Math.min(100,p.mp+.009*dt*60); // regen
+    const _mReg = (typeof magRegenMult==='function') ? magRegenMult(p) : 1;
+    p.mp=Math.min(100,p.mp+.009*dt*60*_mReg); // regen (modulé par Régén. de mana en Complet)
     // Produits dopants : timer + fin de buff
     if(p._dopeT>0){
       p._dopeT=Math.max(0,p._dopeT-dt*60);

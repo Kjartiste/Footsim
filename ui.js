@@ -1336,6 +1336,7 @@ function _prepareTeamsForMode(){
   // Générer les stats détaillées (mode Complet) et garantir les champs de
   // mouvement sur tous les joueurs (y compris ceux générés en complément).
   if(typeof ensureAllS2==='function'){ try{ ensureAllS2(); }catch(e){} }
+  if(typeof ensureAllProfiles==='function'){ try{ ensureAllProfiles(); }catch(e){} }
   [0,1].forEach(function(ti){ (teams[ti].players||[]).forEach(_ensureMotionFields); });
 }
 
@@ -1867,6 +1868,30 @@ function _renderPlayerEditor(p,T,source){
       </div>`;
     }).join('');
     return hiddenBase + catBlocks;
+  })()}
+  ${(()=>{
+    // MODE COMPLET : afficher personnalité + traits
+    if(!(window.isComplet && window.isComplet())) return '';
+    if(typeof ensurePlayerProfile==='function') ensurePlayerProfile(p);
+    const perso = (typeof personaOf==='function') ? personaOf(p) : null;
+    const traits = Array.isArray(p.traits) ? p.traits.map(id=>window.TRAIT_BY_ID&&TRAIT_BY_ID[id]).filter(Boolean) : [];
+    const persoHtml = perso ? `
+      <div style="display:flex;align-items:center;gap:8px;background:${perso.col}18;border:1px solid ${perso.col}55;border-radius:8px;padding:7px 9px;margin-bottom:6px">
+        <span style="font-size:20px">${perso.icon}</span>
+        <div style="flex:1">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;color:${perso.col};letter-spacing:.5px">${perso.n}</div>
+          <div style="font-size:9px;color:var(--muted);line-height:1.3">${perso.d}</div>
+        </div>
+      </div>` : '';
+    const traitsHtml = traits.length ? `
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${traits.map(t=>`<span title="${t.d}" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:var(--panel);border:1px solid var(--b2);border-radius:12px;padding:3px 9px;color:var(--text)">${t.icon} ${t.n}</span>`).join('')}
+      </div>` : `<div style="font-size:9px;color:var(--muted)">Aucun trait particulier.</div>`;
+    return `
+      <div class="slbl">Personnalité & Traits</div>
+      ${persoHtml}
+      ${traitsHtml}
+    `;
   })()}
   <div class="slbl">Sorts & Techniques <span id="sg-count" style="color:var(--gold);font-weight:800">(${(p.spells||[]).length}/3)</span></div>
   <input type="text" id="sg-search" class="inp" placeholder="🔍 Rechercher un sort (nom)…" style="margin-bottom:6px;font-size:11px" oninput="filterSpells(this.value)">
