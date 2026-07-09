@@ -672,6 +672,18 @@ function applyFormationRoles(ti){
       if(p && positions[i]) p.pos = positions[i];
     });
   }
+  // 7v7 : appliquer les postes de la formation choisie (FORM_ROLES). Sans ça,
+  // choisir 6-0-0 ou 2-4 ne changeait pas les postes des joueurs → placement
+  // incohérent (défenseurs éparpillés, etc.). On applique aux 7 titulaires.
+  if(!is11v11 && !is5v5){
+    const strat7 = T.strat || '321';
+    if(FORM_ROLES[strat7] && T.players.length >= 7){
+      const positions = FORM_ROLES[strat7];
+      T.players.slice(0,7).forEach((p, i) => {
+        if(p && positions[i]) p.pos = positions[i];
+      });
+    }
+  }
 
   // S'assurer qu'il y a exactement 1 gardien
   const gbCount=T.players.filter(p=>p&&p.pos==='GB').length;
