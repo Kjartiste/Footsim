@@ -115,8 +115,18 @@ function roleTarget(ti,p,pi){
     p.pos==='AG'||p.pos==='AD'||p.pos==='MOG'||p.pos==='MOD'||
     p.pos==='MC'||p.pos==='MCD'||p.pos==='MCG')){
     const ballAhead=ti===0?b.x>p.x-5:b.x<p.x+5;
+    // AVANT : un joueur déjà DEVANT le ballon (ballAhead faux) ne déclenchait
+    // jamais de course → il se figeait sur sa position de formation pendant
+    // que le porteur avançait seul, laissant un attaquant isolé sans soutien.
+    // MAINTENANT : s'il est trop en avance sur le ballon, il peut quand même
+    // faire un APPEL DE SOUTIEN (venir se démarquer / revenir vers une ligne
+    // de passe) au lieu d'attendre passivement. On le signale via `supportRun`
+    // pour cibler l'espace utile plutôt qu'une course en profondeur.
+    const ballBehind = !ballAhead;
+    const gap = ti===0 ? (p.x-b.x) : (b.x-p.x); // de combien le joueur devance le ballon
+    const wantSupportRun = ballBehind && gap>6 && gap<WW*0.5;
     const phaseOK=G.phase==='ATTACK'||G.phase==='TRANSITION'||G.phase==='BUILDUP';
-    if(phaseOK&&ballAhead&&Math.random()<0.42*runFreq*roleRunMod){
+    if(phaseOK&&(ballAhead||wantSupportRun)&&Math.random()<0.42*runFreq*roleRunMod){
       p.runT=1.2+Math.random()*1.4;
       p.runCool=(1.6+Math.random()*1.8)/runFreq;
       // Point de départ + durée totale mémorisés pour courber la trajectoire
@@ -126,11 +136,22 @@ function roleTarget(ti,p,pi){
       // libre pour offrir une option de passe (mouvement naturel). Sinon, course
       // classique en profondeur vers le but adverse.
       const owner = (typeof ownerP==='function') ? ownerP() : null;
-      const wantSpace = owner && owner!==p && Math.random()<0.55 && typeof openSpaceTarget==='function';
-      const spot = wantSpace ? openSpaceTarget(p, ti, b.x, b.y) : null;
+      // Appel de SOUTIEN (joueur en avance sur le ballon) : on cible toujours
+      // un espace libre pour offrir une ligne de passe, jamais une course en
+      // profondeur (il est déjà devant). Sinon comportement habituel (~55%).
+      const wantSpace = wantSupportRun
+        ? (typeof openSpaceTarget==='function')
+        : (owner && owner!==p && Math.random()<0.55 && typeof openSpaceTarget==='function');
+      const spot = wantSpace ? openSpaceTarget(p, ti, b.x, b.y, {support:wantSupportRun}) : null;
       if(spot){
         p.runTx = clamp(spot.x, 4, WW-4);
         p.runTy = clamp(spot.y, 3, WH-3);
+      } else if(wantSupportRun){
+        // Appel de soutien sans espace trouvé : on redescend simplement vers
+        // le ballon (ligne de passe courte), pas de course en profondeur.
+        const fwd2 = ti===0 ? 1 : -1;
+        p.runTx = clamp(b.x + fwd2*rng(4,10), 4, WW-4);
+        p.runTy = clamp(b.y + rng(-8,8), 3, WH-3);
       } else {
         // Positionnement collectif : si un coéquipier court déjà vers la même
         // moitié du terrain (haut/bas), on privilégie l'autre côté pour ne pas
@@ -455,6 +476,29 @@ function roleTarget(ti,p,pi){
         }
 
         // ══════════════════════════════════════════════════
+        // PRIORITÉ 3.5 : MARQUAGE INDIVIDUEL
+        // Cet adversaire démarqué m'a été assigné (voir cache _markAssign) :
+        // je viens le prendre, en me plaçant côté but (entre lui et ma cage)
+        // et légèrement à son épaule pour couper la passe. Résout le cas d'un
+        // attaquant isolé que personne ne suivait. On ne déclenche que si
+        // l'homme est réellement démarqué (aucun coéquipier déjà au contact) et
+        // pas trop loin de moi, pour ne pas casser la ligne inutilement.
+        const markTarget = (G._markAssign?.[ti]||{})[p.id];
+        if(markTarget && p.pos!=='GB'){
+          const distToMark=Math.hypot(p.x-markTarget.x,p.y-markTarget.y);
+          // Distance max pour accepter le marquage (évite les courses absurdes).
+          if(distToMark < WW*0.30){
+            // Point de marquage : entre l'attaquant et mon but, à ~1.6 u côté but.
+            const gx=myGoalX, gy=PCY;
+            const dgx=gx-markTarget.x, dgy=gy-markTarget.y, dg=Math.hypot(dgx,dgy)||1;
+            const goalSide=1.6; // à quelle distance devant l'attaquant (côté but)
+            const mx=markTarget.x + (dgx/dg)*goalSide;
+            const my=markTarget.y + (dgy/dg)*goalSide;
+            return{x:clamp(mx+wX*.2,2,WW-2), y:clamp(my+wY*.2,2,WH-2), marking:true};
+          }
+        }
+
+        // ══════════════════════════════════════════════════
         // FORME DÉFENSIVE selon position
         // ══════════════════════════════════════════════════
         if(p.pos==='DC'||p.pos==='DCD'||p.pos==='DCG'){
@@ -733,10 +777,13 @@ function physStep(dt,rawDt){
     // roleTarget) mais n'avaient AUCUN boost de vitesse, donc n'arrivaient
     // jamais en pratique : un seul joueur (isPresser) semblait presser.
     const isSupport    = isDefending && !isPresser && p.pos !== 'GB' && !!t.pressing;
+    // Marqueur individuel désigné : il doit rejoindre son homme sans traîner,
+    // sinon le marquage reste théorique (il vise le bon point mais trop mou).
+    const isMarker     = isDefending && !isPresser && !isSupport && p.pos !== 'GB' && !!t.marking;
     // Presser principal : cible directement le ballon, sans lerp intermédiaire
     // ballOwnerIsGB → snap fort vers position de tenue (évite l'élan résiduel)
     const _gbHold = isDefending && ((G.owner&&G.owner.pos==='GB')||G.phase==='GOALKICK'||(G.gkCoolT||0)>0);
-    const tLerp = _gbHold ? 0.7 : isPresser ? 0.9 : isSupport ? 0.35 : 0.22;
+    const tLerp = _gbHold ? 0.7 : isPresser ? 0.9 : isSupport ? 0.35 : isMarker ? 0.34 : 0.22;
     const ballPred = ballPredict ? ballPredict(0.2) : G.ball;
     p.tx = isPresser ? lerp(p.tx, clamp(ballPred.x, 1, WW-1), 0.35) : lerp(p.tx, t.x, tLerp);
     p.ty = isPresser ? lerp(p.ty, clamp(ballPred.y, 1, WH-1), 0.35) : lerp(p.ty, t.y, tLerp);
@@ -774,7 +821,8 @@ function physStep(dt,rawDt){
     const spdMul=p._spdDebuff>0?0.38:p._aile>0||p._sylvestre>0?2.2:1.0;
     // Pressing : boost vitesse selon intensité
     const pressBonusMul = isPresser ? (1.0 + myPressStr*0.45) :
-                          isSupport ? (1.0 + myPressStr*0.20) : 1.0;
+                          isSupport ? (1.0 + myPressStr*0.20) :
+                          isMarker  ? (1.0 + myPressStr*0.18) : 1.0;
     const sprintMul=(p.runT>0?1.35:1.0)*pressBonusMul;
     const injPenalty=[1,.80,.55,.22][p.injLevel||0];
     // Fatigue progressive : un joueur épuisé ralentit au lieu de se figer.
@@ -793,7 +841,7 @@ function physStep(dt,rawDt){
     if(d>0.15){
       const n=norm(dx,dy);
       // Snappier acceleration so changes of direction read clearly
-      const vLerp = isPresser ? 0.65 : isSupport ? 0.32 : 0.28;
+      const vLerp = isPresser ? 0.65 : isSupport ? 0.32 : isMarker ? 0.32 : 0.28;
       p.vx=lerp(p.vx,n.x*eff,vLerp);p.vy=lerp(p.vy,n.y*eff,vLerp);
     } else {p.vx*=.72;p.vy*=.72;}
 
@@ -843,6 +891,7 @@ function physStep(dt,rawDt){
   if(!G._pressNearest) G._pressNearest=[null,null];
   if(!G._pressOrder) G._pressOrder=[[],[]];
   if(!G._defLineX) G._defLineX=[null,null];
+  if(!G._markAssign) G._markAssign=[{},{}]; // {defenderId: opponentRef} par équipe défendante
   if(Math.random()<0.28){ // ~17fps refresh — pressing réactif
     [0,1].forEach(ti=>{
       const mp=actP(ti).filter(q=>q.pos!=='GB');
@@ -857,6 +906,43 @@ function physStep(dt,rawDt){
       // (voir usage dans roleTarget, branche défensive).
       const defs=mp.filter(q=>['DC','DCD','DCG','DD','DG','LB','RB'].includes(q.pos));
       if(defs.length) G._defLineX[ti]=defs.reduce((s,q)=>s+q.x,0)/defs.length;
+    });
+    // ── ASSIGNATION DE MARQUAGE (par équipe qui DÉFEND) ──────────────────
+    // Corrige le cas « un attaquant démarqué que personne ne suit » : on
+    // désigne, pour chaque adversaire dangereux non porteur (avancé dans notre
+    // moitié, pas déjà au contact du ballon), le défenseur/milieu LIBRE le plus
+    // proche pour le prendre en marquage — un défenseur par attaquant, pas de
+    // meute sur le même homme. Le presseur du ballon est exclu (il a sa tâche).
+    [0,1].forEach(dti=>{
+      const assign={};
+      const ati2=1-dti;
+      const myGoalX2 = dti===0 ? 0 : WW;
+      // Adversaires "dangereux" : dans NOTRE moitié, pas le porteur du ballon,
+      // triés du plus proche de notre but au plus loin (les plus menaçants d'abord).
+      const inOurHalf=(o)=> dti===0 ? o.x < WW*0.55 : o.x > WW*0.45;
+      const threats=actP(ati2).filter(o=>o.pos!=='GB' && !o.hasBall && inOurHalf(o))
+        .sort((a,b)=>Math.abs(a.x-myGoalX2)-Math.abs(b.x-myGoalX2));
+      // Marqueurs disponibles : défenseurs + milieux, hors gardien et hors
+      // presseur principal du ballon (celui-ci fonce déjà sur le porteur).
+      const presser=G._pressNearest[dti];
+      const markerPool=actP(dti).filter(q=>q.pos!=='GB' && q!==presser &&
+        ['DC','DCD','DCG','DD','DG','LB','RB','MDC','MDC2','MC','MCD','MCG'].includes(q.pos));
+      const takenMarkers=new Set();
+      for(const o of threats){
+        let best=null,bestD=1e9;
+        for(const m of markerPool){
+          if(takenMarkers.has(m)) continue;
+          const d=Math.hypot(m.x-o.x,m.y-o.y);
+          if(d<bestD){bestD=d;best=m;}
+        }
+        // On ne marque que si le défenseur est raisonnablement proche (sinon il
+        // casserait sa position pour courir à l'autre bout du terrain).
+        if(best && bestD<WW*0.30){
+          assign[best.id]=o;
+          takenMarkers.add(best);
+        }
+      }
+      G._markAssign[dti]=assign;
     });
   }
   // Ball

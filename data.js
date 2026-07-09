@@ -922,22 +922,34 @@ function kickToP(from,to,spd=1.8){
 // (biaisés vers l'avant) et on garde celui le plus éloigné des adversaires
 // tout en restant à portée de passe du porteur. Rend les appels de balle
 // naturels au lieu de foncer bêtement vers le but.
-function openSpaceTarget(p, ti, ballX, ballY){
+function openSpaceTarget(p, ti, ballX, ballY, opts){
+  opts=opts||{};
+  const support=!!opts.support; // appel de soutien : revenir vers une ligne de passe
   const fwd = ti===0 ? 1 : -1;
   const opps = actP(1-ti);
   let best=null, bestScore=-1e9;
+  // En soutien, on cherche autour d'un point situé un peu DEVANT le ballon
+  // (côté but adverse) plutôt qu'autour du joueur lui-même : un joueur trop
+  // avancé doit redescendre vers le porteur pour offrir une option de passe.
+  const anchorX = support ? (ballX + fwd*WW*0.14) : p.x;
+  const anchorY = support ? (ballY + (p.y-ballY)*0.5) : p.y;
   for(let k=0;k<8;k++){
     const ang = (k/8)*Math.PI*2;
     const rad = 6 + Math.random()*10;
-    let cx = Math.max(3, Math.min(WW-3, p.x + Math.cos(ang)*rad));
-    let cy = Math.max(3, Math.min(WH-3, p.y + Math.sin(ang)*rad));
+    let cx = Math.max(3, Math.min(WW-3, anchorX + Math.cos(ang)*rad));
+    let cy = Math.max(3, Math.min(WH-3, anchorY + Math.sin(ang)*rad));
     let nearOpp=1e9;
     for(const o of opps){ const d=Math.hypot(o.x-cx,o.y-cy); if(d<nearOpp)nearOpp=d; }
     const prog = (cx - p.x)*fwd;
     const distBall = Math.hypot(cx-ballX, cy-ballY);
     if(distBall > WW*0.5) continue;
     const tooClose = distBall < 5 ? -20 : 0;
-    const score = nearOpp*1.6 + prog*0.7 - Math.abs(distBall-WW*0.22)*0.3 + tooClose;
+    // En soutien : on récompense la PROXIMITÉ à une bonne distance de passe
+    // (~0.16·WW du ballon) et l'espace libre ; on ne pénalise pas de revenir
+    // en arrière. En course normale : comportement d'origine (progression++).
+    const score = support
+      ? nearOpp*1.6 - Math.abs(distBall-WW*0.16)*0.6 + tooClose
+      : nearOpp*1.6 + prog*0.7 - Math.abs(distBall-WW*0.22)*0.3 + tooClose;
     if(score>bestScore){ bestScore=score; best={x:cx,y:cy}; }
   }
   return best;
