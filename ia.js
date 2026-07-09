@@ -491,13 +491,13 @@ function aiDecide(dt=0.016){
         const midPool = window.gameMode==='11v11'
           ? byR(ati,'MC','MDC','MO','MCD','MCG','MDC2').filter(p=>!p.hasBall&&!p.stunT)
           : byR(ati,'MC','MDC','MO','MOG','MOD').filter(p=>!p.hasBall&&!p.stunT);
-        const mid=pick(midPool);
+        const mid=(typeof pickTactical==='function')?pickTactical(carrier,ati,midPool):pick(midPool);
         if(mid){kickToP(carrier,mid,1.5);logEvent(`${carrier.name} → ${mid.name}`,teams[ati].color+'aa');}
       } else if(r<.38){
         const fwdPool = window.gameMode==='11v11'
           ? byR(ati,'ATT','ATT2','MO','AG','AD')
           : byR(ati,'ATT','MO','MOG','MOD');
-        const fwdP=pick(fwdPool);
+        const fwdP=(typeof pickTactical==='function')?pickTactical(carrier,ati,fwdPool):pick(fwdPool);
         if(fwdP){kickToP(carrier,fwdP,2.0);logEvent(`Long ballon pour ${fwdP.name} !`,teams[ati].color+'cc');setPhase('ATTACK');}
       } else if(r<.52){
         setPhase('ATTACK');
@@ -509,7 +509,8 @@ function aiDecide(dt=0.016){
           logEvent(`Interception de ${inter.name} !`,teams[dti].color);
         }
       } else {
-        const p2=pick(ap.filter(p=>!p.hasBall));
+        const circPool=ap.filter(p=>!p.hasBall);
+        const p2=(typeof pickTactical==='function')?pickTactical(carrier,ati,circPool):pick(circPool);
         if(p2){kickToP(carrier,p2,1.2);logEvent(`${teams[ati].name} fait circuler`,teams[ati].color+'55');}
       }
       break;
@@ -639,7 +640,8 @@ function aiDecide(dt=0.016){
         // ── PASSE (dominante) : le porteur cherche le meilleur relais ────────
         // Grosse fenêtre (42%) pour un jeu de passes fluide. On vise en priorité
         // un coéquipier démarqué vers l'avant ; sinon on recycle en sécurité.
-        const tgt = (typeof bestPassTarget==='function') ? bestPassTarget(carrier,ati,{forward:true}) : null;
+        const _tacDec = (typeof tacticalPassDecision==='function') ? tacticalPassDecision(carrier,ati) : null;
+        const tgt = _tacDec ? _tacDec.target : ((typeof bestPassTarget==='function') ? bestPassTarget(carrier,ati,{forward:true}) : null);
         // Traits : "Passes en profondeur" cherche loin devant ; "Une-deux" joue vite/court.
         const _HT2=(tid)=>(typeof hasTrait==='function'&&hasTrait(carrier,tid));
         if(tgt){
@@ -647,7 +649,13 @@ function aiDecide(dt=0.016){
           const deep = _HT2('passe_prof') && prog>WW*0.12;
           const spd = deep ? 2.2 : (prog>WW*0.08 ? 1.7 : 1.1);
           kickToP(carrier,tgt,spd);
-          if(prog>WW*0.10){ logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa'); setPhase('ATTACK'); }
+          if(_tacDec && _tacDec.kind==='third_man_setup'){
+            logEvent(`${carrier.name} → ${tgt.name}, en une touche pour ${_tacDec.follow.name} !`,teams[ati].color+'cc');
+            setPhase('ATTACK');
+          } else if(_tacDec && _tacDec.kind==='switch'){
+            logEvent(`↔ Renversement de ${carrier.name} → ${tgt.name} !`,teams[ati].color+'cc');
+            setPhase('ATTACK');
+          } else if(prog>WW*0.10){ logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa'); setPhase('ATTACK'); }
           else { logEvent(`${carrier.name} temporise → ${tgt.name}`,teams[ati].color+'55'); setPhase('BUILDUP'); }
         } else {
           // Personne de démarqué : passe de sécurité vers un milieu/défenseur
@@ -658,7 +666,12 @@ function aiDecide(dt=0.016){
       } else if(r<shootBase+_dribWindow+_passWindow+0.12){
         // ── DUEL PERDU : le porteur se fait presser et perd le ballon ────────
         // (nettement réduit vs avant, et seulement si un adversaire est proche)
-        if(opp && Math.hypot(opp.x-carrier.x,opp.y-carrier.y)<6){
+        // Le trigger tactique (dos au but, ligne de touche, technique faible,
+        // endurance/agressivité du défenseur…) élargit légèrement la portée
+        // d'un pressing qui "paie" sans changer le comportement par défaut.
+        const _pTrig=(typeof shouldPress==='function')?shouldPress(opp,carrier,dti,ati):null;
+        const _oppDist=opp?Math.hypot(opp.x-carrier.x,opp.y-carrier.y):1e9;
+        if(opp && (_oppDist<6 || (_pTrig && _pTrig.press && _oppDist<9))){
           G.tackles[dti]++;
           freeB();
           setTimeout(()=>{if(G.running&&opp&&!opp.red&&opp.hp>0){giveB(opp);G.atkTi=dti;setPhase('TRANSITION');}},160/speedMult);
