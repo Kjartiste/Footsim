@@ -106,7 +106,16 @@ function renderHtTactics(mode){
 
 function renderHtTeams(){
   htSel={ti:-1,bi:-1};
-  document.getElementById('ht-teams').innerHTML=teams.slice(0,2).map((T,ti)=>`
+  _renderHtTeams();
+}
+
+// Rend (ou re-rend) le contenu de l'écran mi-temps / pré-match. Extrait pour
+// pouvoir le rafraîchir quand on change la formation (les postes des joueurs
+// doivent se mettre à jour immédiatement à l'écran).
+function _renderHtTeams(){
+  const cont=document.getElementById('ht-teams');
+  if(!cont) return;
+  cont.innerHTML=teams.slice(0,2).map((T,ti)=>`
     <div class="ht-team">
       <div class="ht-team-hd"><div style="width:8px;height:8px;border-radius:50%;background:${T.color};flex-shrink:0"></div>${T.name}</div>
       ${T.players.filter(Boolean).map((p,pi)=>{
@@ -271,9 +280,20 @@ function htClickStarter(ti,pi){
 function htSetStrat(ti,sid,el){
   teams[ti].strat=sid;
   applyFormationRoles(ti); // mettre à jour les postes selon la nouvelle formation
-  el.closest('.ht-team').querySelectorAll('.ht-sc').forEach(e=>e.classList.remove('sel'));
-  el.classList.add('sel');
-  syncHUD();renderTactics();updateCompoPitch();
+  // Redessiner l'écran mi-temps / pré-match pour que les postes des joueurs
+  // (les <select> ht-pos) reflètent immédiatement la nouvelle formation.
+  try{ renderHtTeams(); }catch(e){}
+  syncHUD();renderTactics();updateCompoPitch();try{renderTB(0);renderTB(1);}catch(e){}
+}
+
+// Rafraîchit toutes les vues après un changement de formation d'une équipe
+// principale (postes des joueurs, mini-terrain compo, liste d'équipe, HUD).
+function _afterFormationChange(ti){
+  try{ applyFormationRoles(ti); }catch(e){}
+  try{ if(typeof renderTactics==='function') renderTactics(); }catch(e){}
+  try{ if(typeof updateCompoPitch==='function') updateCompoPitch(); }catch(e){}
+  try{ if(typeof renderTB==='function'){ renderTB(0); renderTB(1); } }catch(e){}
+  try{ if(typeof syncHUD==='function') syncHUD(); }catch(e){}
 }
 
 // ── Concert de Lumière : sort automatique d'entretien ────────────────
@@ -1721,7 +1741,7 @@ function renderTactics(){
     const stratItems = stratList.map(s=>`
       <div class="sc${curStrat===s.id?' sel':''}" onclick="
         teams[${ti}].${stratAttr}='${s.id}';
-        applyFormationRoles(${ti});renderTactics();updateCompoPitch();syncHUD()">
+        _afterFormationChange(${ti})">
         <div style="display:flex;align-items:center;gap:5px">
           <div style="width:7px;height:7px;border-radius:50%;background:${s.col}"></div>
           <div class="st">${s.n}</div>
