@@ -1036,8 +1036,9 @@ function showPreMatch(onStart){
     const hm0=avgHidden(T0,'_hm'), hm1=avgHidden(T1,'_hm');
     const fm0=avgHidden(T0,'_fm'), fm1=avgHidden(T1,'_fm');
     const badge=T=>{
-      if(T.img)return'<div style="width:52px;height:52px;border-radius:50%;overflow:hidden;margin:0 auto 8px;border:2px solid '+T.color+'88"><img src="'+T.img+'" style="width:100%;height:100%;object-fit:cover"></div>';
-      return'<div style="width:52px;height:52px;border-radius:50%;background:'+T.color+';display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:17px;font-weight:900;color:#fff;font-family:sans-serif;border:2px solid '+T.color+'88">'+teamIni(T.name)+'</div>';
+      const inner=(typeof teamBadgeHTML==='function')?teamBadgeHTML(T,52):
+        (T.img?`<img src="${T.img}" style="width:52px;height:52px;border-radius:50%;object-fit:cover">`:`<div style="width:52px;height:52px;border-radius:50%;background:${T.color};display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;color:#fff">${teamIni(T.name)}</div>`);
+      return `<div style="width:52px;height:52px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center">${inner}</div>`;
     };
 
     const col=(T,o,hm,fm,b)=>{
@@ -1714,16 +1715,18 @@ function renderTB(ti){
     </div>
     <div style="padding:4px 6px 8px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px">
       <div>
-        <div id="tbadge${ti}" onclick="document.getElementById('tfup${ti}').click()" style="width:52px;height:52px;border-radius:50%;border:2px solid ${T.color}66;background:${T.color}22;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:22px" title="Cliquer pour importer un drapeau/logo">
-          ${T.img?`<img src="${T.img}" style="width:100%;height:100%;object-fit:cover">`:`<span style="color:${T.color};font-size:17px;font-weight:900">${teamIni(T.name)}</span>`}
+        <div id="tbadge${ti}" onclick="openBadgeEditor(${ti})" style="width:52px;height:52px;border-radius:${T.badge?'8px':'50%'};border:2px solid ${T.color}66;background:${T.badge?'transparent':T.color+'22'};cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:22px" title="Cliquer pour ouvrir l'éditeur de blason">
+          ${(typeof teamBadgeHTML==='function')?teamBadgeHTML(T,48):(T.img?`<img src="${T.img}" style="width:100%;height:100%;object-fit:cover">`:`<span style="color:${T.color};font-size:17px;font-weight:900">${teamIni(T.name)}</span>`)}
         </div>
         <input type="file" id="tfup${ti}" accept="image/*" style="display:none" onchange="handleTeamImg(event,${ti})">
-        <div style="font-size:8px;color:var(--muted);text-align:center;margin-top:3px;letter-spacing:.5px;cursor:pointer" onclick="document.getElementById('tfup${ti}').click()">LOGO</div>
+        <div style="font-size:8px;color:var(--muted);text-align:center;margin-top:3px;letter-spacing:.5px;cursor:pointer" onclick="openBadgeEditor(${ti})">BLASON</div>
       </div>
       <div style="flex:1">
-        <div style="font-size:9px;color:var(--muted);margin-bottom:4px">Logo / drapeau de l'équipe<br><span style="color:#333">Affiché dans le pré-match et les calendriers</span></div>
-        ${T.img?`<button class="btn" style="padding:2px 8px;font-size:9px" onclick="teams[${ti}].img='';teams[${ti}]._img=null;renderTB(${ti});syncHUD()">✕ Supprimer</button>`:''}
-        <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:3px" onclick="openPresetPicker(${ti})" title="Choisir une équipe préenregistrée (clubs, sélections)">📚 Équipes préenregistrées</button>
+        <div style="font-size:9px;color:var(--muted);margin-bottom:4px">Logo / blason de l'équipe<br><span style="color:#333">Affiché partout : pré-match, calendrier, classement…</span></div>
+        <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:2px" onclick="openBadgeEditor(${ti})" title="Créer un blason vectoriel">🛡️ Éditeur de blason</button>
+        <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:2px" onclick="document.getElementById('tfup${ti}').click()" title="Importer une image">🖼️ Importer</button>
+        ${(T.img||T.badge)?`<button class="btn" style="padding:2px 8px;font-size:9px;margin-top:2px" onclick="teams[${ti}].img='';teams[${ti}]._img=null;teams[${ti}].badge=null;renderTB(${ti});syncHUD()">✕ Retirer</button>`:''}
+        <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:2px" onclick="openPresetPicker(${ti})" title="Choisir une équipe préenregistrée (clubs, sélections)">📚 Préfaites</button>
       </div>
     </div>
     <div class="plist">
@@ -2361,7 +2364,7 @@ function serializePlayer(p){
     runT:0,runTx:0,runTy:0,runCool:Math.random()*2,dribCurve:0,tackleCool:0};
 }
 function serializeTeam(T){
-  return{name:T.name,color:T.color,img:T.img||'',strat:T.strat||'321',
+  return{name:T.name,color:T.color,img:T.img||'',badge:T.badge||null,strat:T.strat||'321',
     players:T.players.map(serializePlayer),
     bench:T.bench.map(serializePlayer),
     reserves:(T.reserves||[]).map(serializePlayer)};
@@ -2414,6 +2417,136 @@ function _resolveSavedIdx(t){
   if(t.savedIdx!=null&&savedTeams[t.savedIdx])return t.savedIdx;
   return -1;
 }
+// ═══════════════════════════════════════════════════════════
+// ÉDITEUR DE BLASON (modale interactive)
+// Édite teams[ti].badge (JSON). Aperçu live, aléatoire, préréglages, sauvegarde.
+// S'appuie entièrement sur badges.js (BadgeRenderer, libraries, generator).
+// ═══════════════════════════════════════════════════════════
+let _badgeEdit = { ti:0, badge:null };
+
+function openBadgeEditor(ti){
+  if(typeof BadgeSerializer==='undefined'){ alert('Module blason indisponible.'); return; }
+  _badgeEdit.ti = ti;
+  // Part du blason existant, sinon un défaut aux couleurs de l'équipe.
+  const T=teams[ti];
+  _badgeEdit.badge = T.badge ? BadgeSerializer.normalize(T.badge)
+    : Object.assign(BadgeSerializer.defaults(), { colors:[T.color||'#0b3d91','#ffffff','#ffd700'], text:teamIni(T.name) });
+  let modal=document.getElementById('badge-modal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='badge-modal';
+    modal.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:14px';
+    modal.addEventListener('click',e=>{ if(e.target===modal) closeBadgeEditor(); });
+    document.body.appendChild(modal);
+  }
+  modal.style.display='flex';
+  renderBadgeEditor();
+}
+function closeBadgeEditor(){ const m=document.getElementById('badge-modal'); if(m) m.style.display='none'; }
+
+function _badgeSet(key,val){ _badgeEdit.badge[key]=val; renderBadgeEditor(); }
+function _badgeSetColor(idx,val){ _badgeEdit.badge.colors[idx]=val; renderBadgeEditor(); }
+function _badgeRandom(){ _badgeEdit.badge = BadgeGenerator.random({ text:_badgeEdit.badge.text }); renderBadgeEditor(); }
+function _badgePreset(id){
+  const p=BADGE_PRESETS[id]; if(!p) return;
+  _badgeEdit.badge = BadgeSerializer.normalize(Object.assign({}, _badgeEdit.badge, p, { colors:_badgeEdit.badge.colors }));
+  renderBadgeEditor();
+}
+function saveBadge(){
+  const ti=_badgeEdit.ti;
+  teams[ti].badge = BadgeSerializer.normalize(_badgeEdit.badge);
+  teams[ti].img=''; teams[ti]._img=null; // le blason prime sur une image importée
+  if(typeof BadgeCache!=='undefined') BadgeCache.invalidate(teams[ti].badge);
+  try{ renderTB(ti); }catch(e){}
+  try{ syncHUD(); }catch(e){}
+  logEvent('🛡️ Blason enregistré !', teams[ti].color);
+  closeBadgeEditor();
+}
+
+function renderBadgeEditor(){
+  const modal=document.getElementById('badge-modal'); if(!modal) return;
+  const b=_badgeEdit.badge;
+  const preview=BadgeRenderer.render(b,{size:150});
+
+  // Générateur de rangée d'options (chips) pour une clé donnée.
+  const chips=(key,dict,order)=>order.map(id=>{
+    const on=b[key]===id;
+    return `<button onclick="_badgeSet('${key}','${id}')" style="padding:4px 9px;border-radius:14px;cursor:pointer;font-size:10px;font-weight:${on?'800':'500'};border:1.5px solid ${on?'var(--gold)':'var(--b1)'};background:${on?'rgba(240,192,40,.16)':'transparent'};color:${on?'var(--gold)':'var(--muted)'};margin:2px">${dict[id]||id}</button>`;
+  }).join('');
+
+  const colorRow=(idx,label)=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <span style="font-size:10px;color:var(--muted);width:64px">${label}</span>
+      <input type="color" value="${b.colors[idx]||'#000000'}" oninput="_badgeSetColor(${idx},this.value)" style="width:34px;height:26px;border:none;border-radius:5px;cursor:pointer;background:none">
+      <div style="display:flex;gap:3px;flex-wrap:wrap">${PaletteManager.quick.slice(0,8).map(c=>`<span onclick="_badgeSetColor(${idx},'${c}')" style="width:16px;height:16px;border-radius:4px;background:${c};cursor:pointer;border:1px solid #0006"></span>`).join('')}</div>
+    </div>`;
+
+  const section=(title,content)=>`<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">${title}</div><div style="display:flex;flex-wrap:wrap">${content}</div></div>`;
+
+  const presetChips=Object.keys(BADGE_PRESETS).map(id=>`<button onclick="_badgePreset('${id}')" style="padding:4px 9px;border-radius:14px;cursor:pointer;font-size:10px;border:1.5px solid var(--b1);background:transparent;color:var(--muted);margin:2px">${id.replace(/_/g,' ')}</button>`).join('');
+
+  const starRow=`<div style="display:flex;align-items:center;gap:8px">
+      <input type="range" min="0" max="10" value="${b.stars}" oninput="_badgeSet('stars',+this.value)" style="flex:1">
+      <span style="font-size:12px;font-weight:800;color:var(--gold);width:20px;text-align:center">${b.stars}</span>
+    </div>`;
+
+  const iconScaleRow=`<div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <span style="font-size:10px;color:var(--muted);width:64px">Taille icône</span>
+      <input type="range" min="0.5" max="1.8" step="0.05" value="${b.iconScale}" oninput="_badgeSet('iconScale',+this.value)" style="flex:1">
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <span style="font-size:10px;color:var(--muted);width:64px">Rotation</span>
+      <input type="range" min="0" max="360" value="${b.iconRot}" oninput="_badgeSet('iconRot',+this.value)" style="flex:1">
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <span style="font-size:10px;color:var(--muted);width:64px">Position Y</span>
+      <input type="range" min="-30" max="20" value="${b.iconY}" oninput="_badgeSet('iconY',+this.value)" style="flex:1">
+    </div>`;
+
+  modal.innerHTML=`
+    <div style="background:var(--panel,#0f0f0f);border:1px solid var(--b1);border-radius:16px;width:min(720px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--b1)">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:1px;color:var(--gold);text-transform:uppercase">🛡️ Éditeur de blason — ${_esc(teams[_badgeEdit.ti]?.name||'')}</div>
+        <button onclick="closeBadgeEditor()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">×</button>
+      </div>
+      <div style="display:flex;gap:14px;padding:14px 16px;overflow:hidden;flex:1;min-height:0">
+        <!-- Aperçu -->
+        <div style="flex-shrink:0;width:180px;display:flex;flex-direction:column;align-items:center;gap:10px">
+          <div style="background:var(--dark,#0a0a0a);border-radius:12px;padding:10px;border:1px solid var(--b1)">${preview}</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div style="background:var(--dark);border-radius:8px;padding:4px">${BadgeRenderer.render(b,{size:32})}</div>
+            <span style="font-size:9px;color:var(--muted)">petit aperçu<br>(classement, calendrier)</span>
+          </div>
+          <button class="btn btng" style="width:100%;justify-content:center;font-size:12px;padding:8px" onclick="_badgeRandom()">🎲 Générer</button>
+          <button class="btn btng" style="width:100%;justify-content:center;font-size:13px;padding:9px;font-weight:900" onclick="saveBadge()">✓ Enregistrer</button>
+        </div>
+        <!-- Contrôles -->
+        <div style="flex:1;overflow-y:auto;padding-right:6px">
+          ${section('Forme', chips('shape', SvgLibrary.labels, SvgLibrary.order))}
+          ${section('Bordure', chips('border', BadgeRenderer.borderLabels, Object.keys(BadgeRenderer.borders)))}
+          ${section('Motif de fond', chips('background', PatternLibrary.labels, PatternLibrary.order))}
+          ${section('Icône', chips('icon', Object.assign({none:'Aucune'},IconLibrary.labels), ['none'].concat(IconLibrary.order)))}
+          <div style="margin-bottom:12px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Réglages icône</div>${iconScaleRow}</div>
+          <div style="margin-bottom:12px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Couleurs</div>${colorRow(0,'Principale')}${colorRow(1,'Secondaire')}${colorRow(2,'Accent')}
+            <div style="display:flex;align-items:center;gap:6px;margin-top:5px"><span style="font-size:10px;color:var(--muted);width:64px">Couleur icône</span><input type="color" value="${b.iconColor||'#ffd700'}" oninput="_badgeSet('iconColor',this.value)" style="width:34px;height:26px;border:none;border-radius:5px;cursor:pointer;background:none"></div>
+          </div>
+          <div style="margin-bottom:12px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Texte & année</div>
+            <div style="display:flex;gap:6px;margin-bottom:5px">
+              <input type="text" maxlength="5" value="${_esc(b.text||'')}" oninput="_badgeSet('text',this.value)" placeholder="Sigle (ex: RCV)" style="flex:1;font-size:11px;padding:5px 7px;border-radius:6px;background:var(--dark);color:#eee;border:1px solid var(--b1)">
+              <input type="text" maxlength="4" value="${_esc(String(b.year||''))}" oninput="_badgeSet('year',this.value)" placeholder="Année" style="width:70px;font-size:11px;padding:5px 7px;border-radius:6px;background:var(--dark);color:#eee;border:1px solid var(--b1)">
+            </div>
+          </div>
+          <div style="margin-bottom:12px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Étoiles</div>${starRow}</div>
+          <div style="margin-bottom:6px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Préréglages</div><div style="display:flex;flex-wrap:wrap">${presetChips}</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+if(typeof window!=='undefined'){
+  Object.assign(window,{openBadgeEditor,closeBadgeEditor,renderBadgeEditor,saveBadge,_badgeSet,_badgeSetColor,_badgeRandom,_badgePreset});
+}
+
 // ═══════════════════════════════════════════════════════════
 // PAGE SÉLECTION D'ÉQUIPES (navigation en cascade, onglet dédié)
 // Flux : Type (Club/Sélection) → Pays → Niveau (Ligue pro / Régional par
@@ -2677,6 +2810,7 @@ function loadPresetIntoTeam(presetId){
   teams[ti].color = clone.color;
   teams[ti].img = clone.img||'';
   teams[ti]._img = null;
+  teams[ti].badge = clone.badge||null;
   teams[ti].strat = clone.strat||'321';
   teams[ti].players = clone.players||[];
   teams[ti].bench = clone.bench||[];

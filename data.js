@@ -330,6 +330,25 @@ function teamIni(name){
   if(words.length===1) return words[0].slice(0,2).toUpperCase();
   return name.slice(0,2).toUpperCase()||'??';
 }
+// Rendu unifié du logo d'une équipe, par ordre de priorité :
+//   1) blason vectoriel (T.badge, JSON) → SVG mis en cache ;
+//   2) image importée (T.img, base64) ;
+//   3) pastille colorée + initiales (fallback historique).
+// Renvoie une chaîne HTML <img>/<div> à insérer telle quelle.
+function teamBadgeHTML(T, size){
+  size = size||52;
+  if(T && T.badge && typeof BadgeCache!=='undefined'){
+    try{
+      const uri=BadgeCache.dataURI(T.badge, size);
+      return `<img src="${uri}" width="${size}" height="${size}" style="display:block;object-fit:contain" alt="">`;
+    }catch(e){ /* repli ci-dessous */ }
+  }
+  if(T && T.img){
+    return `<img src="${T.img}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover" alt="">`;
+  }
+  const col=(T&&T.color)||'#888';
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.33)}px;font-weight:900;color:#fff;font-family:sans-serif">${teamIni((T&&T.name)||'?')}</div>`;
+}
 const ROLE=['GB','DC','DD','DG','MC','MC','ATT'];
 // Postes assignés par formation (7 joueurs, index 0-6)
 const FORM_ROLES={
@@ -885,7 +904,7 @@ function _formBaseForPos(ti,pi,posOverride){
         const q=players[i];
         const qp=_activePosOf(q);
         if(q && qp && posMap[qp] && _lineOf(qp)===myLine){
-          lineMates.push({i, y: posMap[qp][1]});
+          lineMates.push({i, y: posMap[qp][1], pos: qp});
         }
       }
       lineMates.sort((a,b)=> a.y - b.y || a.i - b.i);
@@ -894,9 +913,31 @@ function _formBaseForPos(ti,pi,posOverride){
       let sumX=0; lineMates.forEach(o=>sumX+=posMap[_activePosOf(players[o.i])][0]);
       const lineX = sumX/n;
       if(n>1 && k>=0){
-        const spreadHalf = 0.39;
+        // AVANT : on écartait TOUJOURS les joueurs d'une ligne de ±0.39 (bord à
+        // bord), ce qui envoyait deux défenseurs CENTRAUX (DC) sur les poteaux
+        // de corner. MAINTENANT : l'amplitude d'écartement dépend de la nature
+        // des postes de la ligne. Si la ligne est composée de postes CENTRAUX
+        // (DC/MC/MDC — base y≈.50), on garde un écartement RESSERRÉ autour de
+        // l'axe ; si elle contient des postes larges (DD/DG), on écarte plus.
+        const wideCount = lineMates.filter(o=>{
+          const bp = posMap[o.pos]; return bp && (bp[1] <= 0.30 || bp[1] >= 0.70);
+        }).length;
+        // Base y "naturelle" de chaque poste, puis on resserre/évase autour de
+        // l'axe selon la présence de postes larges.
+        const anyWide = wideCount > 0;
+        const spreadHalf = anyWide ? 0.39 : 0.16; // resserré si tout est central
         const t = (k-(n-1)/2)/((n-1)/2||1);
-        const fy = clamp(0.5 + t*spreadHalf, 0.08, 0.92);
+        // Si le poste du joueur est lui-même large, on respecte son côté ; sinon
+        // on le laisse près de l'axe.
+        const myBaseY = posMap[myPos] ? posMap[myPos][1] : 0.5;
+        const isWideSelf = (myBaseY <= 0.30 || myBaseY >= 0.70);
+        let fy;
+        if(anyWide && !isWideSelf){
+          // Ligne mixte, joueur central : reste proche de l'axe.
+          fy = clamp(0.5 + t*0.14, 0.30, 0.70);
+        } else {
+          fy = clamp(0.5 + t*spreadHalf, 0.08, 0.92);
+        }
         f = [lineX, fy];
       } else {
         f = [base[0], base[1]];

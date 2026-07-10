@@ -35,6 +35,7 @@ const PRESET_TEAMS = [
     presetId:'rc_valcourt', name:'RC Valcourt', color:'#2e8b8b',
     nation:'Valoria', region:'Valcourt', tier:'pro',
     country:'Valoria', kind:'club', league:'Ligue Valorienne', strat:'321',
+    badge:{shape:'shield_mod',border:'gold',background:'half_l',colors:['#2e8b8b','#f5f5f5','#ffd700'],icon:'griffin',iconColor:'#ffd700',iconY:-8,text:'RCV',year:'1922',stars:2,bgOpacity:1},
     players:[
       _mk('Yuki','GB',[64,32,74,80,60,70]),
       _mk('Marko','DC',[70,44,80,82,64,72]),
@@ -54,6 +55,7 @@ const PRESET_TEAMS = [
     reserves:[
       _mk('Omar','MDC',[70,52,68,82,72,66]),
       _mk('Kofi','DG',[75,42,60,76,60,56]),
+      _mk('Sami','DC',[64,40,72,78,58,66]),
     ],
   },
   // AS Horizon : le club de ton histoire — jadis respecté, ruiné par la guerre,
@@ -62,6 +64,7 @@ const PRESET_TEAMS = [
     presetId:'as_horizon', name:'AS Horizon', color:'#c0392b',
     nation:'Valoria', region:'Valcourt', tier:'pro',
     country:'Valoria', kind:'club', league:'Ligue Valorienne', strat:'321',
+    badge:{shape:'shield_fr',border:'vintage',background:'solid',colors:['#c0392b','#f8e9d6','#e8c547'],icon:'phoenix',iconColor:'#e8c547',iconY:-6,text:'ASH',year:'1901',stars:1,bgOpacity:1},
     players:[
       _mk('Elias','GB',[58,28,66,76,54,64]),
       _mk('Tariq','DC',[62,40,70,78,56,66]),
@@ -81,6 +84,7 @@ const PRESET_TEAMS = [
     reserves:[
       _mk('Sami','MDC',[62,46,58,74,58,56]),
       _mk('Nadia','DD',[68,40,58,72,54,54]),
+      _mk('Tariq','ATT',[72,64,38,70,60,48]),
     ],
   },
 
@@ -90,6 +94,7 @@ const PRESET_TEAMS = [
     presetId:'fc_brumefer', name:'FC Brumefer', color:'#7a5c3a',
     nation:'Valoria', region:'Brumefer', tier:'pro',
     country:'Valoria', kind:'club', league:'Ligue Valorienne', strat:'321',
+    badge:{shape:'shield_en',border:'thick',background:'hstripes',colors:['#7a5c3a','#2e2e2e','#c9a227'],icon:'bear',iconColor:'#c9a227',iconY:-6,text:'FCB',year:'1898',stars:0,bgOpacity:1},
     players:[
       _mk('Viktor','GB',[60,30,76,84,52,76]),
       _mk('Dragan','DC',[64,42,84,88,54,80]),
@@ -109,6 +114,7 @@ const PRESET_TEAMS = [
     reserves:[
       _mk('Radek','DG',[70,42,70,82,52,68]),
       _mk('Kasimir','MDC',[66,52,74,88,62,74]),
+      _mk('Mira','DC',[62,40,78,86,50,76]),
     ],
   },
 
@@ -117,6 +123,7 @@ const PRESET_TEAMS = [
     presetId:'sel_valoria', name:'Sélection de Valoria', color:'#1f6f6f',
     nation:'Valoria', region:null, tier:'national_team',
     country:'Valoria', kind:'nation', league:'Sélections', strat:'321',
+    badge:{shape:'circle_dbl',border:'gold',background:'quarters',colors:['#1f6f6f','#ffffff','#ffd700'],icon:'star',iconColor:'#ffd700',iconY:-6,text:'VAL',year:'',stars:0,bgOpacity:1},
     players:[
       _mk('Yuki','GB',[66,34,78,84,62,76]),
       _mk('Dragan','DC',[72,46,86,88,60,80]),
@@ -136,6 +143,7 @@ const PRESET_TEAMS = [
     reserves:[
       _mk('Bruno','MDC',[74,60,72,86,76,70]),
       _mk('Diego','DD',[82,50,70,82,72,64]),
+      _mk('Nina','MC',[76,68,56,80,82,58]),
     ],
   },
 
@@ -163,7 +171,7 @@ function _presetToSavedTeam(preset){
   const bench    = (preset.bench||[]).map(pl=>toPlayer(pl, idc++, true));
   const reserves = (preset.reserves||[]).map(pl=>toPlayer(pl, idc++, true));
   return {
-    name: preset.name, color: preset.color, img: preset.img||'', strat: preset.strat||'321',
+    name: preset.name, color: preset.color, img: preset.img||'', badge: preset.badge||null, strat: preset.strat||'321',
     players, bench, reserves,
     isHuman: false,           // équipes PNJ par défaut (sélectionnables comme adversaire)
     _preset: true, _presetId: preset.presetId,
