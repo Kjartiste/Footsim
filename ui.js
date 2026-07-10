@@ -2686,6 +2686,9 @@ function loadPresetIntoTeam(presetId){
   try{ syncHUD(); }catch(e){}
   try{ if(typeof applyFormationRoles==='function') applyFormationRoles(ti); }catch(e){}
   try{ if(typeof updateCompoPitch==='function') updateCompoPitch(); }catch(e){}
+  // IMPORTANT : replacer les joueurs sur le terrain. Sans ça, les joueurs
+  // fraîchement chargés gardent x:0,y:0 et s'empilent en haut à gauche.
+  try{ if(typeof placeKickoff==='function') placeKickoff(G._kickoffTi!==undefined?G._kickoffTi:0); }catch(e){}
   logEvent(`📚 ${clone.name} chargée !`, clone.color);
   // On garde la modale ouverte et on bascule automatiquement sur l'AUTRE
   // créneau : flux naturel « je choisis Rouges puis Bleus » sans rouvrir.

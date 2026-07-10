@@ -44,6 +44,17 @@ const PRESET_TEAMS = [
       _mk('Sofia','MC',[78,72,56,82,86,60]),
       _mk('Lena','ATT',[87,85,42,80,82,56]),
     ],
+    bench:[
+      _mk('Nadia','GB',[60,28,70,78,56,66]),
+      _mk('Tariq','DC',[68,42,76,80,60,68]),
+      _mk('Elias','DD',[76,44,64,78,64,60]),
+      _mk('Nina','MC',[74,66,54,80,80,58]),
+      _mk('Vera','ATT',[82,78,40,76,74,52]),
+    ],
+    reserves:[
+      _mk('Omar','MDC',[70,52,68,82,72,66]),
+      _mk('Kofi','DG',[75,42,60,76,60,56]),
+    ],
   },
   // AS Horizon : le club de ton histoire — jadis respecté, ruiné par la guerre,
   // aujourd'hui modeste mais fier. Effectif volontairement plus faible.
@@ -59,6 +70,17 @@ const PRESET_TEAMS = [
       _mk('Omar','MDC',[66,48,64,80,64,64]),
       _mk('Ines','MC',[70,58,52,76,70,54]),
       _mk('Sami','ATT',[80,72,40,74,68,52]),
+    ],
+    bench:[
+      _mk('Rui','GB',[54,26,62,74,50,60]),
+      _mk('Amir','DC',[60,38,66,76,54,62]),
+      _mk('Ines','DG',[70,40,56,72,56,54]),
+      _mk('Kofi','MC',[66,54,50,74,62,52]),
+      _mk('Milan','ATT',[74,66,38,72,62,48]),
+    ],
+    reserves:[
+      _mk('Sami','MDC',[62,46,58,74,58,56]),
+      _mk('Nadia','DD',[68,40,58,72,54,54]),
     ],
   },
 
@@ -77,6 +99,17 @@ const PRESET_TEAMS = [
       _mk('Bruno','MC',[72,66,64,86,72,68]),
       _mk('Mira','ATT',[82,80,48,82,72,64]),
     ],
+    bench:[
+      _mk('Petra','GB',[56,28,72,84,50,76]),
+      _mk('Anton','DC',[62,40,80,86,52,78]),
+      _mk('Yara','DD',[72,42,72,82,54,70]),
+      _mk('Selim','MC',[68,58,62,84,66,66]),
+      _mk('Bruno','ATT',[78,74,52,82,66,66]),
+    ],
+    reserves:[
+      _mk('Radek','DG',[70,42,70,82,52,68]),
+      _mk('Kasimir','MDC',[66,52,74,88,62,74]),
+    ],
   },
 
   // ── SÉLECTION NATIONALE · Valoria ──────────────────────────────────────
@@ -93,6 +126,17 @@ const PRESET_TEAMS = [
       _mk('Sofia','MC',[80,74,60,84,88,62]),
       _mk('Lena','ATT',[90,88,44,82,84,60]),
     ],
+    bench:[
+      _mk('Petra','GB',[64,32,76,84,58,74]),
+      _mk('Marko','DC',[72,44,82,86,62,74]),
+      _mk('Rui','DG',[80,48,70,82,68,64]),
+      _mk('Sofia','MC',[78,72,58,82,86,60]),
+      _mk('Mira','ATT',[84,82,46,80,74,62]),
+    ],
+    reserves:[
+      _mk('Bruno','MDC',[74,60,72,86,76,70]),
+      _mk('Diego','DD',[82,50,70,82,72,64]),
+    ],
   },
 
 ];
@@ -102,24 +146,25 @@ const PRESET_TEAMS = [
 // champs runtime complétés. On réutilise serializePlayer si dispo (source de
 // vérité du format), sinon on complète à la main.
 function _presetToSavedTeam(preset){
-  const toPlayer = (pl, idx) => {
+  const toPlayer = (pl, idx, onBench) => {
     const base = {
       id: preset.presetId+'_'+idx,
       name: pl.name, pos: pl.pos,
       ini: (pl.name||'').slice(0,2).toUpperCase(),
-      img:'', s:{...pl.s}, spells:[...(pl.spells||[])], onBench:false,
+      img:'', s:{...pl.s}, spells:[...(pl.spells||[])], onBench:!!onBench,
     };
     if(typeof serializePlayer==='function'){
-      // Passe par le sérialiseur officiel pour hériter de tous les champs
-      // runtime (hp, mp, timers…) et rester aligné si le format évolue.
-      return serializePlayer(base);
+      const sp=serializePlayer(base); sp.onBench=!!onBench; return sp;
     }
     return Object.assign(base,{x:0,y:0,vx:0,vy:0,tx:0,ty:0,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,injLevel:0,injT:0});
   };
+  let idc=0;
+  const players  = (preset.players||[]).map(pl=>toPlayer(pl, idc++, false));
+  const bench    = (preset.bench||[]).map(pl=>toPlayer(pl, idc++, true));
+  const reserves = (preset.reserves||[]).map(pl=>toPlayer(pl, idc++, true));
   return {
     name: preset.name, color: preset.color, img: preset.img||'', strat: preset.strat||'321',
-    players: preset.players.map(toPlayer),
-    bench: [], reserves: [],
+    players, bench, reserves,
     isHuman: false,           // équipes PNJ par défaut (sélectionnables comme adversaire)
     _preset: true, _presetId: preset.presetId,
     // Métadonnées de filtrage pour l'onglet sélecteur
