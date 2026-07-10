@@ -1325,26 +1325,156 @@ function renderPlayerRoles(ti, targetEl){
   if(!el) return;
   const T=teams[ti];
   if(!T||!T.players.length){el.innerHTML='<div style="font-size:9px;color:var(--muted)">Pas de joueurs configurés.</div>';return;}
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
   if(!G.playerRoles[ti]) G.playerRoles[ti]=T.players.map(()=>'normal');
   while(G.playerRoles[ti].length<T.players.length) G.playerRoles[ti].push('normal');
   const col=T.color||'#18c860';
-  el.innerHTML='<div style="font-size:9px;font-weight:600;color:'+col+';text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">'+T.name+'</div>'+
-    T.players.map((p,i)=>{
-      const r=G.playerRoles[ti][i]||'normal';
-      const btn=(v,label)=>`<button onclick="setPlayerRole(${ti},${i},'${v}')"
-        style="font-size:7px;padding:2px 5px;border-radius:3px;cursor:pointer;border:1px solid ${r===v?col:'var(--b1)'};background:${r===v?col+'33':'transparent'};color:${r===v?col:'var(--muted)'}">${label}</button>`;
-      return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-        <span style="font-size:8px;color:var(--text);width:60px;overflow:hidden;white-space:nowrap">${p.name||'?'}</span>
+  const scheme=(G.tacSliders?.[ti]?.defScheme)||'zone';
+  const markMode=(G.tacSliders?.[ti]?.markMode)||'auto';
+
+  // ── Bandeau d'équipe : schéma défensif (zone/homme) + mode de marquage ──
+  const schemeBtn=(v,label)=>`<button onclick="setDefScheme(${ti},'${v}')"
+    style="flex:1;font-size:8px;padding:3px 2px;border-radius:4px;cursor:pointer;border:1px solid ${scheme===v?col:'#333'};background:${scheme===v?col+'33':'transparent'};color:${scheme===v?col:'#666'};font-weight:${scheme===v?'700':'400'}">${label}</button>`;
+  const markBtn=(v,label)=>`<button onclick="setMarkMode(${ti},'${v}')"
+    style="flex:1;font-size:8px;padding:3px 2px;border-radius:4px;cursor:pointer;border:1px solid ${markMode===v?col:'#333'};background:${markMode===v?col+'33':'transparent'};color:${markMode===v?col:'#666'};font-weight:${markMode===v?'700':'400'}">${label}</button>`;
+
+  let html='<div style="font-size:9px;font-weight:600;color:'+col+';text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">'+T.name+'</div>';
+  html+=`<div style="margin-bottom:6px">
+      <div style="font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Schéma défensif</div>
+      <div style="display:flex;gap:3px;margin-bottom:4px">${schemeBtn('zone','Zone')}${schemeBtn('homme','Individuel')}</div>
+      <div style="font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Marquage</div>
+      <div style="display:flex;gap:3px">${markBtn('auto','Auto')}${markBtn('manual','Manuel')}</div>
+    </div>`;
+
+  // Options du sélecteur de cible de marquage (adversaires), pour le mode manuel.
+  const oppTeam=teams[1-ti];
+  const oppOptions=(sel)=>{
+    let o='<option value="">— aucun —</option>';
+    if(oppTeam) oppTeam.players.forEach(op=>{
+      o+=`<option value="${op.id}" ${sel===op.id?'selected':''}>${(op.name||'?')} (${op.pos||''})</option>`;
+    });
+    return o;
+  };
+
+  html+=T.players.map((p,i)=>{
+    const r=G.playerRoles[ti][i]||'normal';
+    const roleName=(typeof playerRoleOf==='function')?playerRoleOf(ti,i):'zone';
+    const aggrBtn=(v,label)=>`<button onclick="setPlayerRole(${ti},${i},'${v}')"
+      style="font-size:7px;padding:2px 5px;border-radius:3px;cursor:pointer;border:1px solid ${r===v?col:'var(--b1)'};background:${r===v?col+'33':'transparent'};color:${r===v?col:'var(--muted)'}">${label}</button>`;
+    // Sélecteur de rôle nommé
+    const roleOpts=(typeof rolesForPos==='function'?rolesForPos(p.pos):Object.keys(PLAYER_ROLES))
+      .map(id=>`<option value="${id}" ${roleName===id?'selected':''}>${PLAYER_ROLES[id].name}</option>`).join('');
+    const roleSelect=`<select onchange="setPlayerRoleName(${ti},${i},this.value)"
+      style="font-size:7px;padding:1px 2px;border-radius:3px;background:var(--b0,#1a1a1a);color:${col};border:1px solid var(--b1,#333);max-width:120px">${roleOpts}</select>`;
+    // Sélecteur de cible de marquage : visible seulement en marquage manuel
+    // ET si le joueur joue individuel (rôle marqueur ou schéma homme).
+    const showMark = markMode==='manual' && (roleName==='marqueur' || scheme==='homme') && p.pos!=='GB';
+    const markSel = showMark
+      ? `<select onchange="setPlayerMarkTarget(${ti},${i},this.value)" style="font-size:7px;padding:1px 2px;border-radius:3px;background:var(--b0,#1a1a1a);color:#ffb74d;border:1px solid var(--b1,#333);max-width:110px">${oppOptions(G.playerMarkTarget?.[ti]?.[i]||'')}</select>`
+      : '';
+    return `<div style="display:flex;flex-direction:column;gap:2px;margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid var(--b1,#2a2a2a)">
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="font-size:8px;color:var(--text);width:58px;overflow:hidden;white-space:nowrap">${p.name||'?'}</span>
         <span style="font-size:7px;color:var(--muted);width:22px">${p.pos||''}</span>
-        ${btn('def','Défense')}${btn('normal','Normal')}${btn('atk','Attaque')}
-      </div>`;
-    }).join('');
+        ${roleSelect}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;padding-left:80px">
+        ${aggrBtn('def','Déf')}${aggrBtn('normal','Normal')}${aggrBtn('atk','Att')}
+        ${markSel}
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML=html;
 }
 
 function setPlayerRole(ti,pi,role){
   if(!G.playerRoles[ti]) G.playerRoles[ti]=[];
   G.playerRoles[ti][pi]=role;
   renderPlayerRoles(ti);
+  persistTeamRoles(ti);
+}
+// ── Setters Niveau 3 ────────────────────────────────────────────────────
+function setPlayerRoleName(ti,pi,roleId){
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
+  if(!PLAYER_ROLES[roleId]) return;
+  G.playerRoleName[ti][pi]=roleId;
+  // Si le joueur n'est plus en marquage, on nettoie sa cible manuelle.
+  if(roleId!=='marqueur' && (G.tacSliders?.[ti]?.defScheme)!=='homme'){
+    if(G.playerMarkTarget?.[ti]) G.playerMarkTarget[ti][pi]=null;
+  }
+  renderPlayerRoles(ti);
+  persistTeamRoles(ti);
+}
+function setPlayerMarkTarget(ti,pi,oppId){
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
+  G.playerMarkTarget[ti][pi]= oppId || null;
+  renderPlayerRoles(ti);
+  persistTeamRoles(ti);
+}
+function setDefScheme(ti,scheme){
+  if(!G.tacSliders[ti]) G.tacSliders[ti]={};
+  G.tacSliders[ti].defScheme = (scheme==='homme')?'homme':'zone';
+  renderPlayerRoles(ti);
+  persistTeamRoles(ti);
+}
+function setMarkMode(ti,mode){
+  if(!G.tacSliders[ti]) G.tacSliders[ti]={};
+  G.tacSliders[ti].markMode = (mode==='manual')?'manual':'auto';
+  renderPlayerRoles(ti);
+  persistTeamRoles(ti);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// PERSISTANCE DES RÔLES / SCHÉMA DÉFENSIF (Niveau 3, socle)
+// Les tactiques n'étaient historiquement PAS sauvegardées (session seulement).
+// Pour ne pas toucher à la sérialisation de carrière (risque de régression),
+// on persiste ici la config par ÉQUIPE dans un store localStorage dédié, clé
+// par nom d'équipe. C'est autonome, rétro-compatible, et sans effet sur les
+// anciennes sauvegardes. Restauré par restoreTeamRoles() au chargement.
+// ══════════════════════════════════════════════════════════════════════
+const _ROLE_STORE_KEY='footsim_teamRoles_v1';
+function _loadRoleStore(){
+  try{ const d=localStorage.getItem(_ROLE_STORE_KEY); return d?JSON.parse(d):{}; }
+  catch(e){ return {}; }
+}
+function _saveRoleStore(store){
+  try{ localStorage.setItem(_ROLE_STORE_KEY, JSON.stringify(store)); }catch(e){}
+}
+function persistTeamRoles(ti){
+  const T=teams[ti]; if(!T||!T.name) return;
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
+  const store=_loadRoleStore();
+  const sl=G.tacSliders?.[ti]||{};
+  // Sauver le rôle et la cible de marquage PAR NOM DE JOUEUR (robuste à un
+  // changement d'ordre du roster) plus le schéma d'équipe.
+  const perPlayer={};
+  T.players.forEach((p,i)=>{
+    if(!p||!p.name) return;
+    perPlayer[p.name]={
+      role: G.playerRoleName?.[ti]?.[i] || null,
+      mark: G.playerMarkTarget?.[ti]?.[i] || null,
+      aggr: G.playerRoles?.[ti]?.[i] || 'normal',
+    };
+  });
+  store[T.name]={ defScheme:sl.defScheme||'zone', markMode:sl.markMode||'auto', players:perPlayer };
+  _saveRoleStore(store);
+}
+function restoreTeamRoles(ti){
+  const T=teams[ti]; if(!T||!T.name) return;
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
+  const store=_loadRoleStore();
+  const rec=store[T.name];
+  if(!rec) return; // rien de sauvé pour cette équipe → défauts par poste (déjà posés)
+  if(!G.tacSliders[ti]) G.tacSliders[ti]={};
+  if(rec.defScheme) G.tacSliders[ti].defScheme=rec.defScheme;
+  if(rec.markMode)  G.tacSliders[ti].markMode=rec.markMode;
+  T.players.forEach((p,i)=>{
+    const pr=rec.players?.[p?.name];
+    if(!pr) return;
+    if(pr.role && PLAYER_ROLES[pr.role]) G.playerRoleName[ti][i]=pr.role;
+    if(pr.mark!==undefined) G.playerMarkTarget[ti][i]=pr.mark||null;
+    if(pr.aggr) G.playerRoles[ti][i]=pr.aggr;
+  });
 }
 
 function setTacStyle(ti, style, containerEl){

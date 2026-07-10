@@ -439,10 +439,12 @@ let G={
   _kickoffTi:0,_firstHalfKickoffTi:0,matchEvents:[],_lastPasser:[null,null],
   tacMode:[null,null],
   tacSliders:[
-    {press:0.5,line:0,width:0,aggr:0,pressLine:0.5,style:'normal'},
-    {press:0.5,line:0,width:0,aggr:0,pressLine:0.5,style:'normal'}
+    {press:0.5,line:0,width:0,aggr:0,pressLine:0.5,style:'normal',defScheme:'zone',markMode:'auto'},
+    {press:0.5,line:0,width:0,aggr:0,pressLine:0.5,style:'normal',defScheme:'zone',markMode:'auto'}
   ],
-  playerRoles:[[],[]], // per-player: 'def'|'normal'|'atk'
+  playerRoles:[[],[]], // AXE AGRESSIVITÉ (conservé) : 'def'|'normal'|'atk'
+  playerRoleName:[[],[]], // AXE RÔLE (Niveau 3) : id de rôle nommé par joueur (voir PLAYER_ROLES)
+  playerMarkTarget:[[],[]], // marquage MANUEL : id de l'adversaire assigné à chaque joueur (ou null)
   gegenT:[0,0],       // gegenpressing timer per team
   gkCoolT:0,          // cooldown après dégagement — empêche le pressing immédiat (seconds after losing ball)
   _pressNearest:[null,null], // cached nearest player per team for pressing
@@ -453,6 +455,99 @@ const PHASE_LABELS={
   TRANSITION:'CONTRE-ATTAQUE',CORNER:'CORNER',FREEKICK:'COUP FRANC',
   GOALKICK:'DÉGAGEMENT',HALFTIME:'MI-TEMPS',END:'FIN DU MATCH',
 };
+
+// ═══════════════════════════════════════════════════════════
+// RÔLES INDIVIDUELS (Niveau 3) — SOCLE
+// Chaque joueur peut porter un rôle nommé qui définira son comportement avec
+// et sans ballon, PAR-DESSUS la formation d'équipe. À ce stade (socle), les
+// rôles sont posés/affichés/sauvegardés mais NON encore lus par le moteur
+// (sauf l'axe agressivité def/normal/atk, indépendant, qui continue d'agir).
+// `cat` : catégorie d'affichage. `pos` : postes pour lesquels le rôle est
+// proposé en priorité dans l'UI. `desc` : infobulle courte.
+// ═══════════════════════════════════════════════════════════
+const PLAYER_ROLES = {
+  // Défensifs
+  zone:      {id:'zone',      name:'Défenseur de zone', cat:'def', desc:'Tient sa zone, presse le ballon quand il entre dans son secteur.',
+              pos:['DC','DCD','DCG','DD','DG','LB','RB']},
+  marqueur:  {id:'marqueur',  name:'Marqueur individuel', cat:'def', desc:'Colle un attaquant adverse et le suit partout sur le terrain.',
+              pos:['DC','DCD','DCG','DD','DG','LB','RB','MDC','MDC2']},
+  libero:    {id:'libero',    name:'Libéro', cat:'def', desc:'Couvre derrière la ligne défensive et relance proprement.',
+              pos:['DC','DCD','DCG']},
+  lat_off:   {id:'lat_off',   name:'Latéral offensif', cat:'def', desc:'Défend bas, se projette en ailier balle au pied.',
+              pos:['DD','DG','LB','RB']},
+  // Milieux
+  sentinelle:{id:'sentinelle',name:'Sentinelle', cat:'mid', desc:'Reste bas devant la défense, casse les offensives adverses.',
+              pos:['MDC','MDC2','MC']},
+  box2box:   {id:'box2box',   name:'Box-to-box', cat:'mid', desc:'Monte et descend sans arrêt, présent des deux côtés.',
+              pos:['MC','MCD','MCG','MDC']},
+  meneur:    {id:'meneur',    name:'Meneur', cat:'mid', desc:'Se démarque pour créer, reste haut entre les lignes.',
+              pos:['MO','MOG','MOD','MC']},
+  // Offensifs
+  renard:    {id:'renard',    name:'Renard des surfaces', cat:'att', desc:'Reste dans la surface, à l’affût du moindre ballon.',
+              pos:['ATT','ATT2']},
+  faux9:     {id:'faux9',     name:'Faux 9', cat:'att', desc:'Décroche au milieu pour créer le surnombre et attirer.',
+              pos:['ATT','ATT2','MO']},
+  ailier:    {id:'ailier',    name:'Ailier', cat:'att', desc:'Reste large, déborde et centre depuis le couloir.',
+              pos:['AG','AD','MOG','MOD','ATT','ATT2']},
+};
+const PLAYER_ROLE_LIST = Object.keys(PLAYER_ROLES);
+
+// Rôle par défaut selon le poste : garantit que rien n'est vide et que le
+// défaut est cohérent (un DC → zone, un MDC → sentinelle, un ATT → renard…).
+function defaultRole(pos){
+  switch(pos){
+    case 'GB': return 'zone'; // le gardien n'a pas de rôle de champ ; valeur neutre
+    case 'DC': case 'DCD': case 'DCG': return 'zone';
+    case 'DD': case 'DG': case 'LB': case 'RB': return 'zone';
+    case 'MDC': case 'MDC2': return 'sentinelle';
+    case 'MC': case 'MCD': case 'MCG': return 'box2box';
+    case 'MO': return 'meneur';
+    case 'MOG': case 'MOD': return 'ailier';
+    case 'AG': case 'AD': return 'ailier';
+    case 'ATT': case 'ATT2': return 'renard';
+    default: return 'zone';
+  }
+}
+// Liste des rôles proposés pour un poste (les plus pertinents d'abord, puis
+// le reste, pour laisser une liberté totale tout en guidant le choix).
+function rolesForPos(pos){
+  const primary = PLAYER_ROLE_LIST.filter(id=>PLAYER_ROLES[id].pos.includes(pos));
+  const rest = PLAYER_ROLE_LIST.filter(id=>!primary.includes(id));
+  return primary.concat(rest);
+}
+// Accès sûr au rôle nommé d'un joueur (avec repli sur le défaut de poste).
+function playerRoleOf(ti,pi){
+  const p = teams[ti]?.players?.[pi];
+  const stored = G.playerRoleName?.[ti]?.[pi];
+  if(stored && PLAYER_ROLES[stored]) return stored;
+  return defaultRole(p?.pos||'DC');
+}
+// Initialise / migre les tableaux de rôles pour l'équipe ti afin qu'ils
+// couvrent tous ses joueurs. Appelée avant toute lecture/écriture (UI, save,
+// moteur) : une partie chargée sans ces champs (ancienne sauvegarde) se voit
+// donc dotée de défauts cohérents par poste, sans jamais planter.
+function ensureRoleArrays(ti){
+  const T=teams[ti]; if(!T) return;
+  if(!G.playerRoleName) G.playerRoleName=[[],[]];
+  if(!G.playerRoleName[ti]) G.playerRoleName[ti]=[];
+  if(!G.playerMarkTarget) G.playerMarkTarget=[[],[]];
+  if(!G.playerMarkTarget[ti]) G.playerMarkTarget[ti]=[];
+  if(!G.playerRoles) G.playerRoles=[[],[]];
+  if(!G.playerRoles[ti]) G.playerRoles[ti]=[];
+  T.players.forEach((p,i)=>{
+    if(!G.playerRoleName[ti][i] || !PLAYER_ROLES[G.playerRoleName[ti][i]])
+      G.playerRoleName[ti][i]=defaultRole(p.pos);
+    if(G.playerMarkTarget[ti][i]===undefined) G.playerMarkTarget[ti][i]=null;
+    if(!G.playerRoles[ti][i]) G.playerRoles[ti][i]='normal';
+  });
+  // Garantir les champs d'équipe (defScheme / markMode) sur d'anciennes parties.
+  if(!G.tacSliders) G.tacSliders=[{},{}];
+  if(!G.tacSliders[ti]) G.tacSliders[ti]={};
+  if(!G.tacSliders[ti].defScheme) G.tacSliders[ti].defScheme='zone';
+  if(!G.tacSliders[ti].markMode)  G.tacSliders[ti].markMode='auto';
+}
+
+
 
 let speedMult=3;
 let cvs,ctx,raf,lastTs=0;
@@ -714,6 +809,14 @@ function applyFormationRoles(ti){
       }
     });
   }
+
+  // ── RÔLES INDIVIDUELS (Niveau 3) ────────────────────────────────────────
+  // Les postes viennent d'être (ré)assignés → on (ré)initialise les tableaux
+  // de rôles avec des défauts cohérents par poste, puis on restaure la config
+  // sauvegardée pour cette équipe (si elle existe). Gameplay inchangé à ce
+  // stade : ces valeurs ne sont pas encore lues par le moteur.
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
+  if(typeof restoreTeamRoles==='function') restoreTeamRoles(ti);
 }
 
 function formBase(ti,pi){
