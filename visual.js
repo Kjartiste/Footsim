@@ -430,6 +430,9 @@ const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
 // la taille du canvas change (resize).
 
 function _buildPitchCache(){
+  // Ne rien construire tant que le canvas n'a pas de dimensions valides :
+  // un canvas 0×0 ferait planter le drawImage ultérieur.
+  if(!cvs || cvs.width<2 || cvs.height<2){ _pitchCache=null; return; }
   const oc=document.createElement('canvas');
   oc.width=cvs.width; oc.height=cvs.height;
   const c=oc.getContext('2d');
@@ -514,11 +517,18 @@ function _buildPitchCache(){
 }
 
 function drawPitch(){
+  // Si le canvas n'a pas encore de taille (page Équipes affichée, canvas masqué,
+  // avant un resize…), on ne dessine rien : construire/blitter un canvas 0×0
+  // lève une InvalidStateError. On retentera à la frame suivante.
+  if(!cvs || cvs.width<2 || cvs.height<2) return;
   // (Re)construit le cache si absent ou si la taille a changé, sinon simple blit.
   if(!_pitchCache || _pitchW!==cvs.width || _pitchH!==cvs.height){
     _buildPitchCache();
   }
-  ctx.drawImage(_pitchCache,0,0);
+  // Sécurité : ne blitter que si le cache est valide et non nul.
+  if(_pitchCache && _pitchCache.width>0 && _pitchCache.height>0){
+    ctx.drawImage(_pitchCache,0,0);
+  }
 }
 
 function drawShadow(x,y,r){
@@ -1368,6 +1378,7 @@ function _gifCaptureFrame(ts){
   _gifRec.lastCap=ts;
   _gifEnsureOffscreen();
   const W=_gifRec.offCv.width,H=_gifRec.offCv.height,cx=_gifRec.offCx;
+  if(!cvs||cvs.width<2||cvs.height<2||W<2||H<2)return; // source/cible non prêtes
   cx.drawImage(cvs,0,0,W,H);
   _gifDrawOverlay(cx,W,H);
   _gifRec.frames.push(cx.getImageData(0,0,W,H));

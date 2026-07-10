@@ -2420,9 +2420,11 @@ function _resolveSavedIdx(t){
 // que de presetCatalog()/PRESET_TEAMS (presets.js) et du format savedTeams.
 // ═══════════════════════════════════════════════════════════
 let _presetPick = { ti:0, kind:'all', country:'all', league:'all' };
+let _presetToast = null; // bandeau de confirmation éphémère après un chargement
 
 function openPresetPicker(ti){
   _presetPick = { ti, kind:'all', country:'all', league:'all' };
+  _presetToast = null;
   let modal=document.getElementById('preset-modal');
   if(!modal){
     modal=document.createElement('div');
@@ -2482,11 +2484,26 @@ function renderPresetPicker(){
         <div style="display:flex;gap:6px;flex-wrap:wrap">${leagueRow}</div>
       </div>
       <div style="padding:12px 16px;overflow-y:auto;flex:1">
-        <div style="font-size:10px;color:var(--muted,#888);margin-bottom:8px">Chargée dans : <b style="color:${teams[_presetPick.ti]?.color||'#fff'}">${teams[_presetPick.ti]?.name||('Équipe '+(_presetPick.ti+1))}</b></div>
+        ${(()=>{
+          if(_presetToast && Date.now()-_presetToast.t < 4000){
+            const slot = _presetToast.into===0 ? (teams[0]?.name||'Rouges') : (teams[1]?.name||'Bleus');
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:8px;background:${_presetToast.col}22;border:1px solid ${_presetToast.col}66;margin-bottom:10px;font-size:11px;color:var(--text,#eee)">
+              <span style="font-size:14px">✅</span><span><b style="color:${_presetToast.col}">${_presetToast.name}</b> chargée dans <b>${slot}</b>. Choisis l'adversaire ci-dessous.</span></div>`;
+          }
+          return '';
+        })()}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:10px;color:var(--muted,#888);flex-shrink:0">Charger dans :</span>
+          <button onclick="setPresetTarget(0)" style="flex:1;padding:5px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:800;border:1.5px solid ${_presetPick.ti===0?(teams[0]?.color||'#e53935'):'var(--b1,#333)'};background:${_presetPick.ti===0?(teams[0]?.color||'#e53935')+'22':'transparent'};color:${_presetPick.ti===0?(teams[0]?.color||'#ff8a80'):'var(--muted,#888)'}">${teams[0]?.name||'Rouges'}</button>
+          <button onclick="setPresetTarget(1)" style="flex:1;padding:5px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:800;border:1.5px solid ${_presetPick.ti===1?(teams[1]?.color||'#2f7fe0'):'var(--b1,#333)'};background:${_presetPick.ti===1?(teams[1]?.color||'#2f7fe0')+'22':'transparent'};color:${_presetPick.ti===1?(teams[1]?.color||'#82b1ff'):'var(--muted,#888)'}">${teams[1]?.name||'Bleus'}</button>
+        </div>
         ${cards}
       </div>
     </div>`;
 }
+
+// Change le créneau cible (Rouges/Bleus) sans fermer la modale.
+function setPresetTarget(ti){ _presetPick.ti=ti; renderPresetPicker(); }
 
 // Charge l'effectif fixe d'un preset dans le créneau d'équipe courant.
 function loadPresetIntoTeam(presetId){
@@ -2516,11 +2533,16 @@ function loadPresetIntoTeam(presetId){
   try{ if(typeof applyFormationRoles==='function') applyFormationRoles(ti); }catch(e){}
   try{ if(typeof updateCompoPitch==='function') updateCompoPitch(); }catch(e){}
   logEvent(`📚 ${clone.name} chargée !`, clone.color);
-  closePresetPicker();
+  // On garde la modale ouverte et on bascule automatiquement sur l'AUTRE
+  // créneau : flux naturel « je choisis Rouges puis Bleus » sans rouvrir.
+  const other = ti===0 ? 1 : 0;
+  _presetPick.ti = other;
+  _presetToast = { name:clone.name, col:clone.color, into:ti, t:Date.now() };
+  renderPresetPicker();
 }
 
 if(typeof window!=='undefined'){
-  Object.assign(window,{openPresetPicker,closePresetPicker,setPresetFilter,renderPresetPicker,loadPresetIntoTeam});
+  Object.assign(window,{openPresetPicker,closePresetPicker,setPresetFilter,renderPresetPicker,loadPresetIntoTeam,setPresetTarget});
 }
 
 function saveTeamToRoster(ti){
