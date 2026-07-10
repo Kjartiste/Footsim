@@ -13,6 +13,7 @@ const WORLDS = {
   // ── Registre des nations ────────────────────────────────────────────
   nations: [
     PANTHALASSA,
+    VALORIA,
     // AUTRE_NATION,  ← ajouter ici quand tu crées une nouvelle nation
   ],
 

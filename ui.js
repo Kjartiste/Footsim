@@ -1722,6 +1722,7 @@ function renderTB(ti){
       <div style="flex:1">
         <div style="font-size:9px;color:var(--muted);margin-bottom:4px">Logo / drapeau de l'équipe<br><span style="color:#333">Affiché dans le pré-match et les calendriers</span></div>
         ${T.img?`<button class="btn" style="padding:2px 8px;font-size:9px" onclick="teams[${ti}].img='';teams[${ti}]._img=null;renderTB(${ti});syncHUD()">✕ Supprimer</button>`:''}
+        <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:3px" onclick="openPresetPicker(${ti})" title="Choisir une équipe préenregistrée (clubs, sélections)">📚 Équipes préenregistrées</button>
       </div>
     </div>
     <div class="plist">
@@ -2412,6 +2413,116 @@ function _resolveSavedIdx(t){
   if(t.savedIdx!=null&&savedTeams[t.savedIdx])return t.savedIdx;
   return -1;
 }
+// ═══════════════════════════════════════════════════════════
+// SÉLECTEUR D'ÉQUIPES PRÉENREGISTRÉES (façon FIFA/PES)
+// Modale filtrable par type (club / sélection), pays et ligue. Charge
+// l'effectif fixe choisi dans le créneau d'équipe ti. Autonome : ne dépend
+// que de presetCatalog()/PRESET_TEAMS (presets.js) et du format savedTeams.
+// ═══════════════════════════════════════════════════════════
+let _presetPick = { ti:0, kind:'all', country:'all', league:'all' };
+
+function openPresetPicker(ti){
+  _presetPick = { ti, kind:'all', country:'all', league:'all' };
+  let modal=document.getElementById('preset-modal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='preset-modal';
+    modal.style.cssText='position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px';
+    modal.addEventListener('click',e=>{ if(e.target===modal) closePresetPicker(); });
+    document.body.appendChild(modal);
+  }
+  modal.style.display='flex';
+  renderPresetPicker();
+}
+function closePresetPicker(){ const m=document.getElementById('preset-modal'); if(m) m.style.display='none'; }
+function setPresetFilter(key,val){ _presetPick[key]=val; renderPresetPicker(); }
+
+function renderPresetPicker(){
+  const modal=document.getElementById('preset-modal'); if(!modal) return;
+  const cat = (typeof presetCatalog==='function') ? presetCatalog() : [];
+  // Valeurs de filtres disponibles
+  const countries=[...new Set(cat.map(t=>t.country))].sort();
+  const leagues=[...new Set(cat.filter(t=>_presetPick.country==='all'||t.country===_presetPick.country).map(t=>t.league))].sort();
+  // Application des filtres
+  const filtered=cat.filter(t=>
+    (_presetPick.kind==='all'||t.kind===_presetPick.kind) &&
+    (_presetPick.country==='all'||t.country===_presetPick.country) &&
+    (_presetPick.league==='all'||t.league===_presetPick.league)
+  );
+  const chip=(active,label,onclick)=>`<button onclick="${onclick}" style="padding:5px 11px;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700;border:1.5px solid ${active?'var(--gold,#f0c028)':'var(--b1,#333)'};background:${active?'rgba(240,192,40,.16)':'transparent'};color:${active?'var(--gold,#f0c028)':'var(--muted,#888)'}">${label}</button>`;
+  const kindRow=[
+    chip(_presetPick.kind==='all','Tous',`setPresetFilter('kind','all')`),
+    chip(_presetPick.kind==='club','⚽ Clubs',`setPresetFilter('kind','club')`),
+    chip(_presetPick.kind==='nation','🏳️ Sélections',`setPresetFilter('kind','nation')`),
+  ].join('');
+  const countryRow=[chip(_presetPick.country==='all','Tous pays',`setPresetFilter('country','all')`)]
+    .concat(countries.map(c=>chip(_presetPick.country===c,c,`setPresetFilter('country','${c}')`))).join('');
+  const leagueRow=[chip(_presetPick.league==='all','Toutes ligues',`setPresetFilter('league','all')`)]
+    .concat(leagues.map(l=>chip(_presetPick.league===l,l,`setPresetFilter('league','${l.replace(/'/g,"\\'")}')`))).join('');
+
+  const cards=filtered.map(t=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--b1,#2a2a2a);border-radius:10px;background:var(--dark,#141414);margin-bottom:7px">
+      <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:12px">${(t.name||'?').slice(0,2).toUpperCase()}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:13px;color:var(--text,#eee)">${t.name}</div>
+        <div style="font-size:10px;color:var(--muted,#888)">${t.kind==='nation'?'🏳️ Sélection':'⚽ Club'} · ${t.country} · ${t.league}</div>
+      </div>
+      <button onclick="loadPresetIntoTeam('${t.presetId}')" style="padding:6px 13px;border-radius:8px;cursor:pointer;font-weight:800;font-size:11px;border:none;background:${t.color};color:#fff;flex-shrink:0">Choisir</button>
+    </div>`).join('') || '<div style="color:var(--muted,#888);font-size:12px;text-align:center;padding:24px">Aucune équipe pour ces filtres.</div>';
+
+  modal.innerHTML=`
+    <div style="background:var(--panel,#0f0f0f);border:1px solid var(--b1,#2a2a2a);border-radius:16px;width:min(560px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--b1,#2a2a2a)">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:1px;color:#fff;text-transform:uppercase">📚 Équipes préenregistrées</div>
+        <button onclick="closePresetPicker()" style="background:none;border:none;color:var(--muted,#888);font-size:22px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="padding:12px 16px;border-bottom:1px solid var(--b1,#2a2a2a);display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${kindRow}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${countryRow}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${leagueRow}</div>
+      </div>
+      <div style="padding:12px 16px;overflow-y:auto;flex:1">
+        <div style="font-size:10px;color:var(--muted,#888);margin-bottom:8px">Chargée dans : <b style="color:${teams[_presetPick.ti]?.color||'#fff'}">${teams[_presetPick.ti]?.name||('Équipe '+(_presetPick.ti+1))}</b></div>
+        ${cards}
+      </div>
+    </div>`;
+}
+
+// Charge l'effectif fixe d'un preset dans le créneau d'équipe courant.
+function loadPresetIntoTeam(presetId){
+  const preset=(window.PRESET_TEAMS||[]).find(p=>p.presetId===presetId);
+  if(!preset){ logEvent('❌ Équipe préenregistrée introuvable','#e02030'); return; }
+  const ti=_presetPick.ti;
+  // On passe par le même convertisseur que l'injection au registre pour garantir
+  // un effectif au format runtime complet, puis on le dépose dans teams[ti].
+  const saved = (typeof _presetToSavedTeam==='function')
+    ? _presetToSavedTeam(preset)
+    : null;
+  const src = saved || (window.savedTeams||[]).find(t=>t&&t._presetId===presetId);
+  if(!src){ logEvent('❌ Impossible de charger cette équipe','#e02030'); return; }
+  // Deep clone pour ne pas partager de références avec le registre.
+  const clone=JSON.parse(JSON.stringify(src));
+  teams[ti].name = clone.name;
+  teams[ti].color = clone.color;
+  teams[ti].img = clone.img||'';
+  teams[ti]._img = null;
+  teams[ti].strat = clone.strat||'321';
+  teams[ti].players = clone.players||[];
+  teams[ti].bench = clone.bench||[];
+  teams[ti].reserves = clone.reserves||[];
+  // Rafraîchir l'UI comme après tout changement d'effectif.
+  try{ renderTB(ti); }catch(e){}
+  try{ syncHUD(); }catch(e){}
+  try{ if(typeof applyFormationRoles==='function') applyFormationRoles(ti); }catch(e){}
+  try{ if(typeof updateCompoPitch==='function') updateCompoPitch(); }catch(e){}
+  logEvent(`📚 ${clone.name} chargée !`, clone.color);
+  closePresetPicker();
+}
+
+if(typeof window!=='undefined'){
+  Object.assign(window,{openPresetPicker,closePresetPicker,setPresetFilter,renderPresetPicker,loadPresetIntoTeam});
+}
+
 function saveTeamToRoster(ti){
   const s=serializeTeam(teams[ti]);
   const idx=savedTeams.findIndex(t=>t.name===s.name);

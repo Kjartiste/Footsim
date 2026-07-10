@@ -1690,7 +1690,9 @@ window.addEventListener('resize',resize);
 window.addEventListener('orientationchange',()=>setTimeout(resize,200));
 // Prevent default touch scroll on canvas to avoid rubber-band effect
 document.getElementById('canvas-wrap')?.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
-loadProfiles();loadLeague();loadSavedTeams();loadCup();loadCareerV2();
+loadProfiles();loadLeague();loadSavedTeams();
+if(typeof injectPresetTeams==='function'){ try{ injectPresetTeams(); }catch(e){ console.error('injectPresetTeams:',e); } }
+loadCup();loadCareerV2();
 renderTB(0);renderTB(1);renderTactics();syncHUD();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);
 resize();placeKickoff(0);
 requestAnimationFrame(frame);
