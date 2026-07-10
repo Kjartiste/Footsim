@@ -163,7 +163,9 @@ const BadgeSerializer = {
   defaults(){
     return { shape:'shield_mod', border:'simple', background:'solid',
       colors:['#0b3d91','#ffffff','#ffd700'], icon:'shield', iconColor:'#ffd700',
-      iconScale:1, iconRot:0, iconX:0, iconY:-6, text:'', textColor:'#ffffff',
+      iconScale:1, iconRot:0, iconX:0, iconY:-6,
+      icon2:'none', icon2Color:'#ffffff', icon2Scale:0.5, icon2X:0, icon2Y:22,
+      text:'', textColor:'#ffffff', textArc:false, motto:'',
       year:'', stars:0, starColor:'#ffd700', bgOpacity:1 };
   },
   normalize(b){
@@ -209,10 +211,29 @@ const BadgeRenderer = {
       const ix=BCX+(b.iconX||0), iy=BCY+(b.iconY||0), sc=b.iconScale||1, rot=b.iconRot||0;
       icon=`<g transform="translate(${ix},${iy}) rotate(${rot}) scale(${sc})">${IconLibrary.render(b.icon,b.iconColor||c3)}</g>`;
     }
-    // 5) Texte (abréviation/nom court en bas)
+    // 4b) Icône secondaire (couche indépendante)
+    let icon2='';
+    if(b.icon2 && b.icon2!=='none'){
+      const ix=BCX+(b.icon2X||0), iy=BCY+(b.icon2Y!=null?b.icon2Y:22), sc=b.icon2Scale||0.5;
+      icon2=`<g transform="translate(${ix},${iy}) scale(${sc})">${IconLibrary.render(b.icon2,b.icon2Color||c2)}</g>`;
+    }
+    // 5) Texte principal (abréviation/sigle) — droit ou en arc
     let text='';
     if(b.text){
-      text=`<text x="50" y="102" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="900" font-size="15" fill="${b.textColor||c2}" letter-spacing="1">${_esc(b.text)}</text>`;
+      if(b.textArc){
+        // Texte le long d'un arc supérieur (textPath sur un cercle).
+        const pid='ta'+(Math.random()*1e9|0);
+        text=`<defs><path id="${pid}" d="M18,54 A34,34 0 0,1 82,54" fill="none"/></defs>
+          <text font-family="'Barlow Condensed',sans-serif" font-weight="900" font-size="13" fill="${b.textColor||c2}" letter-spacing="1">
+          <textPath href="#${pid}" startOffset="50%" text-anchor="middle">${_esc(b.text)}</textPath></text>`;
+      } else {
+        text=`<text x="50" y="102" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="900" font-size="15" fill="${b.textColor||c2}" letter-spacing="1">${_esc(b.text)}</text>`;
+      }
+    }
+    // 5b) Devise (motto) en bas, petite
+    let motto='';
+    if(b.motto){
+      motto=`<text x="50" y="110" text-anchor="middle" font-family="serif" font-style="italic" font-size="6" fill="${b.textColor||c2}" opacity="0.85">${_esc(b.motto)}</text>`;
     }
     // 6) Année
     let year='';
@@ -229,7 +250,7 @@ const BadgeRenderer = {
       ${shapeFill}
       <g clip-path="url(#${clipId})">${pattern}</g>
       ${border}
-      ${icon}${stars}${year}${text}`;
+      ${icon}${icon2}${stars}${year}${text}${motto}`;
 
     return `<svg width="${size}" height="${size*1.2}" viewBox="0 0 ${BADGE_W} ${BADGE_H}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
   },
@@ -320,11 +341,78 @@ const BadgeCache = {
   clear(){ this._c={}; },
 };
 
+// ── BadgeExporter : export SVG / PNG, partage ────────────────────────────
+const BadgeExporter = {
+  // Télécharge le blason en fichier .svg (vectoriel, régénéré depuis le JSON).
+  exportSVG(badge, filename){
+    let svg=BadgeRenderer.render(badge,{size:512});
+    // On embarque le JSON en commentaire pour un ré-import fidèle (le SVG reste
+    // valide et affichable ailleurs ; le commentaire est ignoré au rendu).
+    const json=BadgeSerializer.toJSON(badge);
+    svg=svg.replace('>', '><!--BADGE:'+json+'-->');
+    const blob=new Blob([svg],{type:'image/svg+xml'});
+    _badgeDownload(blob,(filename||'blason')+'.svg');
+  },
+  // Rasterise le SVG dans un canvas puis télécharge un .png (taille au choix).
+  exportPNG(badge, filename, size){
+    size=size||512;
+    const svg=BadgeRenderer.render(badge,{size});
+    const img=new Image();
+    const uri='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+    img.onload=()=>{
+      const cv=document.createElement('canvas');
+      cv.width=size; cv.height=Math.round(size*1.2);
+      const cx=cv.getContext('2d');
+      cx.drawImage(img,0,0,cv.width,cv.height);
+      cv.toBlob(b=>{ if(b) _badgeDownload(b,(filename||'blason')+'.png'); },'image/png');
+    };
+    img.onerror=()=>{ try{ alert('Export PNG impossible sur ce navigateur.'); }catch(e){} };
+    img.src=uri;
+  },
+  // Copie le JSON du blason dans le presse-papier (partage).
+  share(badge){
+    const json=BadgeSerializer.toJSON(badge);
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(json).then(()=>{ try{ if(typeof logEvent==='function') logEvent('🔗 Blason copié (JSON) !','#40c4ff'); }catch(e){} });
+    }
+    return json;
+  },
+};
+function _badgeDownload(blob, name){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ── BadgeImporter : import SVG / JSON ────────────────────────────────────
+const BadgeImporter = {
+  // Importe depuis une chaîne JSON (partage) → objet blason normalisé.
+  fromJSON(text){ return BadgeSerializer.fromJSON(text); },
+  // Importe depuis un fichier (.svg exporté par nous contient le JSON en
+  // commentaire ; sinon on tente un .json). Callback(badge|null).
+  fromFile(file, cb){
+    const r=new FileReader();
+    r.onload=e=>{
+      const txt=String(e.target.result||'');
+      // 1) JSON pur
+      try{ const b=JSON.parse(txt); return cb(BadgeSerializer.normalize(b)); }catch(_){}
+      // 2) SVG contenant un commentaire <!--BADGE:{...}-->
+      const m=txt.match(/<!--BADGE:(.*?)-->/s);
+      if(m){ try{ return cb(BadgeSerializer.normalize(JSON.parse(m[1]))); }catch(_){}
+      }
+      cb(null);
+    };
+    r.onerror=()=>cb(null);
+    r.readAsText(file);
+  },
+};
+
 // ── Export global ────────────────────────────────────────────────────────
 if(typeof window!=='undefined'){
   Object.assign(window,{
     SvgLibrary, PatternLibrary, IconLibrary, PaletteManager,
     BadgeRenderer, BadgeGenerator, BadgeSerializer, BadgeCache,
-    BADGE_PRESETS, BADGE_W, BADGE_H,
+    BadgeExporter, BadgeImporter, BADGE_PRESETS, BADGE_W, BADGE_H,
   });
 }

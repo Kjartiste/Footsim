@@ -2452,6 +2452,19 @@ function _badgePreset(id){
   _badgeEdit.badge = BadgeSerializer.normalize(Object.assign({}, _badgeEdit.badge, p, { colors:_badgeEdit.badge.colors }));
   renderBadgeEditor();
 }
+function _badgeReset(){
+  const T=teams[_badgeEdit.ti];
+  _badgeEdit.badge = Object.assign(BadgeSerializer.defaults(), { colors:[T.color||'#0b3d91','#ffffff','#ffd700'], text:teamIni(T.name) });
+  renderBadgeEditor();
+}
+function _badgeImportFile(ev){
+  const f=ev.target.files&&ev.target.files[0]; if(!f) return;
+  BadgeImporter.fromFile(f,(badge)=>{
+    if(badge){ _badgeEdit.badge=badge; renderBadgeEditor(); if(typeof logEvent==='function') logEvent('⬆ Blason importé !','#40c4ff'); }
+    else { try{ alert('Fichier de blason non reconnu (SVG exporté ou JSON attendu).'); }catch(e){} }
+  });
+  ev.target.value='';
+}
 function saveBadge(){
   const ti=_badgeEdit.ti;
   teams[ti].badge = BadgeSerializer.normalize(_badgeEdit.badge);
@@ -2535,16 +2548,29 @@ function renderBadgeEditor(){
               <input type="text" maxlength="5" value="${_esc(b.text||'')}" oninput="_badgeSet('text',this.value)" placeholder="Sigle (ex: RCV)" style="flex:1;font-size:11px;padding:5px 7px;border-radius:6px;background:var(--dark);color:#eee;border:1px solid var(--b1)">
               <input type="text" maxlength="4" value="${_esc(String(b.year||''))}" oninput="_badgeSet('year',this.value)" placeholder="Année" style="width:70px;font-size:11px;padding:5px 7px;border-radius:6px;background:var(--dark);color:#eee;border:1px solid var(--b1)">
             </div>
+            <input type="text" maxlength="24" value="${_esc(b.motto||'')}" oninput="_badgeSet('motto',this.value)" placeholder="Devise (optionnel)" style="width:100%;font-size:11px;padding:5px 7px;border-radius:6px;background:var(--dark);color:#eee;border:1px solid var(--b1);margin-bottom:5px">
+            <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${b.textArc?'checked':''} onchange="_badgeSet('textArc',this.checked)"> Texte en arc</label>
           </div>
+          ${section('Icône secondaire', chips('icon2', Object.assign({none:'Aucune'},IconLibrary.labels), ['none'].concat(IconLibrary.order)))}
           <div style="margin-bottom:12px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Étoiles</div>${starRow}</div>
-          <div style="margin-bottom:6px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Préréglages</div><div style="display:flex;flex-wrap:wrap">${presetChips}</div></div>
+          <div style="margin-bottom:10px"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Préréglages</div><div style="display:flex;flex-wrap:wrap">${presetChips}</div></div>
+          <div style="margin-bottom:6px;padding-top:8px;border-top:1px solid var(--b1)"><div style="font-size:10px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Fichier</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+              <button class="btn" style="padding:4px 9px;font-size:10px" onclick="BadgeExporter.exportSVG(_badgeEdit.badge, teams[_badgeEdit.ti]?.name||'blason')">⬇ SVG</button>
+              <button class="btn" style="padding:4px 9px;font-size:10px" onclick="BadgeExporter.exportPNG(_badgeEdit.badge, teams[_badgeEdit.ti]?.name||'blason')">⬇ PNG</button>
+              <button class="btn" style="padding:4px 9px;font-size:10px" onclick="document.getElementById('badge-import-file').click()">⬆ Importer</button>
+              <button class="btn" style="padding:4px 9px;font-size:10px" onclick="BadgeExporter.share(_badgeEdit.badge)">🔗 Partager</button>
+              <button class="btn" style="padding:4px 9px;font-size:10px" onclick="_badgeReset()">↺ Réinit.</button>
+              <input type="file" id="badge-import-file" accept=".svg,.json,image/svg+xml,application/json" style="display:none" onchange="_badgeImportFile(event)">
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
 }
 
 if(typeof window!=='undefined'){
-  Object.assign(window,{openBadgeEditor,closeBadgeEditor,renderBadgeEditor,saveBadge,_badgeSet,_badgeSetColor,_badgeRandom,_badgePreset});
+  Object.assign(window,{openBadgeEditor,closeBadgeEditor,renderBadgeEditor,saveBadge,_badgeSet,_badgeSetColor,_badgeRandom,_badgePreset,_badgeReset,_badgeImportFile});
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3333,7 +3359,7 @@ function renderLeague(){
       const t=leagueState.teams.find(x=>x.id===s.id),gd=s.GF-s.GA,isTop=rank===0&&s.P>0;
       return '<div style="display:grid;grid-template-columns:14px 1fr 18px 18px 18px 18px 22px 24px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1);align-items:center;cursor:pointer;background:'+(isTop?'rgba(240,192,40,.04)':'transparent')+'" onclick="showStandingDetail(\'league\','+s.id+')" title="Voir les détails">'+
         '<span style="font-size:9px;color:var(--muted);font-family:\'Barlow Condensed\',sans-serif;font-weight:700">'+(rank+1)+'</span>'+
-        '<span style="display:flex;align-items:center;gap:3px;min-width:0"><span style="width:5px;height:5px;border-radius:50%;background:'+t.color+';flex-shrink:0"></span>'+
+        '<span style="display:flex;align-items:center;gap:4px;min-width:0"><span style="width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+((typeof teamBadgeRefHTML==='function')?teamBadgeRefHTML(t,18):'<span style="width:5px;height:5px;border-radius:50%;background:'+t.color+'"></span>')+'</span>'+
         '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+(isTop?'var(--gold)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+t.name+'</span></span>'+
         [s.P,s.W,s.D,s.L].map(v=>'<span style="font-size:9px;text-align:center">'+v+'</span>').join('')+
         '<span style="font-size:9px;text-align:center;color:'+(gd>0?'var(--green)':gd<0?'var(--red)':'var(--muted)')+'">'+( gd>0?'+':'')+gd+'</span>'+
@@ -3383,9 +3409,9 @@ function renderLeague(){
       const isHuman=isLeagueHumanFix(fix),isNPC=!isHuman;
       const isNextHuman=i===nextHumanIdx;// highlight the upcoming human match
       h+='<div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:2px;padding:4px 6px;border-bottom:1px solid var(--b1);align-items:center;background:'+(isNextHuman?'rgba(255,255,255,.03)':'transparent')+'">'+
-        '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+hT.color+';text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+hT.name+'</span>'+
+        '<span style="display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0"><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+hT.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+hT.name+'</span><span style="width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+((typeof teamBadgeRefHTML==='function')?teamBadgeRefHTML(hT,16):'')+'</span></span>'+
         '<span style="font-size:9px;color:var(--muted);padding:0 3px">vs</span>'+
-        '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+aT.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+aT.name+'</span>'+
+        '<span style="display:flex;align-items:center;gap:4px;min-width:0"><span style="width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+((typeof teamBadgeRefHTML==='function')?teamBadgeRefHTML(aT,16):'')+'</span><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+aT.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+aT.name+'</span></span>'+
         '<span style="display:flex;gap:2px">'+
         (isNextHuman&&isHuman?'<button class="btn btng" style="padding:2px 6px;font-size:9px" onclick="playLeagueMatch()">▶</button>':'')+
         (isNPC?'<button class="btn" style="padding:2px 5px;font-size:9px;color:#8840e0;border-color:#8840e044" onclick="skipLeagueFixture('+fi+')" title="Simuler PNJ">⚡</button>':

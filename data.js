@@ -349,6 +349,17 @@ function teamBadgeHTML(T, size){
   const col=(T&&T.color)||'#888';
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.33)}px;font-weight:900;color:#fff;font-family:sans-serif">${teamIni((T&&T.name)||'?')}</div>`;
 }
+// Résout le logo d'une référence d'équipe "légère" (classement, calendrier :
+// objets {name,color,img?} sans .badge). On tente de retrouver le blason dans
+// le registre savedTeams par nom, sinon on retombe sur teamBadgeHTML normal.
+function teamBadgeRefHTML(ref, size){
+  size=size||24;
+  if(ref && !ref.badge && typeof savedTeams!=='undefined' && Array.isArray(savedTeams)){
+    const match=savedTeams.find(t=>t && t.name===ref.name);
+    if(match && (match.badge||match.img)) return teamBadgeHTML(match, size);
+  }
+  return teamBadgeHTML(ref, size);
+}
 const ROLE=['GB','DC','DD','DG','MC','MC','ATT'];
 // Postes assignés par formation (7 joueurs, index 0-6)
 const FORM_ROLES={
