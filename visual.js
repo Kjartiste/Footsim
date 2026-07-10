@@ -11,24 +11,84 @@ function spawnGoal(gx,gy,col,ati){
   const teamName=ati!==undefined?teams[ati]?.name:(teams[G.atkTi]?.name||'');
   G.ptcl.push({t:'lbl',x:PCX,y:PCY+1,tx:teamName,col,l:100,m:100,sz:2.2});
   // ── TEMPS FORT : secousse d'écran + flash coloré ───────────────────────
-  triggerShake(1.0, 520);       // intensité, durée (ms)
+  triggerShake('HEAVY');        // preset intensité forte
   triggerFlash(col, 0.32, 420); // couleur de l'équipe, opacité pic, durée
 }
 
-// ── SCREEN SHAKE ─────────────────────────────────────────────────────────
-// Petite secousse d'écran pour marquer les temps forts (buts). L'amplitude
-// décroît sur la durée. Appliqué comme translation globale du canvas dans
-// frame(). Volontairement discret pour rester agréable, pas nauséeux.
-let _shake={t:0, dur:0, mag:0};
-function triggerShake(mag=1, durMs=500){ _shake={t:performance.now(), dur:durMs, mag}; }
+// ── SCREEN SHAKE (enrichi) ───────────────────────────────────────────────
+// Secousse d'écran pour les temps forts. Version étendue : plusieurs presets
+// d'intensité, respect de prefers-reduced-motion, réglage utilisateur, axes
+// configurables et décroissance douce. N'altère JAMAIS les coordonnées du
+// monde — c'est un simple décalage visuel appliqué au rendu du canvas.
+const SHAKE_PRESETS = {
+  LIGHT:     { mag:0.5, dur:220 },
+  MEDIUM:    { mag:1.0, dur:380 },
+  HEAVY:     { mag:1.8, dur:520 },
+  IMPACT:    { mag:2.4, dur:300 },
+  EXPLOSION: { mag:3.2, dur:650 },
+  EARTHQUAKE:{ mag:4.0, dur:1100 },
+};
+let _shake={t:0, dur:0, mag:0, axis:'both'};
+// Réglage utilisateur (persisté) : les secousses peuvent être coupées.
+function _shakeEnabled(){
+  if(typeof G!=='undefined' && G && G._shakeOff) return false;
+  try{ if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; }catch(e){}
+  return true;
+}
+// trigger(preset|mag, durMs?, {axis}) — accepte un nom de preset ou un nombre.
+function triggerShake(preset='MEDIUM', durMs, opts){
+  if(!_shakeEnabled()) return;
+  let mag, dur, axis=(opts&&opts.axis)||'both';
+  if(typeof preset==='string' && SHAKE_PRESETS[preset]){
+    mag=SHAKE_PRESETS[preset].mag; dur=durMs||SHAKE_PRESETS[preset].dur;
+  } else {
+    mag=(typeof preset==='number')?preset:1.0; dur=durMs||500;
+  }
+  // Sur petit écran (mobile), on atténue pour rester confortable.
+  if(cvs && cvs.width<560) mag*=0.6;
+  _shake={t:performance.now(), dur, mag, axis};
+}
 function _shakeOffset(){
   if(!_shake.dur) return {x:0,y:0};
   const el=performance.now()-_shake.t;
   if(el>=_shake.dur){ _shake.dur=0; return {x:0,y:0}; }
-  const k=(1-el/_shake.dur);           // décroissance linéaire
-  const amp=_shake.mag*8*k;            // amplitude en pixels
-  return { x:(Math.random()*2-1)*amp, y:(Math.random()*2-1)*amp };
+  // Décroissance easeOut (plus naturelle qu'un linéaire).
+  const k=Math.pow(1-el/_shake.dur, 2);
+  const amp=_shake.mag*8*k;
+  const x=(_shake.axis==='vertical')?0:(Math.random()*2-1)*amp;
+  const y=(_shake.axis==='horizontal')?0:(Math.random()*2-1)*amp;
+  return { x, y };
 }
+
+// ── CAMÉRA : ZOOM DRAMATIQUE (sur un joueur, ex. lancement de sort) ───────
+// Zoom cinématique léger et doux : la vue se rapproche d'un point (souvent le
+// lanceur d'un sort), tient un instant, puis revient. Purement visuel : on
+// applique scale+translate autour de la couche dynamique du canvas. Respecte
+// aussi prefers-reduced-motion / le toggle utilisateur.
+let _zoom={active:false, t0:0, inMs:220, holdMs:260, outMs:340, scale:1.55, wx:PCX, wy:PCY};
+function triggerZoom(worldX, worldY, opts){
+  if(!_shakeEnabled()) return; // même réglage que les secousses (confort)
+  opts=opts||{};
+  _zoom={
+    active:true, t0:performance.now(),
+    inMs:opts.inMs||220, holdMs:opts.holdMs||260, outMs:opts.outMs||340,
+    scale:opts.scale||1.55, wx:worldX, wy:worldY
+  };
+}
+// Renvoie le facteur de zoom courant (1 = pas de zoom) et le centre écran.
+function _zoomState(){
+  if(!_zoom.active) return null;
+  const el=performance.now()-_zoom.t0;
+  const total=_zoom.inMs+_zoom.holdMs+_zoom.outMs;
+  if(el>=total){ _zoom.active=false; return null; }
+  let f; // 0→1 progression de l'intensité du zoom
+  if(el<_zoom.inMs) f=_ease(el/_zoom.inMs);
+  else if(el<_zoom.inMs+_zoom.holdMs) f=1;
+  else f=1-_ease((el-_zoom.inMs-_zoom.holdMs)/_zoom.outMs);
+  const scale=1+(_zoom.scale-1)*f;
+  return { scale, cx:wx(_zoom.wx), cy:wy(_zoom.wy), f };
+}
+function _ease(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; } // easeInOut
 
 // ── FLASH plein écran (coloré) ──────────────────────────────────────────
 // Bref voile coloré (couleur de l'équipe qui marque) pour ponctuer le but.
@@ -1452,8 +1512,12 @@ function frame(ts){
         const goals=(G.scores?.[0]||0)+(G.scores?.[1]||0);
         const injuries=(G._injuryCount||0);
         const cards=((G.fouls?.[0]||0)+(G.fouls?.[1]||0));
-        let m=1 + goals*0.4 + injuries*0.8 + cards*0.15 + Math.random()*1.2;
-        return Math.max(1, Math.min(6, Math.round(m)));
+        // Fourchette élargie à +1..+15 : chaque événement (but, blessure, faute)
+        // pèse plus lourd, et une part aléatoire simule les autres pertes de
+        // temps (célébrations, VAR, remplacements…). Un match calme reste bas
+        // (~2-3'), un match hachu par les événements peut grimper très haut.
+        let m = 1 + goals*0.9 + injuries*1.6 + cards*0.35 + Math.random()*2.5;
+        return Math.max(1, Math.min(15, Math.round(m)));
       };
       if(G.half===1){
         if(G.minute>=45 && G._addedH1==null){
@@ -1523,11 +1587,19 @@ function frame(ts){
 
   // Draw
   ctx.clearRect(0,0,cvs.width,cvs.height);
-  // Le terrain reste stable (évite les bords vides) ; seule la couche
-  // dynamique (joueurs, ballon, particules) subit la secousse. Plus confortable
-  // à regarder et sans artefact de bord.
-  drawPitch();
   const sh=_shakeOffset();
+  const zm=_zoomState();
+  // Le ZOOM (caméra) s'applique à TOUTE la scène, terrain compris, pour un
+  // vrai effet de rapprochement. La SECOUSSE ne s'applique qu'à la couche
+  // dynamique (pas au terrain) pour éviter les bords vides.
+  const zooming = !!zm;
+  if(zooming){
+    ctx.save();
+    ctx.translate(zm.cx, zm.cy);
+    ctx.scale(zm.scale, zm.scale);
+    ctx.translate(-zm.cx, -zm.cy);
+  }
+  drawPitch();
   const shaking = (sh.x||sh.y);
   if(shaking){ ctx.save(); ctx.translate(sh.x, sh.y); }
   drawGlow();
@@ -1535,7 +1607,8 @@ function frame(ts){
   drawBall();
   drawParticles();
   if(shaking) ctx.restore();
-  drawGoalFlash(); // flash plein écran, hors secousse
+  if(zooming) ctx.restore();
+  drawGoalFlash(); // flash plein écran, hors transformation
   drawFlash();
   _gifCaptureFrame(ts);
 }

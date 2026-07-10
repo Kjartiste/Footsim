@@ -10,14 +10,26 @@
 // Persistés en localStorage. Premier réglage : le mode d'affichage des stats.
 const GS_DEFAULTS = {
   statMode: 'lite',   // 'lite' = 6 stats (jeu actuel) | 'complet' = stats détaillées
+  cameraFx: true,     // secousses d'écran + zoom cinématique (temps forts, sorts)
 };
 window.GS = Object.assign({}, GS_DEFAULTS);
+
+// Bascule des effets de caméra (secousse + zoom). Persisté. Le moteur de rendu
+// lit G._shakeOff (miroir de ce réglage) pour couper instantanément.
+function setCameraFx(on){
+  window.GS.cameraFx = !!on;
+  if(typeof G!=='undefined' && G) G._shakeOff = !on;
+  saveSettings();
+  if(typeof renderSettings==='function' && document.getElementById('sp-settings')?.classList.contains('on')) renderSettings();
+}
 
 function loadSettings(){
   try{
     const raw = localStorage.getItem('footsim_settings');
     if(raw){ Object.assign(window.GS, GS_DEFAULTS, JSON.parse(raw)); }
   }catch(e){ /* réglages par défaut */ }
+  // Miroir du réglage caméra vers le flag lu par le moteur de rendu.
+  if(typeof G!=='undefined' && G) G._shakeOff = (window.GS.cameraFx===false);
   return window.GS;
 }
 function saveSettings(){
@@ -284,7 +296,7 @@ Object.assign(window, { magPowerMult, magCostMult, magRegenMult, magFizzleChance
 
 // Exposer sur window pour les autres scripts
 Object.assign(window, {
-  GS_DEFAULTS, loadSettings, saveSettings, setStatMode,
+  GS_DEFAULTS, loadSettings, saveSettings, setStatMode, setCameraFx,
   STAT_DEFS, GK_STAT_DEFS, statDefsFor, _ALL_STAT_LIST,
   ensurePlayerS2, ensureAllS2, statColor, catAverage,
 });

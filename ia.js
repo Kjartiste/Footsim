@@ -987,8 +987,16 @@ function aiDecide(dt=0.016){
     case 'GOALKICK':{
       if(G.phTick<4)return;
       const gkp=byR(ati,'GB')[0];
-      // Placer la balle sur le gardien avant le dégagement
-      if(gkp){G.ball.x=gkp.x;G.ball.y=gkp.y;G.ball.vx=0;G.ball.vy=0;G.ball.spin=0;}
+      // ── LES 6 MÈTRES ───────────────────────────────────────────────────
+      // Le dégagement se prend depuis la surface de but (6 mètres), pas
+      // exactement sur la ligne : on place le ballon sur le bord avant de la
+      // petite surface (sbW=4), légèrement décalé, et on y amène le gardien.
+      const SIX_YARD=4; // largeur de la surface de but (cf. rendu, sbW)
+      const gkSpotX = ati===0 ? SIX_YARD*0.85 : WW - SIX_YARD*0.85;
+      const gkSpotY = PCY + rng(-5,5); // dans la largeur de la surface de but
+      G.ball.x=gkSpotX; G.ball.y=gkSpotY; G.ball.vx=0; G.ball.vy=0; G.ball.spin=0;
+      // Le gardien vient prendre le ballon aux 6 mètres pour le dégager.
+      if(gkp){ gkp.x=gkSpotX; gkp.y=gkSpotY; giveB(gkp); }
       // BUG corrigé : G.teams[ati].form n'existait jamais → toujours false,
       // donc le dégagement construit du 3-2-2 ne se déclenchait jamais.
       const is322gk=teams[ati]&&teams[ati].strat==='222';
@@ -1148,6 +1156,18 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     else if(sp.id==='illusion')spawnIllusion(carrier.x,carrier.y,goalX);
     else if(sp.id==='tech')spawnTech(carrier.x,carrier.y,goalX);
     else spawnSpell(carrier.x,carrier.y,sp);
+    // ── CINÉMATIQUE DE SORT (zoom + secousse) ──────────────────────────────
+    // Pour les « gros » sorts (puissance ou coût de mana élevés), un léger zoom
+    // dramatique sur le lanceur + une secousse donnent du poids à l'action —
+    // ce petit plus qui rend les extraits (edits) percutants. Les petits sorts
+    // gardent leur effet normal, sans caméra, pour ne pas casser le rythme.
+    const _bigSpell = (sp.pow>=45) || (sp.mp>=45);
+    if(_bigSpell && typeof triggerZoom==='function'){
+      try{
+        triggerZoom(carrier.x, carrier.y, {scale:1.5, inMs:200, holdMs:240, outMs:320});
+        if(typeof triggerShake==='function') triggerShake('IMPACT');
+      }catch(e){}
+    }
     const def2=pick(byR(dti,'DD','DC','DG'));
     const gk2=byR(dti,'GB')[0];
     G.shots[ati]++;carrier.mSh++;

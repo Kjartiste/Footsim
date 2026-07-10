@@ -558,9 +558,25 @@ function renderSettings(){
       Mode actuel : <b style="color:${complet?'#b98cf0':'var(--gold)'}">${complet?'COMPLET':'LITE'}</b>${complet?' — les fiches joueurs affichent tous les attributs détaillés.':' — les fiches joueurs affichent les 6 statistiques de base.'}
     </div>
   `);
+  const camOn = !window.GS || window.GS.cameraFx!==false;
+  const camCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Effets de caméra</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Secousses d'écran et zoom cinématique sur les temps forts (buts, gros sorts). Purement visuel. Désactive si tu préfères une vue stable ou sur un appareil moins puissant.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="setCameraFx(true)" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${camOn?'var(--gold)':'var(--b1)'};background:${camOn?'rgba(240,192,40,.14)':'var(--dark)'};color:${camOn?'var(--gold)':'var(--muted)'}">
+        <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">🎬 ACTIVÉS</div>
+      </button>
+      <button onclick="setCameraFx(false)" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${!camOn?'#8840e0':'var(--b1)'};background:${!camOn?'rgba(136,64,224,.16)':'var(--dark)'};color:${!camOn?'#b98cf0':'var(--muted)'}">
+        <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">⏸ DÉSACTIVÉS</div>
+      </button>
+    </div>
+  `);
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
     ${modeCard}
+    ${camCard}
   `;
 }
 

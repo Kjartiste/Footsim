@@ -486,8 +486,16 @@ function roleTarget(ti,p,pi){
         const markTarget = (G._markAssign?.[ti]||{})[p.id];
         if(markTarget && p.pos!=='GB'){
           const distToMark=Math.hypot(p.x-markTarget.x,p.y-markTarget.y);
-          // Distance max pour accepter le marquage (évite les courses absurdes).
-          if(distToMark < WW*0.30){
+          // Un marqueur DÉSIGNÉ (rôle marqueur ou schéma homme) suit son homme
+          // plus loin qu'une assignation auto opportuniste : on élargit alors la
+          // portée pour qu'il le colle vraiment partout, comme un vrai marquage.
+          const _sl=(G.tacSliders&&G.tacSliders[ti])||{};
+          const _pi=(teams[ti]?.players||[]).indexOf(p);
+          const _dedicated = _sl.defScheme==='homme'
+            || ((G.playerRoleName&&G.playerRoleName[ti]||[])[_pi]==='marqueur')
+            || _sl.markMode==='manual';
+          const followRange = _dedicated ? WW*0.65 : WW*0.30;
+          if(distToMark < followRange){
             // Point de marquage : entre l'attaquant et mon but, à ~1.6 u côté but.
             const gx=myGoalX, gy=PCY;
             const dgx=gx-markTarget.x, dgy=gy-markTarget.y, dg=Math.hypot(dgx,dgy)||1;
@@ -931,38 +939,91 @@ function physStep(dt,rawDt){
       if(defs.length) G._defLineX[ti]=defs.reduce((s,q)=>s+q.x,0)/defs.length;
     });
     // ── ASSIGNATION DE MARQUAGE (par équipe qui DÉFEND) ──────────────────
-    // Corrige le cas « un attaquant démarqué que personne ne suit » : on
-    // désigne, pour chaque adversaire dangereux non porteur (avancé dans notre
-    // moitié, pas déjà au contact du ballon), le défenseur/milieu LIBRE le plus
-    // proche pour le prendre en marquage — un défenseur par attaquant, pas de
-    // meute sur le même homme. Le presseur du ballon est exclu (il a sa tâche).
+    // Désormais pilotée par le socle Niveau 3 :
+    //  • markMode 'manual'  → on suit les cibles désignées à la main
+    //    (G.playerMarkTarget), aucune auto-assignation.
+    //  • markMode 'auto' + defScheme 'homme' → toute l'équipe marque à l'homme
+    //    (chaque adversaire dangereux se voit coller le défenseur libre le plus
+    //    proche).
+    //  • markMode 'auto' + defScheme 'zone' → seuls les joueurs portant le rôle
+    //    « marqueur » marquent leur homme ; les autres tiennent leur zone. Le
+    //    filet anti-isolement reste donc actif via ces joueurs-là.
     [0,1].forEach(dti=>{
       const assign={};
       const ati2=1-dti;
       const myGoalX2 = dti===0 ? 0 : WW;
-      // Adversaires "dangereux" : dans NOTRE moitié, pas le porteur du ballon,
-      // triés du plus proche de notre but au plus loin (les plus menaçants d'abord).
-      const inOurHalf=(o)=> dti===0 ? o.x < WW*0.55 : o.x > WW*0.45;
-      const threats=actP(ati2).filter(o=>o.pos!=='GB' && !o.hasBall && inOurHalf(o))
-        .sort((a,b)=>Math.abs(a.x-myGoalX2)-Math.abs(b.x-myGoalX2));
-      // Marqueurs disponibles : défenseurs + milieux, hors gardien et hors
-      // presseur principal du ballon (celui-ci fonce déjà sur le porteur).
-      const presser=G._pressNearest[dti];
-      const markerPool=actP(dti).filter(q=>q.pos!=='GB' && q!==presser &&
-        ['DC','DCD','DCG','DD','DG','LB','RB','MDC','MDC2','MC','MCD','MCG'].includes(q.pos));
-      const takenMarkers=new Set();
-      for(const o of threats){
-        let best=null,bestD=1e9;
-        for(const m of markerPool){
-          if(takenMarkers.has(m)) continue;
-          const d=Math.hypot(m.x-o.x,m.y-o.y);
-          if(d<bestD){bestD=d;best=m;}
+      const sl = (G.tacSliders&&G.tacSliders[dti])||{};
+      const scheme = sl.defScheme||'zone';
+      const markMode = sl.markMode||'auto';
+      const roleNames = (G.playerRoleName&&G.playerRoleName[dti])||[];
+      const markTargets = (G.playerMarkTarget&&G.playerMarkTarget[dti])||[];
+      const myTeam = teams[dti];
+
+      if(markMode==='manual'){
+        // ── MARQUAGE MANUEL ────────────────────────────────────────────────
+        // Chaque joueur qui a une cible assignée (et qui joue individuel : rôle
+        // marqueur, ou schéma d'équipe 'homme') colle l'adversaire choisi.
+        (myTeam?.players||[]).forEach((d,pi)=>{
+          if(!d||d.red||d.hp<=0||d.pos==='GB') return;
+          const plays1v1 = scheme==='homme' || roleNames[pi]==='marqueur';
+          if(!plays1v1) return;
+          const tgtId = markTargets[pi];
+          if(tgtId==null) return;
+          const opp = (teams[ati2]?.players||[]).find(o=>o.id===tgtId && !o.red && o.hp>0);
+          if(opp) assign[d.id]=opp;
+        });
+      } else {
+        // ── MARQUAGE AUTOMATIQUE ────────────────────────────────────────────
+        const inOurHalf=(o)=> dti===0 ? o.x < WW*0.55 : o.x > WW*0.45;
+        const threats=actP(ati2).filter(o=>o.pos!=='GB' && !o.hasBall && inOurHalf(o))
+          .sort((a,b)=>Math.abs(a.x-myGoalX2)-Math.abs(b.x-myGoalX2));
+        const presser=G._pressNearest[dti];
+        // Pool de marqueurs : en schéma 'homme', tous les joueurs de champ ;
+        // en 'zone', UNIQUEMENT ceux qui portent le rôle « marqueur ».
+        const markerPool=actP(dti).filter(q=>{
+          if(q.pos==='GB' || q===presser) return false;
+          const pi=(myTeam?.players||[]).indexOf(q);
+          const isMarkerRole = pi>=0 && roleNames[pi]==='marqueur';
+          if(scheme==='homme') {
+            return ['DC','DCD','DCG','DD','DG','LB','RB','MDC','MDC2','MC','MCD','MCG'].includes(q.pos) || isMarkerRole;
+          }
+          // schéma zone : seuls les marqueurs désignés poursuivent leur homme
+          return isMarkerRole;
+        });
+        const takenMarkers=new Set();
+        for(const o of threats){
+          let best=null,bestD=1e9;
+          for(const m of markerPool){
+            if(takenMarkers.has(m)) continue;
+            const d=Math.hypot(m.x-o.x,m.y-o.y);
+            if(d<bestD){bestD=d;best=m;}
+          }
+          if(best && bestD<WW*0.30){
+            assign[best.id]=o;
+            takenMarkers.add(best);
+          }
         }
-        // On ne marque que si le défenseur est raisonnablement proche (sinon il
-        // casserait sa position pour courir à l'autre bout du terrain).
-        if(best && bestD<WW*0.30){
-          assign[best.id]=o;
-          takenMarkers.add(best);
+        // ── FILET ANTI-ISOLEMENT (schéma zone) ─────────────────────────────
+        // Même en zone pure sans rôle « marqueur », on ne laisse pas un
+        // attaquant DANGEREUX (bien avancé dans notre camp, tout près du but)
+        // totalement libre : le défenseur le plus proche encore libre vient le
+        // prendre. Discret — se limite au vrai danger dans le dernier quart —
+        // pour ne pas transformer la zone en marquage individuel déguisé.
+        if(scheme!=='homme'){
+          const dangerZone=(o)=> dti===0 ? o.x < WW*0.28 : o.x > WW*0.72;
+          const freeDef=actP(dti).filter(q=>q.pos!=='GB' && q!==presser && !takenMarkers.has(q)
+            && ['DC','DCD','DCG','DD','DG','LB','RB','MDC','MDC2'].includes(q.pos));
+          for(const o of threats){
+            if(!dangerZone(o)) continue;
+            if(Object.values(assign).some(t=>t===o)) continue; // déjà marqué
+            let best=null,bestD=1e9;
+            for(const m of freeDef){
+              if(takenMarkers.has(m)) continue;
+              const d=Math.hypot(m.x-o.x,m.y-o.y);
+              if(d<bestD){bestD=d;best=m;}
+            }
+            if(best && bestD<WW*0.22){ assign[best.id]=o; takenMarkers.add(best); }
+          }
         }
       }
       G._markAssign[dti]=assign;
