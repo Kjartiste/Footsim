@@ -686,8 +686,31 @@ function physStep(dt,rawDt){
       b.vy=(b.vy||0)*Math.pow(BALL_FRIC,dt*60);
       b.spin=(b.spin||0)*Math.pow(.94,dt*60);
       if(Math.abs(b.vx)<.03&&Math.abs(b.vy)<.03){b.vx=0;b.vy=0;}
-      if(b.y<0){b.y=0;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
-      if(b.y>WH){b.y=WH;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
+      // ── TOUCHES (ballon sorti par une ligne de côté) ─────────────────────
+      // Avant, le ballon rebondissait sur une paroi invisible. Désormais il
+      // SORT : touche pour l'équipe qui n'a pas touché le ballon en dernier
+      // (l'adverse de G.atkTi). On ne déclenche qu'en jeu courant, hors phases
+      // arrêtées, pour ne pas interrompre un corner/coup franc/dégagement.
+      const _liveForThrow = G.running && G.phase!=='CORNER' && G.phase!=='FREEKICK'
+        && G.phase!=='GOALKICK' && G.phase!=='KICKOFF' && G.phase!=='THROWIN'
+        && G.phase!=='PENALTY_KICK';
+      if(_liveForThrow && (b.y<0 || b.y>WH)){
+        const outTop = b.y<0;
+        const throwTi = 1-G.atkTi;                 // touche à l'adversaire du dernier possesseur
+        G.throwins = G.throwins || [0,0];
+        G.throwins[throwTi]++;
+        b.x = clamp(b.x, 2, WW-2);                 // point de rentrée sur la ligne
+        b.y = outTop ? 0.4 : WH-0.4;
+        b.vx=0; b.vy=0; b.spin=0;
+        freeB();
+        G.atkTi = throwTi;
+        G._throwSide = outTop ? 'top' : 'bottom';
+        setPhase('THROWIN');
+        logEvent(`Touche pour ${teams[throwTi].name}`, teams[throwTi].color+'88');
+      } else {
+        if(b.y<0){b.y=0;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
+        if(b.y>WH){b.y=WH;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
+      }
       // Corners automatiques (comme 7v7)
       if(b.x<=0&&!(b.y>GY1&&b.y<GY2)&&(b.vx||0)<0&&G.running
          &&G.phase!=='CORNER'&&G.phase!=='FREEKICK'&&G.phase!=='GOALKICK'&&G.phase!=='KICKOFF'){

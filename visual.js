@@ -10,6 +10,40 @@ function spawnGoal(gx,gy,col,ati){
   G.ptcl.push({t:'lbl',x:PCX,y:PCY-5,tx:'BUT !',col:'#f0c028',l:120,m:120,sz:4.5});
   const teamName=ati!==undefined?teams[ati]?.name:(teams[G.atkTi]?.name||'');
   G.ptcl.push({t:'lbl',x:PCX,y:PCY+1,tx:teamName,col,l:100,m:100,sz:2.2});
+  // ── TEMPS FORT : secousse d'écran + flash coloré ───────────────────────
+  triggerShake(1.0, 520);       // intensité, durée (ms)
+  triggerFlash(col, 0.32, 420); // couleur de l'équipe, opacité pic, durée
+}
+
+// ── SCREEN SHAKE ─────────────────────────────────────────────────────────
+// Petite secousse d'écran pour marquer les temps forts (buts). L'amplitude
+// décroît sur la durée. Appliqué comme translation globale du canvas dans
+// frame(). Volontairement discret pour rester agréable, pas nauséeux.
+let _shake={t:0, dur:0, mag:0};
+function triggerShake(mag=1, durMs=500){ _shake={t:performance.now(), dur:durMs, mag}; }
+function _shakeOffset(){
+  if(!_shake.dur) return {x:0,y:0};
+  const el=performance.now()-_shake.t;
+  if(el>=_shake.dur){ _shake.dur=0; return {x:0,y:0}; }
+  const k=(1-el/_shake.dur);           // décroissance linéaire
+  const amp=_shake.mag*8*k;            // amplitude en pixels
+  return { x:(Math.random()*2-1)*amp, y:(Math.random()*2-1)*amp };
+}
+
+// ── FLASH plein écran (coloré) ──────────────────────────────────────────
+// Bref voile coloré (couleur de l'équipe qui marque) pour ponctuer le but.
+let _goalFlash={t:0, dur:0, peak:0, col:'#fff'};
+function triggerFlash(col='#fff', peak=0.3, durMs=400){ _goalFlash={t:performance.now(), dur:durMs, peak, col}; }
+function drawGoalFlash(){
+  if(!_goalFlash.dur) return;
+  const el=performance.now()-_goalFlash.t;
+  if(el>=_goalFlash.dur){ _goalFlash.dur=0; return; }
+  const k=1-el/_goalFlash.dur;
+  ctx.save();
+  ctx.globalAlpha=_goalFlash.peak*k;
+  ctx.fillStyle=_goalFlash.col;
+  ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.restore();
 }
 function spawnCyclon(x,y,goalX){
   G.ptcl.push({t:'beam',x,y,tx:goalX,ty:PCY,col:'#80deea',w:.8,l:24,m:24});
@@ -310,6 +344,9 @@ function spawnTackle(x,y){
 // Injury constants (used by both INJURIES and RENDER sections)
 const INJ_LABELS=['','🤕 Légère','🚑 Sérieuse','🆘 Grave'];
 const INJ_COLORS=['','#f0c028','#ff7020','#e02030'];
+// Cache du terrain pré-rendu (voir _buildPitchCache plus bas). Déclaré ici,
+// avant resize(), pour éviter toute zone morte temporelle (TDZ).
+let _pitchCache=null, _pitchW=0, _pitchH=0;
 function resize(){
   const wrap=document.getElementById('canvas-wrap');
   cvs.width=wrap.offsetWidth;
@@ -319,62 +356,109 @@ function resize(){
   _s=Math.min(sx,sy);
   _ox=(cvs.width-WW*_s)/2;
   _oy=(cvs.height-WH*_s)/2;
+  _pitchCache=null; // le terrain doit être re-préparé à la nouvelle taille
 }
 
 const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
 
-function drawPitch(){
-  // Background
-  ctx.fillStyle='#133013';
-  ctx.fillRect(0,0,cvs.width,cvs.height);
-  // Grass stripes (horizontal, 8)
-  for(let i=0;i<8;i++){
-    ctx.fillStyle=i%2===0?GRASS_A:GRASS_B;
-    ctx.fillRect(wx(0),wy(i*(WH/8)),ws(WW),ws(WH/8)+1);
+// ═══════════════════════════════════════════════════════════
+// TERRAIN PRÉ-RENDU (perf + beauté)
+// Le terrain est statique : au lieu de le redessiner à chaque frame (bandes,
+// lignes, arcs, filets…), on le peint UNE fois sur un canvas hors-écran puis
+// on le recopie d'un seul blit par frame. Gain net de perf, et ça libère le
+// budget pour les effets joueurs/ballon. Le cache se reconstruit seulement si
+// la taille du canvas change (resize).
+
+function _buildPitchCache(){
+  const oc=document.createElement('canvas');
+  oc.width=cvs.width; oc.height=cvs.height;
+  const c=oc.getContext('2d');
+
+  // Fond profond
+  c.fillStyle='#0f2a0f';
+  c.fillRect(0,0,oc.width,oc.height);
+
+  // ── TONTE EN DAMIER (façon stade) ──────────────────────────────────────
+  // Alternance de carrés clairs/foncés dans les deux sens plutôt que de
+  // simples bandes : rend la pelouse bien plus « vraie ». Teintes douces pour
+  // rester subtil et ne pas fatiguer l'œil.
+  const cols=10, rows=7;
+  const cw=WW/cols, chh=WH/rows;
+  for(let ix=0; ix<cols; ix++){
+    for(let iy=0; iy<rows; iy++){
+      const even=(ix+iy)%2===0;
+      c.fillStyle= even ? '#1c5f1c' : '#217021';
+      c.fillRect(wx(ix*cw), wy(iy*chh), ws(cw)+1, ws(chh)+1);
+    }
   }
-  ctx.save();
-  ctx.strokeStyle=LINE;ctx.lineWidth=ws(.18);
-  // Outer
-  ctx.strokeRect(wx(0),wy(0),ws(WW),ws(WH));
-  // Halfway
-  ctx.beginPath();ctx.moveTo(wx(PCX),wy(0));ctx.lineTo(wx(PCX),wy(WH));ctx.stroke();
-  // Centre circle
-  ctx.beginPath();ctx.arc(wx(PCX),wy(PCY),ws(7),0,Math.PI*2);ctx.stroke();
-  // Centre spot
-  ctx.beginPath();ctx.arc(wx(PCX),wy(PCY),ws(.32),0,Math.PI*2);ctx.fillStyle=LINE;ctx.fill();
+  // Reflet de tonte : léger dégradé vertical qui simule la lumière rasante.
+  const lg=c.createLinearGradient(0,wy(0),0,wy(WH));
+  lg.addColorStop(0,'rgba(255,255,255,.05)');
+  lg.addColorStop(0.5,'rgba(255,255,255,0)');
+  lg.addColorStop(1,'rgba(0,0,0,.06)');
+  c.fillStyle=lg;
+  c.fillRect(wx(0),wy(0),ws(WW),ws(WH));
+
+  // ── LIGNES ─────────────────────────────────────────────────────────────
+  c.save();
+  c.strokeStyle=LINE; c.lineWidth=ws(.18);
+  c.strokeRect(wx(0),wy(0),ws(WW),ws(WH));
+  c.beginPath();c.moveTo(wx(PCX),wy(0));c.lineTo(wx(PCX),wy(WH));c.stroke();
+  c.beginPath();c.arc(wx(PCX),wy(PCY),ws(7),0,Math.PI*2);c.stroke();
+  c.beginPath();c.arc(wx(PCX),wy(PCY),ws(.32),0,Math.PI*2);c.fillStyle=LINE;c.fill();
 
   [[0,true],[WW,false]].forEach(([gx,left])=>{
-    const d=left?1:-1;
-    // Big box
-    ctx.strokeRect(wx(left?0:WW-PA_W),wy(PCY-PA_H/2),ws(PA_W),ws(PA_H));
-    // Small box
+    c.strokeStyle=LINE; c.lineWidth=ws(.18);
+    c.strokeRect(wx(left?0:WW-PA_W),wy(PCY-PA_H/2),ws(PA_W),ws(PA_H));
     const sbW=4,sbH=14;
-    ctx.strokeRect(wx(left?0:WW-sbW),wy(PCY-sbH/2),ws(sbW),ws(sbH));
-    // Goal (thick white)
-    ctx.save();ctx.strokeStyle='rgba(255,255,255,.82)';ctx.lineWidth=ws(.28);
+    c.strokeRect(wx(left?0:WW-sbW),wy(PCY-sbH/2),ws(sbW),ws(sbH));
+    // But + filet
+    c.save();c.strokeStyle='rgba(255,255,255,.82)';c.lineWidth=ws(.28);
     const gw=2.4,gh=GY2-GY1;
-    ctx.strokeRect(left?wx(-gw):wx(WW),wy(GY1),ws(gw),ws(gh));
-    // Goal net (visual lines)
-    ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=ws(.06);
+    c.strokeRect(left?wx(-gw):wx(WW),wy(GY1),ws(gw),ws(gh));
+    c.strokeStyle='rgba(255,255,255,.12)';c.lineWidth=ws(.06);
     for(let k=0;k<=3;k++){
       const ny=GY1+(gh/3)*k;
-      ctx.beginPath();ctx.moveTo(left?wx(-gw):wx(WW),wy(ny));ctx.lineTo(left?wx(0):wx(WW),wy(ny));ctx.stroke();
+      c.beginPath();c.moveTo(left?wx(-gw):wx(WW),wy(ny));c.lineTo(left?wx(0):wx(WW),wy(ny));c.stroke();
     }
-    ctx.restore();
-    // Penalty spot
-    ctx.beginPath();ctx.arc(wx(left?PSX:WW-PSX),wy(PCY),ws(.35),0,Math.PI*2);ctx.fillStyle=LINE;ctx.fill();
-    // Penalty arc
-    ctx.beginPath();
-    ctx.arc(wx(left?PSX:WW-PSX),wy(PCY),ws(7),
-      left?-Math.PI*.55:Math.PI*.45,
-      left?Math.PI*.55:Math.PI*1.55);
-    ctx.strokeStyle='rgba(255,255,255,.3)';ctx.stroke();
+    // Filet vertical aussi (maillage plus riche)
+    for(let k=0;k<=4;k++){
+      const nx=(left? -gw : WW) + (gw/4)*k;
+      c.beginPath();c.moveTo(wx(nx),wy(GY1));c.lineTo(wx(nx),wy(GY2));c.stroke();
+    }
+    c.restore();
+    c.beginPath();c.arc(wx(left?PSX:WW-PSX),wy(PCY),ws(.35),0,Math.PI*2);c.fillStyle=LINE;c.fill();
+    c.beginPath();
+    c.arc(wx(left?PSX:WW-PSX),wy(PCY),ws(7),
+      left?-Math.PI*.55:Math.PI*.45, left?Math.PI*.55:Math.PI*1.55);
+    c.strokeStyle='rgba(255,255,255,.3)';c.stroke();
   });
-  // Corner arcs
+  // Arcs de corner
   [[0,0,0,Math.PI/2],[WW,0,Math.PI/2,Math.PI],[0,WH,-Math.PI/2,0],[WW,WH,Math.PI,-Math.PI/2]].forEach(([cx,cy,a1,a2])=>{
-    ctx.beginPath();ctx.arc(wx(cx),wy(cy),ws(1),a1,a2);ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=ws(.15);ctx.stroke();
+    c.beginPath();c.arc(wx(cx),wy(cy),ws(1),a1,a2);c.strokeStyle='rgba(255,255,255,.3)';c.lineWidth=ws(.15);c.stroke();
   });
-  ctx.restore();
+  c.restore();
+
+  // ── VIGNETTAGE ─────────────────────────────────────────────────────────
+  // Assombrit légèrement les bords → profondeur, et l'œil est guidé vers le
+  // centre du jeu. Radial doux, peu coûteux car pré-calculé une seule fois.
+  const cx0=oc.width/2, cy0=oc.height/2;
+  const rad=Math.max(oc.width,oc.height)*0.75;
+  const vg=c.createRadialGradient(cx0,cy0,rad*0.35,cx0,cy0,rad);
+  vg.addColorStop(0,'rgba(0,0,0,0)');
+  vg.addColorStop(1,'rgba(0,0,0,.28)');
+  c.fillStyle=vg;
+  c.fillRect(0,0,oc.width,oc.height);
+
+  _pitchCache=oc; _pitchW=oc.width; _pitchH=oc.height;
+}
+
+function drawPitch(){
+  // (Re)construit le cache si absent ou si la taille a changé, sinon simple blit.
+  if(!_pitchCache || _pitchW!==cvs.width || _pitchH!==cvs.height){
+    _buildPitchCache();
+  }
+  ctx.drawImage(_pitchCache,0,0);
 }
 
 function drawShadow(x,y,r){
@@ -401,16 +485,45 @@ function drawPlayer(T,p){
   const safeBob=isFinite(bob)?bob:0;
   const runSpd=Math.hypot(p.vx||0,p.vy||0);
 
+  // ── TRAÎNÉE DE VITESSE ─────────────────────────────────────────────────
+  // Quand un joueur sprinte, on laisse quelques pastilles fantômes derrière
+  // lui (échantillonnées sur ses positions récentes) pour donner une vraie
+  // sensation de vitesse. On garde un petit historique par joueur, mis à jour
+  // ici. Léger : 5 échantillons max, dessinés seulement au-dessus d'un seuil.
+  if(!p._trail) p._trail=[];
+  // On n'enregistre que si le joueur bouge assez, et on limite la longueur.
+  if(runSpd>2.2){
+    p._trail.push({x:px,y:py+safeBob});
+    if(p._trail.length>6) p._trail.shift();
+  } else if(p._trail.length){
+    p._trail.shift(); // se résorbe quand il ralentit
+  }
+  const SPRINT=window.gameMode==='11v11'?3.4:4.2;
+  if(runSpd>SPRINT && p._trail.length>1){
+    ctx.save();
+    for(let i=0;i<p._trail.length-1;i++){
+      const t=p._trail[i];
+      const a=(i/p._trail.length)*0.30; // plus ancien = plus transparent
+      ctx.globalAlpha=a;
+      ctx.fillStyle=T.color;
+      ctx.beginPath();ctx.arc(t.x,t.y,r*(0.5+0.5*i/p._trail.length),0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // Aura ring for ball holder
   if(p.hasBall){
     ctx.save();
-    const r1=r*.5,r2=r*2.4;
+    // Pulsation douce pour que le porteur soit toujours facile à suivre.
+    const pulse=0.5+0.5*Math.sin((performance.now()/1000)*4);
+    const r1=r*.5,r2=r*(2.4+pulse*0.5);
     if(r2>r1){
       const grd=ctx.createRadialGradient(px,py,r1,px,py,r2);
-      grd.addColorStop(0,T.color+'50');grd.addColorStop(1,T.color+'00');
+      grd.addColorStop(0,T.color+'55');grd.addColorStop(1,T.color+'00');
       ctx.fillStyle=grd;ctx.beginPath();ctx.arc(px,py+safeBob,r2,0,Math.PI*2);ctx.fill();
     }
-    ctx.strokeStyle=T.color+'80';ctx.lineWidth=ws(.16);ctx.beginPath();ctx.arc(px,py+safeBob,r*1.7,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=0.55+pulse*0.35;
+    ctx.strokeStyle=T.color;ctx.lineWidth=ws(.18);ctx.beginPath();ctx.arc(px,py+safeBob,r*1.7,0,Math.PI*2);ctx.stroke();
     ctx.restore();
   }
 
@@ -714,17 +827,31 @@ function drawBall(){
   const b=G.ball;
   const bx=wx(b.x),by=wy(b.y);
   const r=ws(1.0);
-  // Trail
+  const spd=Math.hypot(b.vx||0,b.vy||0);
+  // ── TRAÎNÉE (renforcée à haute vitesse) ────────────────────────────────
+  // Plus le ballon file vite, plus la traînée est marquée et lumineuse, ce
+  // qui rend les passes et tirs bien plus lisibles et dynamiques.
+  const fast=Math.min(1, spd/6);
   for(let i=1;i<b.trail.length;i++){
-    const a=(i/b.trail.length)*.45,lw=(i/b.trail.length)*ws(.4);
+    const a=(i/b.trail.length)*(.35+fast*.4);
+    const lw=(i/b.trail.length)*ws(.4)*(1+fast*0.8);
     ctx.beginPath();ctx.moveTo(wx(b.trail[i-1].x),wy(b.trail[i-1].y));
     ctx.lineTo(wx(b.trail[i].x),wy(b.trail[i].y));
-    ctx.strokeStyle=`rgba(255,255,255,${a})`;ctx.lineWidth=lw;ctx.stroke();
+    // Halo doré léger quand ça va vite, blanc sinon.
+    ctx.strokeStyle= fast>0.4 ? `rgba(255,235,150,${a})` : `rgba(255,255,255,${a})`;
+    ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
   }
   drawShadow(b.x,b.y,.75);
-  // Ball
+  // Ball — léger étirement dans le sens du mouvement à grande vitesse.
   const now=Date.now()*.001;
-  ctx.save();ctx.translate(bx,by);ctx.rotate(b.spin*.05+now);
+  ctx.save();ctx.translate(bx,by);
+  if(fast>0.25 && spd>0.01){
+    const ang=Math.atan2(b.vy,b.vx);
+    ctx.rotate(ang);
+    ctx.scale(1+fast*0.35, 1-fast*0.12); // squash & stretch
+    ctx.rotate(-ang);
+  }
+  ctx.rotate(b.spin*.05+now);
   ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
   ctx.fillStyle='#f2f2f2';ctx.fill();
   ctx.strokeStyle='#2a2a2a';ctx.lineWidth=ws(.07);ctx.stroke();
@@ -745,29 +872,53 @@ function drawParticles(){
     if(p.t==='s'){
       const sz=ws((p.sz||0.3)*Math.sqrt(a));
       if(sz>0&&isFinite(wx(p.x))&&isFinite(wy(p.y))){
+        const gx=wx(p.x), gy=wy(p.y);
+        // Lueur additive : un halo doux autour de l'étincelle donne un rendu
+        // « énergie » bien plus premium qu'un simple disque plein. Peu coûteux
+        // (un seul gradient radial par particule) et ça sublime tous les sorts.
+        ctx.globalCompositeOperation='lighter';
+        const glow=ctx.createRadialGradient(gx,gy,0,gx,gy,sz*2.6);
+        glow.addColorStop(0,(p.col||'#fff'));
+        glow.addColorStop(0.4,(p.col||'#fff')+'88');
+        glow.addColorStop(1,(p.col||'#fff')+'00');
+        ctx.globalAlpha=a*0.55;
+        ctx.fillStyle=glow;
+        ctx.beginPath();ctx.arc(gx,gy,sz*2.6,0,Math.PI*2);ctx.fill();
+        // Cœur brillant
+        ctx.globalAlpha=a;
         ctx.fillStyle=p.col||'#fff';
-        ctx.beginPath();ctx.arc(wx(p.x),wy(p.y),sz,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(gx,gy,sz,0,Math.PI*2);ctx.fill();
+        ctx.globalCompositeOperation='source-over';
       }
     } else if(p.t==='r'){
       const rr=ws(p.r||1);
       if(rr>0&&isFinite(wx(p.x))){
+        ctx.globalCompositeOperation='lighter';
         ctx.strokeStyle=p.col||'#fff';ctx.lineWidth=ws(.18)*a;
         ctx.beginPath();ctx.arc(wx(p.x),wy(p.y),rr,0,Math.PI*2);ctx.stroke();
+        ctx.globalCompositeOperation='source-over';
       }
     } else if(p.t==='lbl'){
       const fsz=ws(p.sz||1.4);
       if(fsz>=1&&p.tx&&isFinite(wx(p.x))&&isFinite(wy(p.y))){
-        ctx.fillStyle=p.col||'#fff';
-        ctx.font=`900 ${fsz}px sans-serif`;
+        const lx=wx(p.x), ly=wy(p.y)-(1-a)*ws(4);
+        ctx.font=`900 ${fsz}px Barlow Condensed,sans-serif`;
         ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillText(p.tx,wx(p.x),wy(p.y)-(1-a)*ws(4));
+        // Contour sombre pour la lisibilité + léger halo de la couleur.
+        ctx.lineWidth=ws(.12);
+        ctx.strokeStyle='rgba(0,0,0,.6)';
+        ctx.strokeText(p.tx,lx,ly);
+        ctx.fillStyle=p.col||'#fff';
+        ctx.fillText(p.tx,lx,ly);
       }
     } else if(p.t==='ring_expand'){
       const prog=1-a;const curR=ws(p.maxR||4)*prog;
       if(curR>0&&isFinite(wx(p.x))){
-        ctx.strokeStyle=p.col||'#fff';ctx.lineWidth=ws(.25)*(1-prog);
+        ctx.globalCompositeOperation='lighter';
+        ctx.strokeStyle=p.col||'#fff';ctx.lineWidth=ws(.3)*(1-prog);
         ctx.globalAlpha=a*0.9;
         ctx.beginPath();ctx.arc(wx(p.x),wy(p.y),curR,0,Math.PI*2);ctx.stroke();
+        ctx.globalCompositeOperation='source-over';
       }
     } else if(p.t==='beam'){
       const bx1=wx(p.x),by1=wy(p.y),bx2=wx(p.tx),by2=wy(p.ty);
@@ -785,8 +936,16 @@ function drawParticles(){
       const rad=ws((p.rad||2)*(a*.5+.5));
       const sx=wx(p.cx||0)+Math.cos(ang)*rad,sy=wy(p.cy||0)+Math.sin(ang)*rad;
       if(isFinite(sx)&&rad>0){
-        ctx.fillStyle=p.col||'#fff';
-        ctx.beginPath();ctx.arc(sx,sy,Math.max(.5,ws(.3)*a),0,Math.PI*2);ctx.fill();
+        const psz=Math.max(.5,ws(.3)*a);
+        ctx.globalCompositeOperation='lighter';
+        const glow=ctx.createRadialGradient(sx,sy,0,sx,sy,psz*2.4);
+        glow.addColorStop(0,(p.col||'#fff'));
+        glow.addColorStop(1,(p.col||'#fff')+'00');
+        ctx.globalAlpha=a*0.6;ctx.fillStyle=glow;
+        ctx.beginPath();ctx.arc(sx,sy,psz*2.4,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=a;ctx.fillStyle=p.col||'#fff';
+        ctx.beginPath();ctx.arc(sx,sy,psz,0,Math.PI*2);ctx.fill();
+        ctx.globalCompositeOperation='source-over';
       }
     } else if(p.t==='heart'){
       // Pink circle (safe fallback - no emoji)
@@ -847,6 +1006,7 @@ function injurePlayer(ti,p,fromContact){
   const newLvl=Math.min(maxLvl, fromContact?Math.min(3,p.injLevel+(Math.random()<0.35?2:1)):p.injLevel+1);
   p.injLevel=newLvl;
   p.injT=180;
+  G._injuryCount=(G._injuryCount||0)+1; // alimente le calcul du temps additionnel
   const msg=`${INJ_LABELS[newLvl]} — ${p.name} blessé !`;
   logEvent(msg,INJ_COLORS[newLvl]);
   spawnTackle(p.x,p.y);  // reuse tackle particles for injury effect
@@ -1232,6 +1392,39 @@ async function exportGif(){
   step();
 }
 
+// ── AFFICHAGE HORLOGE + BADGE TEMPS ADDITIONNEL ─────────────────────────
+// Au-delà de 45'/90', l'horloge affiche "45+2'" (style TV) au lieu de "47'".
+function _updateClockDisplay(){
+  const el=document.getElementById('hclock'); if(!el) return;
+  let txt=G.minute+"'";
+  if(G.half===1 && G.minute>=45) txt='45+'+(G.minute-45)+"'";
+  else if(G.half===2 && G.minute>=90) txt='90+'+(G.minute-90)+"'";
+  else if(G.half===3 && G.minute>=105) txt='105+'+(G.minute-105)+"'";
+  else if(G.half===4 && G.minute>=120) txt='120+'+(G.minute-120)+"'";
+  el.textContent=txt;
+}
+// Petit badge "+N" façon 4e arbitre, affiché à l'entrée du temps additionnel.
+function _showAddedTimeBadge(mins){
+  let el=document.getElementById('added-time-badge');
+  if(!el){
+    el=document.createElement('div');
+    el.id='added-time-badge';
+    el.style.cssText='position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:40;'
+      +'background:#f0c028;color:#1a1a1a;font-weight:800;font-family:Barlow Condensed,sans-serif;'
+      +'font-size:16px;padding:3px 12px;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.5);'
+      +'letter-spacing:1px;pointer-events:none;opacity:0;transition:opacity .3s';
+    const wrap=document.getElementById('canvas-wrap');
+    (wrap||document.body).appendChild(el);
+  }
+  el.textContent='+'+mins+' MIN';
+  el.style.display='block';
+  requestAnimationFrame(()=>{el.style.opacity='1';});
+}
+function _hideAddedTimeBadge(){
+  const el=document.getElementById('added-time-badge');
+  if(el){ el.style.opacity='0'; setTimeout(()=>{if(el)el.style.display='none';},350); }
+}
+
 function frame(ts){
   raf=requestAnimationFrame(frame);
   const rawDt=Math.min((ts-lastTs)/1000,.05);lastTs=ts;
@@ -1249,21 +1442,58 @@ function frame(ts){
     G.minTick+=rawDt*speedMult;
     if(G.minTick>=SEC_PER_MIN){
       G.minTick=0;G.minute++;
-      document.getElementById('hclock').textContent=G.minute+"'";
-      if(G.minute>=45&&G.half===1){
-        G.half=2;G.running=false;
-        G._firstHalfKickoffTi=G._kickoffTi??G.atkTi; // remember who kicked off 1st half
-        logEvent('⏸ Mi-temps !','#f0c028');
-        G.phase='HALFTIME';
-        G._halfLog=G.log.slice(); // sauvegarde journal 1re mi-temps
-        document.getElementById('hphase').textContent='MI-TEMPS';
-        if(_gifRec.active)stopGifRecord(true);
-        setTimeout(()=>{try{openHalftime();}catch(e){console.error('openHalftime failed:',e);document.getElementById('htmodal')?.classList.add('on');}},600/speedMult);
-      } else if(G.half===2&&G.minute>=90){
-        onFinalWhistle();
+      // Affichage horloge : au-delà de 45/90, on montre "45+2'" façon TV.
+      _updateClockDisplay();
+      // ── TEMPS ADDITIONNEL ────────────────────────────────────────────────
+      // À la 1re fois qu'on atteint 45' (mi-temps) ou 90' (fin), on calcule un
+      // temps additionnel réaliste plutôt que de couper net. Sources classiques
+      // d'arrêts de jeu : buts, blessures, cartons. On borne à 1..6 minutes.
+      const computeAdded=()=>{
+        const goals=(G.scores?.[0]||0)+(G.scores?.[1]||0);
+        const injuries=(G._injuryCount||0);
+        const cards=((G.fouls?.[0]||0)+(G.fouls?.[1]||0));
+        let m=1 + goals*0.4 + injuries*0.8 + cards*0.15 + Math.random()*1.2;
+        return Math.max(1, Math.min(6, Math.round(m)));
+      };
+      if(G.half===1){
+        if(G.minute>=45 && G._addedH1==null){
+          G._addedH1=computeAdded();
+          logEvent(`⏱ ${G._addedH1} min de temps additionnel`,'#f0c028');
+          _showAddedTimeBadge(G._addedH1);
+        }
+        if(G.minute>=45+(G._addedH1||0)){
+          G.half=2;G.running=false;
+          G._firstHalfKickoffTi=G._kickoffTi??G.atkTi;
+          logEvent('⏸ Mi-temps !','#f0c028');
+          G.phase='HALFTIME';
+          G._halfLog=G.log.slice();
+          document.getElementById('hphase').textContent='MI-TEMPS';
+          _hideAddedTimeBadge();
+          if(_gifRec.active)stopGifRecord(true);
+          setTimeout(()=>{try{openHalftime();}catch(e){console.error('openHalftime failed:',e);document.getElementById('htmodal')?.classList.add('on');}},600/speedMult);
+        } else if(G.minute<45){
+          updateStats();
+          renderInjuryPanel();
+        }
+      } else if(G.half===2){
+        if(G.minute>=90 && G._addedH2==null){
+          G._addedH2=computeAdded();
+          logEvent(`⏱ ${G._addedH2} min de temps additionnel`,'#f0c028');
+          _showAddedTimeBadge(G._addedH2);
+        }
+        if(G.minute>=90+(G._addedH2||0)){
+          _hideAddedTimeBadge();
+          onFinalWhistle();
+        } else if(G.minute<90){
+          updateStats();
+          renderInjuryPanel();
+        } else {
+          updateStats(); // pendant le temps additionnel, on continue de rafraîchir
+        }
       } else {
+        // Prolongations (half 3/4) : géré plus bas, pas de temps additionnel ici.
         updateStats();
-        renderInjuryPanel(); // maj chaque minute : épuisement qui évolue en direct
+        renderInjuryPanel();
       }
     }
     G.aiTick+=rawDt*speedMult;
@@ -1293,11 +1523,19 @@ function frame(ts){
 
   // Draw
   ctx.clearRect(0,0,cvs.width,cvs.height);
+  // Le terrain reste stable (évite les bords vides) ; seule la couche
+  // dynamique (joueurs, ballon, particules) subit la secousse. Plus confortable
+  // à regarder et sans artefact de bord.
   drawPitch();
+  const sh=_shakeOffset();
+  const shaking = (sh.x||sh.y);
+  if(shaking){ ctx.save(); ctx.translate(sh.x, sh.y); }
   drawGlow();
   teams.forEach(T=>T.players.forEach(p=>{if(p)drawPlayer(T,p);}));
   drawBall();
   drawParticles();
+  if(shaking) ctx.restore();
+  drawGoalFlash(); // flash plein écran, hors secousse
   drawFlash();
   _gifCaptureFrame(ts);
 }
@@ -1332,7 +1570,8 @@ function resetMatch(){
   showTacBtns(false);
   document.getElementById('prematch-modal')?.classList.remove('on');
   G.running=false;G._paused=false;G._celebrating=false;G._everStarted=false;
-  G.minute=0;G.half=1;G.scores=[0,0];G.shots=[0,0];G.tackles=[0,0];G.corners=[0,0];G.fouls=[0,0];
+  G.minute=0;G.half=1;G.scores=[0,0];G.shots=[0,0];G.tackles=[0,0];G.corners=[0,0];G.throwins=[0,0];G.fouls=[0,0];
+  G._addedH1=null;G._addedH2=null;G._injuryCount=0;_hideAddedTimeBadge();
   G.possT=[0,0];G.ptcl=[];G.phase='KICKOFF';G.phTick=0;G.minTick=0;G.aiTick=0;G.flash=0;G.log=[];
   G.leagueMode=false;G.penaltyWinner=undefined;G._kickoffTi=Math.random()<.5?0:1;G._firstHalfKickoffTi=G._kickoffTi;
   G._customScore=[0,0];G._singleHalf=false;

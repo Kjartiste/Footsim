@@ -428,7 +428,7 @@ let teams=[
 // ═══════════════════════════════════════════════════════════
 let G={
   running:false,minute:0,half:1,
-  scores:[0,0],shots:[0,0],tackles:[0,0],corners:[0,0],fouls:[0,0],possT:[0,0],
+  scores:[0,0],shots:[0,0],tackles:[0,0],corners:[0,0],throwins:[0,0],fouls:[0,0],possT:[0,0],
   ball:{x:PCX,y:PCY,vx:0,vy:0,trail:[],spin:0},
   owner:null,atkTi:0,
   phase:'KICKOFF',phTick:0,
@@ -454,6 +454,7 @@ const PHASE_LABELS={
   KICKOFF:"COUP D'ENVOI",BUILDUP:'CONSTRUCTION',ATTACK:'ATTAQUE',
   TRANSITION:'CONTRE-ATTAQUE',CORNER:'CORNER',FREEKICK:'COUP FRANC',
   GOALKICK:'DÉGAGEMENT',HALFTIME:'MI-TEMPS',END:'FIN DU MATCH',
+  THROWIN:'TOUCHE',
 };
 
 // ═══════════════════════════════════════════════════════════

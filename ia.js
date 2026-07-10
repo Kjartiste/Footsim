@@ -886,11 +886,43 @@ function aiDecide(dt=0.016){
       },650/speedMult);
       break;
     }
+    case 'THROWIN':{
+      if(G.phTick<4)return;
+      // Le lanceur : le coéquipier le plus proche du point de touche (celui qui
+      // va naturellement récupérer le ballon sur la ligne). On l'amène à la
+      // balle puis il remet en jeu vers une option ouverte.
+      const b=G.ball;
+      const mates=actP(ati).filter(p=>!p.red&&p.hp>0&&p.pos!=='GB');
+      if(!mates.length){setPhase('BUILDUP');return;}
+      const thrower=mates.reduce((best,p)=>{
+        const d=Math.hypot(p.x-b.x,p.y-b.y);
+        return d<Math.hypot(best.x-b.x,best.y-b.y)?p:best;
+      });
+      giveB(thrower);
+      // Cible de la remise : un coéquipier bien orienté vers l'avant et démarqué,
+      // sinon le plus proche. Une touche est une passe courte, sans risque de
+      // hors-jeu — on privilégie donc un relais sûr proche de la ligne.
+      const options=mates.filter(p=>p!==thrower);
+      let target=null;
+      if(typeof bestPassTarget==='function') target=bestPassTarget(thrower,ati,{forward:true,maxDist:WW*0.30});
+      if(!target && options.length){
+        target=options.reduce((best,p)=>{
+          const d=Math.hypot(p.x-thrower.x,p.y-thrower.y);
+          return d<Math.hypot(best.x-thrower.x,best.y-thrower.y)?p:best;
+        });
+      }
+      logEvent(`Touche de ${thrower.name}...`,teams[ati].color+'aa');
+      setTimeout(()=>{
+        if(!G.running||G.phase==='HALFTIME'||G.phase==='END')return;
+        if(target){
+          kickToP(thrower,target,1.5);
+          logEvent(`${thrower.name} remet pour ${target.name}`,teams[ati].color+'88');
+        }
+        setPhase('BUILDUP');
+      },420/speedMult);
+      break;
+    }
     case 'PENALTY_KICK':{
-      if(G.phTick<8)return;
-      const kicker=ownerP()||pick(byR(ati,'ATT','MO','MC'));
-      if(!kicker){setPhase('BUILDUP');return;}
-      if(kicker.stunT>0) kicker.stunT=0; // un pénalty force le tireur à se relever
       const scored=Math.random()<Math.min(0.97,Math.max(0.20,(0.55+((kicker.s.sht+(kicker._hm||0))/99)*.35-((gk?(gk.s.def+(gk._hm||0)):50)/99)*.20)));
       G.shots[ati]++;kicker.mSh++;
       kickTo(oppGoalX,PCY+rng(-3,3),3.0);

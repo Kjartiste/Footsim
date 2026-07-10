@@ -2174,7 +2174,7 @@ function renderStats(){
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase">${teams[ti].name}</div>
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:46px;font-weight:900;color:${teams[ti].color};line-height:1">${G.scores[ti]}</div>
       <div style="font-size:10px;color:var(--muted)">Possession <b style="color:${teams[ti].color}">${Math.round(G.possT[ti]/t*100)}%</b></div>
-      <div style="font-size:10px;color:var(--muted)">Tirs <b style="color:var(--text)">${G.shots[ti]}</b> · Corners <b>${G.corners[ti]}</b></div>
+      <div style="font-size:10px;color:var(--muted)">Tirs <b style="color:var(--text)">${G.shots[ti]}</b> · Corners <b>${G.corners[ti]}</b> · Touches <b>${(G.throwins&&G.throwins[ti])||0}</b></div>
     </div>`).join('')}
   </div>`;
   [0,1].forEach(ti=>{
