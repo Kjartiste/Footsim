@@ -33,7 +33,8 @@ const PRESET_TEAMS = [
   // RC Valcourt : grand club ambitieux de la capitale.
   {
     presetId:'rc_valcourt', name:'RC Valcourt', color:'#2e8b8b',
-    country:'Valcourt', kind:'club', league:'Ligue Valorienne', strat:'321',
+    nation:'Valoria', region:'Valcourt', tier:'pro',
+    country:'Valoria', kind:'club', league:'Ligue Valorienne', strat:'321',
     players:[
       _mk('Yuki','GB',[64,32,74,80,60,70]),
       _mk('Marko','DC',[70,44,80,82,64,72]),
@@ -48,7 +49,8 @@ const PRESET_TEAMS = [
   // aujourd'hui modeste mais fier. Effectif volontairement plus faible.
   {
     presetId:'as_horizon', name:'AS Horizon', color:'#c0392b',
-    country:'Valcourt', kind:'club', league:'Ligue Valorienne', strat:'321',
+    nation:'Valoria', region:'Valcourt', tier:'pro',
+    country:'Valoria', kind:'club', league:'Ligue Valorienne', strat:'321',
     players:[
       _mk('Elias','GB',[58,28,66,76,54,64]),
       _mk('Tariq','DC',[62,40,70,78,56,66]),
@@ -64,7 +66,8 @@ const PRESET_TEAMS = [
   // FC Brumefer : dur au mal, bloc bas, joueurs forgés par l'adversité.
   {
     presetId:'fc_brumefer', name:'FC Brumefer', color:'#7a5c3a',
-    country:'Brumefer', kind:'club', league:'Ligue Valorienne', strat:'321',
+    nation:'Valoria', region:'Brumefer', tier:'pro',
+    country:'Valoria', kind:'club', league:'Ligue Valorienne', strat:'321',
     players:[
       _mk('Viktor','GB',[60,30,76,84,52,76]),
       _mk('Dragan','DC',[64,42,84,88,54,80]),
@@ -79,6 +82,7 @@ const PRESET_TEAMS = [
   // ── SÉLECTION NATIONALE · Valoria ──────────────────────────────────────
   {
     presetId:'sel_valoria', name:'Sélection de Valoria', color:'#1f6f6f',
+    nation:'Valoria', region:null, tier:'national_team',
     country:'Valoria', kind:'nation', league:'Sélections', strat:'321',
     players:[
       _mk('Yuki','GB',[66,34,78,84,62,76]),
@@ -120,6 +124,7 @@ function _presetToSavedTeam(preset){
     _preset: true, _presetId: preset.presetId,
     // Métadonnées de filtrage pour l'onglet sélecteur
     country: preset.country, kind: preset.kind, league: preset.league,
+    nation: preset.nation||preset.country, region: preset.region||null, tier: preset.tier||'pro',
   };
 }
 
@@ -163,6 +168,7 @@ function presetCatalog(){
   return PRESET_TEAMS.map(p=>({
     presetId:p.presetId, name:p.name, color:p.color,
     country:p.country, kind:p.kind, league:p.league,
+    nation:p.nation||p.country, region:p.region||null, tier:p.tier||'pro',
   }));
 }
 
