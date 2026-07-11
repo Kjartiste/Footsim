@@ -957,6 +957,19 @@ function renderCupSetup(el){
       <button onclick="setGameMode('7v7');renderCup()" style="flex:1;padding:7px;border-radius:8px;border:2px solid ${gameMode==='7v7'?'var(--gold)':'var(--b1)'};background:${gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)'};color:${gameMode==='7v7'?'var(--gold)':'var(--muted)'};font-size:12px;font-weight:900;cursor:pointer">⚽ 7v7</button>
       <button onclick="setGameMode('11v11');renderCup()" style="flex:1;padding:7px;border-radius:8px;border:2px solid ${gameMode==='11v11'?'#18c860':'var(--b1)'};background:${gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)'};color:${gameMode==='11v11'?'#18c860':'var(--muted)'};font-size:12px;font-weight:900;cursor:pointer">⚽ 11v11</button>
     </div>
+    ${(typeof VALORIA_DIVISIONS!=='undefined')?`
+    <div style="border:1px solid rgba(240,192,40,.3);border-radius:10px;padding:10px;margin-bottom:12px;background:linear-gradient(180deg,rgba(240,192,40,.08),transparent)">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:1px;color:var(--gold);margin-bottom:2px">🏆 COUPES DE VALORIA</div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:8px">Compétitions à élimination directe préremplies avec les équipes de la nation.</div>
+      <button class="btn btng" style="width:100%;justify-content:center;font-size:12px;padding:8px;margin-bottom:6px" onclick="startValoriaCup('national')">🏆 Coupe de Valoria <span style="opacity:.7;font-size:10px">— toutes les équipes du pays</span></button>
+      <div class="slbl" style="margin-bottom:4px">Coupe de division</div>
+      <div style="display:flex;gap:5px">
+        <select class="inp" id="valoria-cup-div" style="flex:1">
+          ${Object.entries(VALORIA_DIVISIONS).sort((a,b)=>((a[1].tier==='pro'?-1:0))-((b[1].tier==='pro'?-1:0))||a[1].order-b[1].order).map(([id,d])=>`<option value="${id}">${d.name}${d.region?' ('+d.region+')':''}</option>`).join('')}
+        </select>
+        <button class="btn btng" style="padding:6px 12px;font-size:12px" onclick="startValoriaCup('division', document.getElementById('valoria-cup-div').value)">Lancer</button>
+      </div>
+    </div>`:''}
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;letter-spacing:2px;color:var(--gold);margin-bottom:10px">NOUVELLE COUPE ${gameMode==='11v11'?'<span style="color:#18c860;font-size:11px">11v11</span>':'<span style="font-size:11px">7v7</span>'}</div>
     <div class="slbl" style="margin-bottom:5px">Format des règles</div>
     <select class="inp" id="cup-fmt-sel" style="width:100%;margin-bottom:4px" onchange="_cupFmt=this.value;var _fd=document.getElementById('cup-fmt-desc');if(_fd)_fd.textContent=CUP_FORMATS.find(f=>f.id===this.value)?.desc||'';var _hg=['groups_ko','round_robin'].includes(CUP_FORMATS.find(f=>f.id===this.value)?.type);var _gc=document.getElementById('cup-groups-cfg');if(_gc)_gc.style.display=_hg?'block':'none';" >

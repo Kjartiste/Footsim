@@ -2687,7 +2687,7 @@ function renderTeamSelectPage(){
   if(_teamSel.kind){ parts.push(_teamSel.step==='country'?'<b style="color:#fff">Pays</b>':crumb(_teamSel.country||'Pays','country')); }
   if(_teamSel.country && _teamSel.kind==='club'){ parts.push(_teamSel.step==='tier'?'<b style="color:#fff">Niveau</b>':crumb(_teamSel.tier?(TIER_LABELS[_teamSel.tier]||_teamSel.tier):'Niveau','tier')); }
   if(_teamSel.tier==='regional' || _teamSel.tier==='district'){ parts.push(_teamSel.step==='region'?'<b style="color:#fff">Région</b>':crumb(_teamSel.region||'Région','region')); }
-  if(_teamSel.tier==='regional' && _teamSel.region){ const dn=(_teamSel.division&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[_teamSel.division])?window.VALORIA_DIVISIONS[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dn,'division')); }
+  if((_teamSel.tier==='regional'||_teamSel.tier==='district') && _teamSel.region){ const dn=(_teamSel.division&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[_teamSel.division])?window.VALORIA_DIVISIONS[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dn,'division')); }
   const breadcrumb = `<div style="font-size:10px;color:var(--muted);margin-bottom:12px">${parts.join(' <span style="color:#444">›</span> ')}</div>`;
 
   const title = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2828,7 +2828,7 @@ function teamSelPick(key,val){
   if(key==='kind'){ _teamSel.step='country'; }
   else if(key==='country'){ _teamSel.step = _teamSel.kind==='nation' ? 'teams' : 'tier'; }
   else if(key==='tier'){ _teamSel.step = (val==='regional'||val==='district') ? 'region' : 'teams'; }
-  else if(key==='region'){ _teamSel.step = _teamSel.tier==='regional' ? 'division' : 'teams'; }
+  else if(key==='region'){ _teamSel.step = (_teamSel.tier==='regional'||_teamSel.tier==='district') ? 'division' : 'teams'; }
   else if(key==='division'){ _teamSel.step='teams'; }
   renderTeamSelectPage();
 }
@@ -3361,6 +3361,18 @@ function getCupTeamData(id){
     // Generate players on-demand if they haven't been edited yet
     if(!npc.players?.length){const t=mkCupNPCTeamData(npc,lt.cupNPCIdx);npc.players=t.players;npc.bench=t.bench;npc.reserves=t.reserves;saveCupNPCPool();}
     return{...npc,name:lt.name||npc.name,color:lt.color||npc.color};
+  }
+  if(lt.valoriaName){
+    // Équipe de division Valoria : effectif généré à la volée (mis en cache sur
+    // la référence de coupe), niveau selon le palier, blason déterministe.
+    if(!lt._gen){
+      const vt=(window.VALORIA_TEAMS||[]).find(t=>t.name===lt.valoriaName);
+      const ovr = lt.tier==='pro'?70 : lt.tier==='regional'?60 : 52;
+      const g = mkCupNPCTeamData({name:lt.name,color:lt.color,ovr}, Math.abs(_hashStr(lt.valoriaName))%9999);
+      lt._gen = { name:lt.name, color:lt.color, strat:'321',
+        badge:(vt&&vt.badge)||null, players:g.players, bench:g.bench, reserves:g.reserves };
+    }
+    return lt._gen;
   }
   ensureAIData();return leagueAIData[lt.aIdx]||null;
 }
@@ -5819,6 +5831,46 @@ function npcSetPlayerPos(pi,src,v){npcPosLive(_editingNPCIdx,src,pi,v);}
 // npcApplyOVR(i) est la vraie fonction - alias supprimé
 
 
+// ── COUPES STRUCTURÉES DE VALORIA ────────────────────────────────────────
+// Construit la liste d'équipes d'une coupe à partir des équipes de Valoria.
+//  • 'national' : toutes les équipes du pays.
+//  • 'division' : uniquement les équipes de la division donnée.
+// L'équipe du joueur (Rouges) est incluse en tête pour qu'elle participe.
+function buildValoriaCupTeams(scope, divisionId){
+  const src = window.VALORIA_TEAMS || [];
+  const pool = scope==='division' ? src.filter(t=>t.division===divisionId) : src.slice();
+  const allT=[{id:0,name:teams[0].name,color:teams[0].color,isUser:true,uIdx:0}];
+  pool.forEach(vt=>{
+    allT.push({ id:allT.length, name:vt.name, color:vt.color,
+      valoriaName:vt.name, tier:vt.tier, division:vt.division });
+  });
+  return allT;
+}
+
+// Lance une coupe Valoria (nationale ou de division) via le moteur KO existant
+// (buildKOBracketForN gère n'importe quel N grâce aux byes).
+function startValoriaCup(scope, divisionId){
+  if(typeof teams==='undefined' || !teams[0]){ return; }
+  const tList = buildValoriaCupTeams(scope, divisionId);
+  if(tList.length<4){ if(typeof logEvent==='function') logEvent('❌ Pas assez d\'équipes pour une coupe.','#e02030'); return; }
+  const fmt = (typeof CUP_FORMATS!=='undefined') ? (CUP_FORMATS.find(f=>f.id==='knockout')||CUP_FORMATS.find(f=>f.type==='knockout')||CUP_FORMATS[0]) : {id:'knockout',type:'knockout',legs:1,singleFinal:true};
+  const ids = [...tList].sort(()=>Math.random()-.5).map(t=>t.id);
+  const divName = (scope==='division' && window.VALORIA_DIVISIONS && window.VALORIA_DIVISIONS[divisionId]) ? window.VALORIA_DIVISIONS[divisionId].name : '';
+  cupState = {
+    formatId:fmt.id, format:fmt, teams:tList, phase:'knockout',
+    champion:null, thirdPlaceMatch:null, playerStats:{},
+    name: scope==='national' ? 'Coupe de Valoria' : ('Coupe — '+divName),
+    valoriaScope: scope, valoriaDivision: divisionId||null,
+  };
+  cupState.bracket = buildKOBracketForN(ids, fmt.legs, fmt.singleFinal);
+  if(fmt.thirdPlace) cupState.thirdPlaceMatch = (typeof mkTie==='function')?mkTie(null,null,1):null;
+  cupCurrentMatch=null;
+  saveCup();
+  renderCup();
+  if(typeof logEvent==='function') logEvent('🏆 '+cupState.name+' — '+tList.length+' équipes !', '#f0c028');
+}
+if(typeof window!=='undefined'){ Object.assign(window,{startValoriaCup,buildValoriaCupTeams}); }
+
 function buildCupTeams(count,savedIdxs,npcSel){
   ensureAIData();
   _ensureNPCIds();
@@ -7131,7 +7183,19 @@ function endCareerSeasonDirector(){
   });
   const myPos = sorted.findIndex(function(s){ return s.isPlayer; }) + 1;
   const total = sorted.length;
-  if(myPos <= 2){
+  // ── RÈGLES VALORIA (promo/relégation détaillées) ───────────────────────
+  // Si la carrière se déroule en Valoria et que le moteur de saisons dédié est
+  // chargé, on applique les règles complètes (R3, play-offs district, équité
+  // R1→Pro). Sinon on garde la logique générique (top 2 = montée).
+  if((C.nation==='valoria') && typeof valoriaResolvePlayerSeason==='function' && C.club && C.club.level){
+    try{
+      const res = valoriaResolvePlayerSeason(C, myPos, total);
+      if(res){
+        if(res.newLevel && res.newLevel!==C.club.level){ C.club.level = res.newLevel; }
+        if(res.message) logEvent(res.message, C.club.color||'#f0c028');
+      }
+    }catch(e){ console.error('valoriaResolvePlayerSeason:',e); }
+  } else if(myPos <= 2){
     const pyramid = WORLDS.getPyramid(C.nation||'panthalassa');
     const levels = pyramid.map(function(p){ return p.id; });
     const idx = levels.indexOf(C.club.level);
