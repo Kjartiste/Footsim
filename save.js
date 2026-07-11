@@ -1692,6 +1692,7 @@ window.addEventListener('orientationchange',()=>setTimeout(resize,200));
 document.getElementById('canvas-wrap')?.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 loadProfiles();loadLeague();loadSavedTeams();
 if(typeof injectPresetTeams==='function'){ try{ injectPresetTeams(); }catch(e){ console.error('injectPresetTeams:',e); } }
+if(typeof ensureValoriaBadges==='function'){ try{ ensureValoriaBadges(); }catch(e){ console.error('ensureValoriaBadges:',e); } }
 loadCup();loadCareerV2();
 renderTB(0);renderTB(1);renderTactics();syncHUD();renderTacSliders(0);renderTacSliders(1);renderPlayerRoles(0);renderPlayerRoles(1);
 resize();placeKickoff(0);

@@ -514,10 +514,17 @@ function roleTarget(ti,p,pi){
           let tx = lerp(lineAnchor, pred.x, followBallDC + effectivePress*0.18);
           if(G._defLineX && G._defLineX[ti]!=null) tx=lerp(tx,G._defLineX[ti],0.18);
           const is222dc = teams[ti].strat==='222';
-          const dcCentral = clamp(0.35+compactPull*0.7, 0.05, 0.95);
+          // ── ANCRAGE LATÉRAL SUR LA FORMATION ────────────────────────────
+          // AVANT : le y du DC dérivait depuis p.y (position COURANTE) vers le
+          // ballon → en suivant un ballon excentré, deux DC pouvaient glisser
+          // jusqu'aux poteaux de corner sans jamais revenir au centre.
+          // MAINTENANT : ancré sur fb.y (place de formation, centrale pour un
+          // DC), avec seulement une LÉGÈRE dérive vers le ballon. Le DC reste
+          // dans son couloir central quel que soit le côté du ballon.
+          const dcTrack = clamp(0.18 + compactPull*0.15, 0.08, 0.35);
           const dcY = is222dc
-            ? lerp(p.y, PCY, 0.25)
-            : lerp(p.y, lerp(pred.y,PCY,dcCentral), 0.35);
+            ? lerp(fb.y, PCY, 0.20)
+            : lerp(fb.y, pred.y, dcTrack);
           return{x:clamp(tx+rolePushFwd*fwd+wX*.3,2,WW-2),
                  y:clamp(dcY+wY*.25,2,WH-2)};
         }

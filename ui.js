@@ -2589,7 +2589,7 @@ const TIER_LABELS = {
 // Quelles régions possèdent un étage District (structure du lore Valoria).
 const REGION_HAS_DISTRICT = { 'Valcourt': true, 'Brumefer': false };
 
-let _teamSel = { ti:0, step:'kind', kind:null, country:null, tier:null, region:null };
+let _teamSel = { ti:0, step:'kind', kind:null, country:null, tier:null, region:null, division:null };
 
 function renderTeamSelectPage(){
   const el=document.getElementById('teamsel-out'); if(!el) return;
@@ -2608,6 +2608,7 @@ function renderTeamSelectPage(){
   if(_teamSel.kind){ parts.push(_teamSel.step==='country'?'<b style="color:#fff">Pays</b>':crumb(_teamSel.country||'Pays','country')); }
   if(_teamSel.country && _teamSel.kind==='club'){ parts.push(_teamSel.step==='tier'?'<b style="color:#fff">Niveau</b>':crumb(_teamSel.tier?(TIER_LABELS[_teamSel.tier]||_teamSel.tier):'Niveau','tier')); }
   if(_teamSel.tier==='regional' || _teamSel.tier==='district'){ parts.push(_teamSel.step==='region'?'<b style="color:#fff">Région</b>':crumb(_teamSel.region||'Région','region')); }
+  if(_teamSel.tier==='regional' && _teamSel.region){ const dn=(_teamSel.division&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[_teamSel.division])?window.VALORIA_DIVISIONS[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dn,'division')); }
   const breadcrumb = `<div style="font-size:10px;color:var(--muted);margin-bottom:12px">${parts.join(' <span style="color:#444">›</span> ')}</div>`;
 
   const title = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2637,38 +2638,49 @@ function renderTeamSelectPage(){
   }
   else if(_teamSel.step==='tier'){
     const pool=cat.filter(t=>t.kind==='club' && t.nation===_teamSel.country);
-    const tiers=[...new Set(pool.map(t=>t.tier))];
+    // Compte des équipes de division Valoria par palier (pour ce pays).
+    const vteams=(_teamSel.country==='Valoria' && window.VALORIA_TEAMS)?window.VALORIA_TEAMS:[];
+    const countTier=(tr)=> pool.filter(t=>t.tier===tr).length + vteams.filter(t=>t.tier===tr).length;
     const order=['pro','regional','district'];
-    order.filter(tr=>tiers.includes(tr)).forEach(tr=>{
-      const n=pool.filter(t=>t.tier===tr).length;
+    order.forEach(tr=>{
+      const n=countTier(tr);
+      if(n===0){
+        if(tr==='district' && !Object.values(REGION_HAS_DISTRICT).some(Boolean)) return;
+        body += `<div style="width:100%;padding:12px 16px;border-radius:12px;border:2px dashed var(--b1);background:transparent;color:var(--muted);margin-bottom:8px;font-size:12px;opacity:.6">${TIER_LABELS[tr]} <span style="font-size:10px">— à venir</span></div>`;
+        return;
+      }
       const sub = tr==='pro' ? 'Ligue nationale — toutes régions' : tr==='regional' ? 'Championnats régionaux, par région' : 'Divisions de district';
       body += bigBtn(TIER_LABELS[tr]||tr, sub+' · '+n+' équipe'+(n>1?'s':''), `teamSelPick('tier','${tr}')`);
-    });
-    // Étages présents dans la structure mais encore vides — affichés pour montrer
-    // la hiérarchie (à remplir plus tard).
-    ['regional','district'].forEach(tr=>{
-      if(!tiers.includes(tr)){
-        if(tr==='district' && !Object.values(REGION_HAS_DISTRICT).some(Boolean)) return;
-        body += `<div style="width:100%;padding:12px 16px;border-radius:12px;border:2px dashed var(--b1);background:transparent;color:var(--muted);margin-bottom:8px;font-size:12px;opacity:.6">
-          ${TIER_LABELS[tr]} <span style="font-size:10px">— à venir (aucune équipe pour l'instant)</span></div>`;
-      }
     });
   }
   else if(_teamSel.step==='region'){
     const pool=cat.filter(t=>t.kind==='club' && t.nation===_teamSel.country && t.tier===_teamSel.tier);
-    let regions=[...new Set(pool.map(t=>t.region).filter(Boolean))];
+    const vteams=(_teamSel.country==='Valoria' && window.VALORIA_TEAMS)?window.VALORIA_TEAMS.filter(t=>t.tier===_teamSel.tier):[];
+    let regions=[...new Set(pool.map(t=>t.region).concat(vteams.map(t=>t.region)).filter(Boolean))];
     if(_teamSel.tier==='district') regions=regions.filter(r=>REGION_HAS_DISTRICT[r]);
     if(!regions.length){
       const known=Object.keys(REGION_HAS_DISTRICT).filter(r=>_teamSel.tier!=='district'||REGION_HAS_DISTRICT[r]);
       known.forEach(r=>{ body += `<div style="width:100%;padding:12px 16px;border-radius:12px;border:2px dashed var(--b1);color:var(--muted);margin-bottom:8px;font-size:12px;opacity:.6">${r} <span style="font-size:10px">— à venir</span></div>`; });
       if(!known.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune région disponible.</div>';
     }
-    regions.forEach(r=>{
-      const n=pool.filter(t=>t.region===r).length;
+    regions.sort().forEach(r=>{
+      const n=pool.filter(t=>t.region===r).length + vteams.filter(t=>t.region===r).length;
       body += bigBtn('Région de '+r, n+' équipe'+(n>1?'s':''), `teamSelPick('region','${r.replace(/'/g,"\\'")}')`);
     });
   }
+  else if(_teamSel.step==='division'){
+    // Sous-étape régional : choisir R1 ou R2 dans la région.
+    const divs=(window.VALORIA_DIVISIONS)?Object.entries(window.VALORIA_DIVISIONS)
+      .filter(([id,d])=>d.region===_teamSel.region && d.tier===_teamSel.tier)
+      .sort((a,b)=>a[1].order-b[1].order):[];
+    if(!divs.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune division.</div>';
+    divs.forEach(([id,d])=>{
+      const n=(window.valoriaTeamsByDivision?window.valoriaTeamsByDivision(id):[]).length;
+      body += bigBtn(d.name, n+' équipe'+(n>1?'s':''), `teamSelPick('division','${id}')`);
+    });
+  }
   else if(_teamSel.step==='teams'){
+    // Presets à effectif fixe correspondant aux filtres.
     let pool=cat.filter(t=>{
       if(_teamSel.kind==='nation') return t.kind==='nation' && t.nation===_teamSel.country;
       if(t.kind!=='club' || t.nation!==_teamSel.country) return false;
@@ -2676,13 +2688,35 @@ function renderTeamSelectPage(){
       if((_teamSel.tier==='regional'||_teamSel.tier==='district') && _teamSel.region && t.region!==_teamSel.region) return false;
       return true;
     });
-    if(!pool.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune équipe ici pour l\'instant — à remplir plus tard.</div>';
+    // Équipes de division Valoria (générées à la volée) correspondant aux filtres.
+    let vpool=[];
+    if(_teamSel.kind!=='nation' && _teamSel.country==='Valoria' && window.VALORIA_TEAMS){
+      vpool=window.VALORIA_TEAMS.filter(t=>{
+        if(_teamSel.tier && t.tier!==_teamSel.tier) return false;
+        if(_teamSel.division) return t.division===_teamSel.division;
+        if(_teamSel.tier==='district' && _teamSel.region) return t.region===_teamSel.region;
+        if(_teamSel.tier==='pro') return true;
+        return false;
+      });
+    }
+    if(!pool.length && !vpool.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune équipe ici.</div>';
+    // D'abord les presets (effectif fixe), puis les équipes de division.
     pool.forEach(t=>{
-      const sub = t.kind==='nation' ? '🏳️ Sélection · '+t.nation : '⚽ '+(t.region?('Région '+t.region):t.nation)+' · '+(TIER_LABELS[t.tier]||t.league);
+      const sub = t.kind==='nation' ? '🏳️ Sélection · '+t.nation : '⭐ Effectif fixe · '+(TIER_LABELS[t.tier]||t.league);
+      const badgeHTML=(t.badge&&typeof BadgeCache!=='undefined')?`<img src="${BadgeCache.dataURI(t.badge,36)}" width="36" height="36" style="object-fit:contain">`:`<div style="width:36px;height:36px;border-radius:50%;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
       body += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:11px;background:var(--panel);margin-bottom:8px">
-          <div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>
+          ${badgeHTML}
           <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px;color:var(--text)">${t.name}</div><div style="font-size:10px;color:var(--muted)">${sub}</div></div>
           <button onclick="teamSelLoad('${t.presetId}')" style="padding:7px 15px;border-radius:8px;cursor:pointer;font-weight:800;font-size:12px;border:none;background:${t.color};color:#fff;flex-shrink:0">Choisir</button>
+        </div>`;
+    });
+    vpool.forEach(t=>{
+      const divName=(window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[t.division])?window.VALORIA_DIVISIONS[t.division].name:'';
+      const badgeHTML=(t.badge&&typeof BadgeCache!=='undefined')?`<img src="${BadgeCache.dataURI(t.badge,36)}" width="36" height="36" style="object-fit:contain">`:`<div style="width:36px;height:36px;border-radius:50%;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
+      body += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:11px;background:var(--panel);margin-bottom:8px">
+          ${badgeHTML}
+          <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px;color:var(--text)">${t.name}</div><div style="font-size:10px;color:var(--muted)">🏟️ ${divName}</div></div>
+          <button onclick="teamSelLoadValoria('${(t.name||'').replace(/'/g,"\\'")}')" style="padding:7px 15px;border-radius:8px;cursor:pointer;font-weight:800;font-size:12px;border:none;background:${t.color};color:#fff;flex-shrink:0">Choisir</button>
         </div>`;
     });
   }
@@ -2700,10 +2734,11 @@ function renderTeamSelectPage(){
 function teamSelTarget(ti){ _teamSel.ti=ti; renderTeamSelectPage(); }
 function teamSelGoto(step){
   _teamSel.step=step;
-  if(step==='kind'){ _teamSel.kind=null; _teamSel.country=null; _teamSel.tier=null; _teamSel.region=null; }
-  else if(step==='country'){ _teamSel.country=null; _teamSel.tier=null; _teamSel.region=null; }
-  else if(step==='tier'){ _teamSel.tier=null; _teamSel.region=null; }
-  else if(step==='region'){ _teamSel.region=null; }
+  if(step==='kind'){ _teamSel.kind=null; _teamSel.country=null; _teamSel.tier=null; _teamSel.region=null; _teamSel.division=null; }
+  else if(step==='country'){ _teamSel.country=null; _teamSel.tier=null; _teamSel.region=null; _teamSel.division=null; }
+  else if(step==='tier'){ _teamSel.tier=null; _teamSel.region=null; _teamSel.division=null; }
+  else if(step==='region'){ _teamSel.region=null; _teamSel.division=null; }
+  else if(step==='division'){ _teamSel.division=null; }
   renderTeamSelectPage();
 }
 function teamSelPick(key,val){
@@ -2711,7 +2746,8 @@ function teamSelPick(key,val){
   if(key==='kind'){ _teamSel.step='country'; }
   else if(key==='country'){ _teamSel.step = _teamSel.kind==='nation' ? 'teams' : 'tier'; }
   else if(key==='tier'){ _teamSel.step = (val==='regional'||val==='district') ? 'region' : 'teams'; }
-  else if(key==='region'){ _teamSel.step='teams'; }
+  else if(key==='region'){ _teamSel.step = _teamSel.tier==='regional' ? 'division' : 'teams'; }
+  else if(key==='division'){ _teamSel.step='teams'; }
   renderTeamSelectPage();
 }
 function teamSelLoad(presetId){
@@ -2722,8 +2758,40 @@ function teamSelLoad(presetId){
   _teamSel.ti = loadedInto===0 ? 1 : 0;
   renderTeamSelectPage();
 }
+
+// Charge une équipe de division Valoria (VALORIA_TEAMS) dans un créneau. Son
+// effectif est généré à la volée, avec un niveau (OVR) échelonné selon le
+// palier : pro > régional > district. Le blason (déterministe) est appliqué.
+function loadValoriaTeamIntoSlot(name, ti){
+  const vt=(window.VALORIA_TEAMS||[]).find(t=>t.name===name);
+  if(!vt){ logEvent('❌ Équipe introuvable','#e02030'); return; }
+  const tierOvr = vt.tier==='pro'?70 : vt.tier==='regional'?60 : 52; // district plus faible
+  const gen = mkCupNPCTeamData({name:vt.name,color:vt.color,ovr:tierOvr}, Math.abs(_hashStr(vt.name))%9999);
+  teams[ti].name = vt.name;
+  teams[ti].color = vt.color;
+  teams[ti].img = '';
+  teams[ti]._img = null;
+  teams[ti].badge = vt.badge || (typeof BadgeGenerator!=='undefined'? BadgeGenerator.fromSeed(vt.name):null);
+  teams[ti].strat = '321';
+  teams[ti].players = gen.players;
+  teams[ti].bench = gen.bench;
+  teams[ti].reserves = gen.reserves;
+  try{ renderTB(ti); }catch(e){}
+  try{ syncHUD(); }catch(e){}
+  try{ if(typeof applyFormationRoles==='function') applyFormationRoles(ti); }catch(e){}
+  try{ if(typeof placeKickoff==='function') placeKickoff(G._kickoffTi!==undefined?G._kickoffTi:0); }catch(e){}
+  _presetToast = { name:vt.name, col:vt.color, into:ti, t:Date.now() };
+  logEvent(`📚 ${vt.name} chargée !`, vt.color);
+}
+function _hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return h; }
+function teamSelLoadValoria(name){
+  const into=_teamSel.ti;
+  loadValoriaTeamIntoSlot(name, into);
+  _teamSel.ti = into===0?1:0;
+  renderTeamSelectPage();
+}
 if(typeof window!=='undefined'){
-  Object.assign(window,{renderTeamSelectPage,teamSelTarget,teamSelGoto,teamSelPick,teamSelLoad});
+  Object.assign(window,{renderTeamSelectPage,teamSelTarget,teamSelGoto,teamSelPick,teamSelLoad,teamSelLoadValoria,loadValoriaTeamIntoSlot});
 }
 
 // ═══════════════════════════════════════════════════════════
