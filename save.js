@@ -210,6 +210,12 @@ function startCareerDirector(regionId, clubId, nationId){
 
   const clubName  = clubId || region.clubNames[0];
   const clubColor = window._careerColor || region.color;
+  // Si on reprend un club existant de Valoria, on récupère son blason.
+  let clubBadge = null;
+  if(nationId==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
+    const vt=VALORIA_TEAMS.find(function(t){ return t.name===clubName; });
+    if(vt && vt.badge) clubBadge = vt.badge;
+  }
   const startLevel = region.pyramid.district_groups > 0 ? 'dh' :
                      region.pyramid.has_r3 ? 'r3' : 'r2';
   const budget = WORLDS.startBudget(nationId, regionId);
@@ -235,6 +241,7 @@ function startCareerDirector(regionId, clubId, nationId){
       region: regionId,
       nation: nationId,
       color: clubColor,
+      badge: clubBadge,
       level: startLevel,
       group: 0,
       budget: budget,
@@ -283,12 +290,14 @@ function startCareerDirector(regionId, clubId, nationId){
 
 
 // ── Initialisation Carrière Manager ──────────────────────────────────
-function startCareerManager(regionId){
-  const region = WORLDS.getRegion('panthalassa', regionId);
+function startCareerManager(regionId, nationId){
+  nationId = nationId || window._careerNation || 'panthalassa';
+  const region = WORLDS.getRegion(nationId, regionId);
   if(!region){ logEvent('❌ Région introuvable','#e02030'); return; }
 
   careerV2 = {
     type: 'manager',
+    nation: nationId,
     season: 1,
     week: 1,
     date: { year: 1, month: 8, day: 1 },
@@ -310,7 +319,7 @@ function startCareerManager(regionId){
     club: null,
 
     // Offres d'embauche disponibles
-    job_offers: _generateInitialJobOffers(regionId),
+    job_offers: _generateInitialJobOffers(regionId, nationId),
 
     // Événements en attente
     pending_events: [],
@@ -706,11 +715,31 @@ function _buildRoundRobinFixtures(allClubs){
   logEvent('📅 Calendrier généré — '+fixtures.length+' matchs cette saison !','#18c860');
 }
 
-function _generateInitialJobOffers(regionId){
-  // Offres de départ pour le mode manager
-  const region = WORLDS.getRegion('panthalassa', regionId);
+function _generateInitialJobOffers(regionId, nationId){
+  nationId = nationId || 'panthalassa';
+  const region = WORLDS.getRegion(nationId, regionId);
+  if(!region) return [];
   const offers = [];
-  // 2-3 clubs de bas niveau cherchent un manager
+  // En Valoria : proposer de vrais clubs des divisions basses de la région.
+  if(nationId==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
+    const regName = (typeof _valRegionName==='function') ? _valRegionName(regionId) : (String(regionId).toLowerCase().indexOf('brum')>=0?'Brumefer':'Valcourt');
+    const lowTeams = VALORIA_TEAMS.filter(function(t){
+      return t.region===regName && (t.tier==='district' || t.division==='brumefer_r2' || t.division==='valcourt_r3');
+    });
+    const shuffled = lowTeams.slice().sort(function(){ return Math.random()-0.5; }).slice(0,3);
+    shuffled.forEach(function(vt){
+      offers.push({
+        club: vt.name, region: regionId, valoriaName: vt.name, badge: vt.badge||null, color: vt.color,
+        level: vt.division,
+        salary: 200 + Math.round(Math.random()*300),
+        contract_years: 1,
+        objectives: [{type:'survive', desc:'Survivre la saison'}],
+        deadline: 7,
+      });
+    });
+    if(offers.length) return offers;
+  }
+  // Fallback générique (Panthalassa).
   for(let i=0; i<3; i++){
     const clubName = region.clubNames[Math.floor(Math.random()*region.clubNames.length)];
     offers.push({

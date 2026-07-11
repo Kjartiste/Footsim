@@ -78,7 +78,7 @@ function valoriaR1toPro(proStandings){
 // SA division. Renvoie {newLevel, message} ou null si pas de mouvement.
 // C = careerV2, myPos = position du joueur (1..N), total = nb d'équipes.
 function valoriaResolvePlayerSeason(C, myPos, total){
-  const region=C.club.region;
+  const region=_valRegionName(C.club.region);
   const lvl=valoriaNormalizeLevel(C.club.level, region);
   // On aligne aussi le club sur l'id Valoria normalisé pour la suite.
   if(C.club.level!==lvl) C.club.level=lvl;
@@ -151,13 +151,23 @@ function _valDivName(id){
   return (window.VALORIA_DIVISIONS && window.VALORIA_DIVISIONS[id]) ? window.VALORIA_DIVISIONS[id].name : id;
 }
 
+// Normalise une région (id 'brumefer' ou nom 'Brumefer') vers le NOM d'affichage
+// utilisé partout dans VALORIA_TEAMS ('Valcourt' / 'Brumefer').
+function _valRegionName(r){
+  if(!r) return 'Valcourt';
+  const s=String(r).toLowerCase();
+  if(s.indexOf('brum')>=0) return 'Brumefer';
+  return 'Valcourt';
+}
+
 // Le mode carrière crée les clubs avec des niveaux GÉNÉRIQUES (d1/d2/d3/r1/r2/
 // r3/dh). On les convertit en divisions VALORIA selon la région du club, pour
 // que les règles s'appliquent. Idempotent : si déjà un id Valoria, on le garde.
 function valoriaNormalizeLevel(level, region){
-  if(!level) return region==='Brumefer' ? 'brumefer_r1' : 'valcourt_r3';
+  const regName=_valRegionName(region);
+  const isBrum = regName==='Brumefer';
+  if(!level) return isBrum ? 'brumefer_r1' : 'valcourt_r3';
   if(VALORIA_LEVELS.indexOf(level)>=0) return level; // déjà normalisé
-  const isBrum = region==='Brumefer';
   const map = {
     d1:'pro', d2: isBrum?'brumefer_r1':'valcourt_r1', d3: isBrum?'brumefer_r2':'valcourt_r2',
     r1: isBrum?'brumefer_r1':'valcourt_r1', r2: isBrum?'brumefer_r2':'valcourt_r2',
@@ -165,7 +175,6 @@ function valoriaNormalizeLevel(level, region){
     dh: 'valcourt_district1', // district (Brumefer n'a pas de district → R2)
   };
   let mapped = map[level] || (isBrum?'brumefer_r2':'valcourt_r3');
-  // Brumefer n'a pas de district : replier vers R2.
   if(isBrum && mapped.startsWith('valcourt_district')) mapped='brumefer_r2';
   return mapped;
 }
@@ -173,6 +182,6 @@ function valoriaNormalizeLevel(level, region){
 if(typeof window!=='undefined'){
   Object.assign(window,{
     VALORIA_LEVELS, simulateValoriaDivision, valoriaDistrictPlayoffs,
-    valoriaR1toPro, valoriaResolvePlayerSeason, valoriaNormalizeLevel, _valDivName,
+    valoriaR1toPro, valoriaResolvePlayerSeason, valoriaNormalizeLevel, _valRegionName, _valDivName,
   });
 }

@@ -3799,6 +3799,7 @@ const CUP_FORMATS=[
   {id:'gr_elim', name:'Phase de groupes + K.O. direct',   desc:"D'abord tout le monde joue en poule pour se jauger, puis les meilleurs s'éliminent directement. C'est le format de la Coupe du Monde et de l'Euro.",             type:'groups_ko',   legs:1, thirdPlace:true},
   {id:'gr_ar',   name:'Phase de groupes + aller-retour',  desc:"Une poule pour commencer, puis chaque confrontation en phase éliminatoire se joue sur deux matchs. C'est le vrai format de la Ligue des Champions.",             type:'groups_ko',   legs:2, thirdPlace:false},
   {id:'double',  name:'Double élimination',               desc:"Une défaite ne t'élimine pas tout de suite — tu passes dans le tableau des perdants et tu peux encore remporter le titre. Deux défaites et c'est terminé.",       type:'double_elim', legs:1, thirdPlace:false},
+  {id:'gr_final',name:'Play-offs (poule finale)',          desc:"Deux poules initiales, puis les deux premiers de chaque groupe se retrouvent dans une poule finale de 4. Le classement de cette poule décide du vainqueur et de l'ordre des montées.",  type:'groups_final', legs:1, thirdPlace:false},
 ];
 
 let cupState=null,cupCurrentMatch=null;
@@ -3982,7 +3983,7 @@ function buildKOBracketForN(ids,legs,singleFinal){
 // ── Create cup ────────────────────────────────────────────
 function createCup(formatId,count,savedIdxs,npcSel){
   const fmt=CUP_FORMATS.find(f=>f.id===formatId);if(!fmt)return;
-  const hasGroups=fmt.type==='groups_ko'||fmt.type==='round_robin';
+  const hasGroups=fmt.type==='groups_ko'||fmt.type==='round_robin'||fmt.type==='groups_final';
   // For group formats: use custom config; for others: use count normally
   let n,cfg,groupLegs=1;
   if(hasGroups){
@@ -4011,6 +4012,14 @@ function createCup(formatId,count,savedIdxs,npcSel){
     state.groups=buildGroupsAuto(ids,cfg,groupLegs);
     state.bracket=null;
     if(fmt.thirdPlace)state.thirdPlaceMatch=mkTie(null,null,1);
+  } else if(fmt.type==='groups_final'){
+    // Play-offs : 2 poules initiales → poule finale des 2 premiers de chaque groupe.
+    state.phase='groups';
+    const gfCfg={gc:2,pg:cfg.pg,advance:2};
+    state.groupCfg=gfCfg;
+    state.groups=buildGroupsAuto(ids,{gc:2,pg:cfg.pg},groupLegs).map(g=>({...g,phase:'initial'}));
+    state.finalGroupLegs=groupLegs;
+    state.bracket=null;
   } else if(fmt.type==='double_elim'){
     state.phase='knockout';
     state.doubleElim=buildDE(ids,n);
@@ -4313,6 +4322,7 @@ function advanceKO(ri,mi){
 }
 
 function checkGroupsDone(){
+  if(cupState.format.type==='groups_final'){ checkGroupsFinalDone(); return; }
   if(!cupState.groups?.every(g=>g.fixtures.every(f=>f.played)))return;
   if(cupState.format.type==='round_robin'){
     const std=sortStd(cupState.groups[0].standings);
@@ -4321,6 +4331,38 @@ function checkGroupsDone(){
     saveCup();return;
   }
   cupState.bracket=generateKOFromGroups();cupState.phase='knockout';saveCup();
+}
+
+// ── Play-offs : poule finale des 2 premiers de chaque groupe initial ──
+function checkGroupsFinalDone(){
+  const groups=cupState.groups||[];
+  const finalGroup=groups.find(g=>g.phase==='final');
+  if(!finalGroup){
+    // Étape 1 : tous les groupes initiaux terminés → construire la poule finale.
+    const initials=groups.filter(g=>g.phase==='initial');
+    if(!initials.length||!initials.every(g=>g.fixtures.every(f=>f.played)))return;
+    const qualified=[];
+    initials.forEach(g=>{
+      const s=sortStd(g.standings);
+      for(let r=0;r<Math.min(2,s.length);r++)qualified.push(s[r].id);
+    });
+    if(qualified.length<2)return;
+    const legs=cupState.finalGroupLegs||1;
+    cupState.groups.push({
+      id:groups.length,name:'Poule finale',teamIds:qualified,
+      fixtures:mkFix(qualified,legs),standings:mkStd(qualified),legs,phase:'final'
+    });
+    logEvent('⚽ Poule finale : '+qualified.map(id=>getCupTeamData(id)?.name||'?').join(', '),'#f0c028');
+    saveCup();return;
+  }
+  // Étape 2 : poule finale terminée → vainqueur + ordre des montées.
+  if(!finalGroup.fixtures.every(f=>f.played))return;
+  const std=sortStd(finalGroup.standings);
+  cupState.champion=std[0].id;
+  cupState.finalRanking=std.map(s=>s.id); // ordre des promotions (1er = mieux placé)
+  cupState.phase='done';
+  logEvent('🏆 '+(getCupTeamData(cupState.champion)?.name||'')+' remporte les play-offs !','#f0c028');
+  saveCup();
 }
 
 function generateKOFromGroups(){
@@ -6033,7 +6075,14 @@ function _renderRegionStep(el, nationId, mode){
     card.addEventListener('mouseout',  function(){ if(window._careerRegion !== rid) card.style.borderColor = ''; });
     card.addEventListener('click', function(){
       window._careerRegion = rid;
-      _renderClubStep(el, nationId, rid, mode);
+      if(mode === 'manager'){
+        // Le manager n'a pas de club à créer : on démarre directement la
+        // recherche de poste, dans la nation choisie.
+        window._selectedManagerRegion = rid;
+        startCareerManager(rid, nationId);
+      } else {
+        _renderClubStep(el, nationId, rid, mode);
+      }
     });
   });
 }
@@ -6044,6 +6093,11 @@ function _renderClubStep(el, nationId, regionId, mode){
   if(!el || !nation || !region) return;
   const startLevel = _getStartLevel(region);
   const pyramid = nation.pyramid.find(function(p){return p.id===startLevel;});
+
+  // Onglet actif : 'create' (créer son équipe) ou 'existing' (reprendre une
+  // équipe existante de la division). Par défaut : créer.
+  window._careerClubTab = window._careerClubTab || 'create';
+  const tab = window._careerClubTab;
 
   let h = '<div style="padding:12px;max-width:500px;margin:0 auto">';
   h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
@@ -6060,6 +6114,57 @@ function _renderClubStep(el, nationId, regionId, mode){
   h += '<div>👥 Effectif : <b>7–12 joueurs</b></div>';
   h += '<div>🏟 Capacité stade : <b>500 places</b></div>';
   h += '</div></div>';
+
+  // ── Onglets : Créer / Reprendre ────────────────────────────────────────
+  const hasExisting = (nationId==='valoria' && typeof valoriaTeamsByDivision==='function');
+  if(hasExisting){
+    h += '<div style="display:flex;gap:6px;margin-bottom:12px">';
+    h += '<button class="career-club-tab" data-tab="create" style="flex:1;padding:8px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;border:2px solid '+(tab==='create'?region.color:'var(--b1)')+';background:'+(tab==='create'?region.color+'22':'var(--dark)')+';color:'+(tab==='create'?'#fff':'var(--muted)')+'">✏️ Créer mon équipe</button>';
+    h += '<button class="career-club-tab" data-tab="existing" style="flex:1;padding:8px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;border:2px solid '+(tab==='existing'?region.color:'var(--b1)')+';background:'+(tab==='existing'?region.color+'22':'var(--dark)')+';color:'+(tab==='existing'?'#fff':'var(--muted)')+'">📋 Reprendre une équipe</button>';
+    h += '</div>';
+  }
+
+  if(hasExisting && tab==='existing'){
+    // ── REPRENDRE : liste des équipes de la division de départ ────────────
+    const divId = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
+    const divTeams = divId ? valoriaTeamsByDivision(divId) : [];
+    h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:4px">📋 Reprendre un club existant</div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-bottom:10px">'+(divId&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[divId]?window.VALORIA_DIVISIONS[divId].name:'')+' — '+divTeams.length+' clubs</div>';
+    if(!divTeams.length){
+      h += '<div style="font-size:10px;color:var(--muted)">Aucune équipe existante dans cette division.</div>';
+    } else {
+      h += '<div style="display:flex;flex-direction:column;gap:5px;max-height:320px;overflow-y:auto">';
+      divTeams.forEach(function(t){
+        const bHTML = (t.badge && typeof BadgeCache!=='undefined')
+          ? '<img src="'+BadgeCache.dataURI(t.badge,30)+'" width="30" height="30" style="object-fit:contain">'
+          : '<div style="width:30px;height:30px;border-radius:50%;background:'+t.color+'33;border:2px solid '+t.color+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:'+t.color+'">'+teamIni(t.name)+'</div>';
+        h += '<div class="career-existing-team" data-name="'+t.name.replace(/"/g,'&quot;')+'" data-color="'+t.color+'" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--b1);border-radius:8px;cursor:pointer;background:var(--dark)">';
+        h += '<span style="width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+bHTML+'</span>';
+        h += '<span style="flex:1;font-size:12px;font-weight:700;color:'+t.color+'">'+t.name+'</span>';
+        h += '<span style="font-size:10px;color:var(--muted)">Reprendre &rarr;</span>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '</div>';
+    el.innerHTML = h;
+    // Onglets
+    el.querySelectorAll('.career-club-tab').forEach(function(b){ b.addEventListener('click', function(){ window._careerClubTab=b.dataset.tab; _renderClubStep(el, nationId, regionId, mode); }); });
+    document.getElementById('back-to-regions').addEventListener('click', function(){ _renderRegionStep(el, nationId, mode); });
+    // Reprendre un club
+    el.querySelectorAll('.career-existing-team').forEach(function(row){
+      row.addEventListener('click', function(){
+        window._careerClub = row.dataset.name;
+        window._careerColor = row.dataset.color;
+        confirmStartCareer();
+      });
+    });
+    return;
+  }
+
+  // ── CRÉER (écran par défaut) ───────────────────────────────────────────
 
   // Nom du club
   h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:12px">';
@@ -6124,6 +6229,10 @@ function _renderClubStep(el, nationId, regionId, mode){
   document.getElementById('back-to-regions').addEventListener('click', function(){
     _renderRegionStep(el, nationId, mode);
   });
+  // Onglets Créer / Reprendre
+  el.querySelectorAll('.career-club-tab').forEach(function(b){
+    b.addEventListener('click', function(){ window._careerClubTab=b.dataset.tab; _renderClubStep(el, nationId, regionId, mode); });
+  });
 
   // Démarrer
   document.getElementById('career-start-btn').addEventListener('click', function(){
@@ -6167,41 +6276,11 @@ function confirmStartDirector(){ confirmStartCareer(); }
 // ── Setup Carrière Manager ────────────────────────────────────────────
 function renderCareerManagerSetup(){
   const el = document.getElementById('career-out'); if(!el) return;
-
-  const regions = WORLDS.getRegions('panthalassa');
-  let regionCards = '';
-  regions.forEach(r => {
-    regionCards += '<div id="mreg-'+r.id+'" onclick="selectManagerRegion(\''+r.id+'\')"'
-      + ' style="background:var(--panel);border:2px solid var(--b1);border-radius:8px;padding:10px;cursor:pointer">'
-      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-      + '<div style="width:10px;height:10px;border-radius:50%;background:'+r.color+'"></div>'
-      + '<div style="font-size:11px;font-weight:900">'+r.name+'</div>'
-      + '</div>'
-      + '<div style="font-size:9px;color:var(--muted)">'+r.type+'</div>'
-      + '</div>';
-  });
-
-  el.innerHTML = '<div style="padding:12px;max-width:600px;margin:0 auto">'
-    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
-    + '<button class="btn" onclick="renderCareerV2Choice()" style="font-size:10px;padding:2px 8px">&larr; Retour</button>'
-    + '<div style="font-size:16px;font-weight:900;color:#b070ff">&#x1F9D1;&#x200D;&#x1F4BC; Carri&egrave;re Manager</div>'
-    + '</div>'
-    + '<div style="background:var(--panel);border:1px solid #8840e044;border-radius:8px;padding:10px;margin-bottom:12px;font-size:10px;color:var(--muted);line-height:1.6">'
-    + 'En tant que manager, vous debutez sans club. Choisissez votre region d\'origine.'
-    + '</div>'
-    + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Votre r&eacute;gion d\'origine :</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:14px">' + regionCards + '</div>'
-    + '<button class="btn btng" id="manager-start-btn" onclick="confirmStartManager()" style="width:100%;display:none">'
-    + '&#x25B6; Commencer sans club &mdash; chercher un poste</button>'
-    + '</div>';
-
-  // Event listeners
-  regions.forEach(r => {
-    const d = document.getElementById('mreg-'+r.id);
-    if(!d) return;
-    d.addEventListener('mouseover', ()=>{ d.style.borderColor=r.color; });
-    d.addEventListener('mouseout',  ()=>{ if(window._selectedManagerRegion!==r.id) d.style.borderColor=''; });
-  });
+  // Le Manager passe désormais par le MÊME choix de pays que le Dirigeant
+  // (au lieu d'être codé en dur sur Panthalassa). La cascade pays → région
+  // appelle ensuite _renderManagerRegionStep pour ce mode.
+  window._careerMode = 'manager';
+  _renderCountryStep(el, 'manager');
 }
 
 let _selectedManagerRegion = null;
