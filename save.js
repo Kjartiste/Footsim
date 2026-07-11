@@ -609,6 +609,32 @@ function _generateSeasonFixtures(){
   const region = WORLDS.getRegion(nation, club.region);
   const level = club.level;
 
+  // ── CAS VALORIA : adversaires = vraies équipes de la division du joueur ──
+  // On pioche dans VALORIA_TEAMS la division exacte (Pro / R1 / R2 / R3 /
+  // District N / Brumefer R1-R2) au lieu de noms génériques, pour que le
+  // classement reflète la structure divisionnaire mise en place.
+  if(nation==='valoria' && typeof VALORIA_TEAMS!=='undefined' && typeof valoriaNormalizeLevel==='function'){
+    const divId = valoriaNormalizeLevel(level, club.region);
+    // Normalise aussi le club pour la cohérence (level = id Valoria).
+    if(club.level!==divId) club.level=divId;
+    let divTeams = (typeof valoriaTeamsByDivision==='function')
+      ? valoriaTeamsByDivision(divId).filter(t=>t.name!==club.name)
+      : [];
+    const opponents = divTeams.map(function(vt){
+      return { id:'val_'+vt.name.replace(/[^a-z0-9]/gi,'').slice(0,12)+'_'+Math.random().toString(36).slice(2,6),
+        name:vt.name, color:vt.color, badge:vt.badge||null,
+        level:divId, region:vt.region, valoriaName:vt.name, tier:vt.tier };
+    });
+    const allClubs=[{id:'player_club', name:club.name, color:club.color, badge:club.badge||null, isPlayer:true}].concat(opponents);
+    careerV2.standings = allClubs.map(function(c){
+      return {id:c.id, name:c.name, color:c.color, badge:c.badge||null, isPlayer:!!c.isPlayer,
+              region:c.region, P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0};
+    });
+    _buildRoundRobinFixtures(allClubs);
+    careerV2.divisionName = (typeof _valDivName==='function')?_valDivName(divId):divId;
+    return;
+  }
+
   // Générer 8-12 clubs adversaires du même niveau
   const nbOpponents = level === 'dh' ? 7 : level === 'r3' ? 9 : 11;
   const clubNames = (region && region.clubNames) ? [...region.clubNames] : [];
@@ -645,14 +671,17 @@ function _generateSeasonFixtures(){
             P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0};
   });
 
-  // Générer les matchs aller-retour
+  _buildRoundRobinFixtures(allClubs);
+}
+
+// Construit le calendrier aller-retour (round-robin) + le journal, à partir de
+// la liste de clubs (avec id/name/isPlayer). Partagé par les deux chemins de
+// génération (Valoria et générique).
+function _buildRoundRobinFixtures(allClubs){
   const fixtures = [];
   let week = 1;
-  const ids = allClubs.map(function(c){ return c.id; });
-
-  // Round-robin simple
-  for(let i = 0; i < ids.length; i++){
-    for(let j = i+1; j < ids.length; j++){
+  for(let i = 0; i < allClubs.length; i++){
+    for(let j = i+1; j < allClubs.length; j++){
       const h = allClubs[i];
       const a = allClubs[j];
       fixtures.push({
@@ -662,7 +691,6 @@ function _generateSeasonFixtures(){
         away: a.id, awayName: a.name, awayIsPlayer: !!a.isPlayer,
         played: false, sh: null, sa: null,
       });
-      // Match retour
       fixtures.push({
         id: 'fix_'+Math.random().toString(36).slice(2),
         week: week++,
@@ -672,12 +700,8 @@ function _generateSeasonFixtures(){
       });
     }
   }
-
-  // Mélanger légèrement les semaines (pas trop)
   fixtures.sort(function(a,b){ return a.week - b.week; });
-  // Renuméroter proprement
   fixtures.forEach(function(f, i){ f.week = Math.floor(i/2) + 1; });
-
   careerV2.fixtures = fixtures;
   logEvent('📅 Calendrier généré — '+fixtures.length+' matchs cette saison !','#18c860');
 }

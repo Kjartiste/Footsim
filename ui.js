@@ -6408,7 +6408,7 @@ function _renderDirectorOverview(){
     h += '</div>';
     h += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+(isHome?'🏠 Domicile':'✈️ Extérieur')+'</div>';
     h += '<div style="display:flex;gap:6px">';
-    h += '<button class="btn btng" onclick="playCareerMatch()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
+    h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
     h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:8px 12px">⚡ Simuler</button>';
     h += '</div>';
   } else {
@@ -6433,7 +6433,10 @@ function _renderDirectorOverview(){
       const rowBg = isMe ? 'background:'+accentCol+'18;border-radius:6px;' : '';
       h += '<div style="display:grid;grid-template-columns:24px 1fr 40px 40px 40px;gap:0;align-items:center;padding:7px 4px;border-bottom:1px solid var(--b1)10;'+rowBg+'">';
       h += '<div style="font-size:11px;color:var(--muted)">'+(posEmoji||(i+1))+'</div>';
-      h += '<div style="font-size:12px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+'">'+s.name+'</div>';
+      const cBadge = (s.badge && typeof BadgeCache!=='undefined')
+        ? '<span style="width:18px;height:18px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center"><img src="'+BadgeCache.dataURI(s.badge,18)+'" width="18" height="18" style="object-fit:contain"></span>'
+        : '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:'+(s.color||'#888')+'"></span>';
+      h += '<div style="display:flex;align-items:center;gap:6px;min-width:0">'+cBadge+'<span style="font-size:12px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</span></div>';
       h += '<div style="font-size:11px;text-align:center;color:var(--muted)">'+s.P+'</div>';
       h += '<div style="font-size:11px;text-align:center;color:'+gdCol+'">'+(gd>0?'+':'')+gd+'</div>';
       h += '<div style="font-size:13px;font-weight:900;text-align:center;color:'+(isMe?accentCol:'var(--fg)')+'">'+s.Pts+'</div>';
@@ -6733,7 +6736,7 @@ function _renderDirectorCalendar(){
         if(isMe){
           h += '<div style="flex:1;font-size:9px;font-weight:700">'+(isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+'</div>';
           h += '<div style="font-size:8px;color:'+(isHome?'#18c860':'#f0c028')+'">'+(isHome?'🏠 Dom.':'✈️ Ext.')+'</div>';
-          h += '<button class="btn" onclick="playCareerMatch()" style="font-size:8px;padding:1px 6px">▶</button>';
+          h += '<button class="btn" onclick="playCareerMatchV2()" style="font-size:8px;padding:1px 6px">▶</button>';
         } else {
           h += '<div style="flex:1;font-size:9px;color:var(--muted)">'+f.homeName+' vs '+f.awayName+'</div>';
         }
@@ -7009,7 +7012,7 @@ function rejectManagerJob(i){
 
 
 // ── Match en carrière Dirigeant ───────────────────────────────────────
-function playCareerMatch(){
+function playCareerMatchV2(){
   if(!careerV2) return;
   const C = careerV2;
   const fix = (C.fixtures||[]).find(function(f){ return !f.played; });
@@ -7041,12 +7044,18 @@ function playCareerMatch(){
   });
   // Noms depuis la région ou génériques
   const regionObj = WORLDS.getRegion(nation, region);
-  const aiColor   = regionObj ? regionObj.color : '#1878e8';
+  let aiColor   = regionObj ? regionObj.color : '#1878e8';
+  let aiBadge   = null;
+  // Si l'adversaire est une équipe Valoria (au classement), on récupère sa
+  // couleur et son blason propres pour un rendu fidèle.
+  const oppStanding = (C.standings||[]).find(function(s){ return s.name===oppName && !s.isPlayer; });
+  if(oppStanding){ if(oppStanding.color) aiColor=oppStanding.color; if(oppStanding.badge) aiBadge=oppStanding.badge; }
 
   teams[1] = {
     name:    oppName,
     color:   aiColor,
     img:     '',
+    badge:   aiBadge,
     strat:   '321',
     players: aiSquad.players,
     bench:   aiSquad.bench,
