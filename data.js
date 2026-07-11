@@ -632,7 +632,16 @@ function clonePlayer(p){
 }
 function deepCloneTeam(T){
   if(!T)return null;
-  return{name:T.name,color:T.color,img:T.img||'',strat:T.strat||'321',
+  return{name:T.name,color:T.color,img:T.img||'',badge:T.badge||null,strat:T.strat||'321',
+    stratAtk:T.stratAtk||null,strat11:T.strat11||null,strat11Atk:T.strat11Atk||null,
+    strat5:T.strat5||null,strat5Atk:T.strat5Atk||null,
+    // Métadonnées club — indispensables pour générer un effectif 5v5/11v11
+    // dédié et cohérent (_ensureTeamSize5v5/11v11 dans ui.js) au lieu de
+    // rafistoler le noyau 7v7 avec des inconnus hors-lore.
+    _preset:!!T._preset, _presetId:T._presetId||null,
+    nation:T.nation||null, region:T.region||null, tier:T.tier||null,
+    country:T.country||null, kind:T.kind||null, league:T.league||null,
+    isHuman:T.isHuman,
     players:(T.players||[]).map(p=>p?clonePlayer(p):null).filter(Boolean),
     bench:(T.bench||[]).map(p=>p?clonePlayer(p):null).filter(Boolean),
     reserves:(T.reserves||[]).map(p=>({...p,s:{...p.s}}))};

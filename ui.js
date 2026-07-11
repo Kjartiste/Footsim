@@ -1450,12 +1450,46 @@ function _ensureTeamSize7v7(ti){
   if(gbCount === 0 && T.players[0]) T.players[0].pos = 'GB';
 }
 
+// Niveau WORLDS (LEVEL_STAT_RANGES) correspondant au tier d'un club preset.
+function _levelForPresetTier(tier){
+  return {pro:'d1', national_team:'d1', regional:'r2', district:'dh'}[tier] || 'd2';
+}
+
 // Adapte l'effectif au format 5v5 : 5 titulaires (dont 1 GB), le reste au banc.
 function _ensureTeamSize5v5(ti){
   const T = teams[ti];
   if(!T) return;
   T.players = T.players || [];
   T.bench = T.bench || [];
+  T.reserves = T.reserves || [];
+
+  // Équipe preset (effectif fixe fourni par le jeu) : on génère un effectif
+  // futsal DÉDIÉ (vrais noms de la région du club, niveau du club) plutôt que
+  // de trafiquer le noyau 7v7 — pour que 5v5/11v11/7v7 aient des joueurs
+  // vraiment différents, comme des sections distinctes du même club.
+  if(T._preset && T.nation && window.WORLDS && WORLDS.generateSquad){
+    // Les ids WORLDS sont en minuscules (ex: 'valoria') alors que T.nation
+    // vient du champ d'affichage des presets (ex: 'Valoria') — normaliser,
+    // sinon WORLDS.get() ne trouve rien et renvoie un effectif vide.
+    const nationId = String(T.nation).toLowerCase();
+    const region = T.region || (WORLDS.getRegions(nationId)[0]||{}).id;
+    if(region){
+      const level = _levelForPresetTier(T.tier);
+      const squad = WORLDS.generateSquad(nationId, region, {
+        positions: ['GB','DC','MOG','MOD','ATT'],
+        bench: ['GB','DC','MOG','MOD','ATT'],
+        reserves: [],
+        level,
+      });
+      if(squad.players.length){
+        T.players = squad.players;
+        T.bench = squad.bench;
+        const gbCount = T.players.filter(p=>p && p.pos==='GB').length;
+        if(gbCount === 0 && T.players[0]) T.players[0].pos = 'GB';
+        return;
+      }
+    }
+  }
 
   // Si trop de titulaires : renvoyer les surnuméraires au banc
   if(T.players.length > 5){
@@ -1475,12 +1509,18 @@ function _ensureTeamSize5v5(ti){
     T.players = starters;
   }
 
-  // Si pas assez de titulaires : compléter depuis le banc puis générer
-  const nation = 'panthalassa', region = 'solgrath';
+  // Si pas assez de titulaires : compléter depuis le banc, puis les réservistes,
+  // et seulement en dernier recours générer un joueur (nation/région du CLUB,
+  // pas une nation en dur — évite des inconnus hors-lore dans une équipe preset).
+  const nation = T.nation || 'panthalassa', region = T.region || 'solgrath';
   const fillPos = ['DC','MOG','MOD','ATT'];
   while(T.players.length < 5){
     if(T.bench.length > 0){
       const p = T.bench.shift();
+      p.onBench = false;
+      T.players.push(p);
+    } else if(T.reserves.length > 0){
+      const p = T.reserves.shift();
       p.onBench = false;
       T.players.push(p);
     } else if(window.WORLDS && WORLDS.generatePlayer){
@@ -1498,9 +1538,48 @@ function _ensureTeamSize5v5(ti){
 function _ensureTeamSize11v11(ti){
   const T = teams[ti];
   if(!T) return;
+  T.bench = T.bench || [];
+  T.reserves = T.reserves || [];
 
-  const nation = 'panthalassa';
-  const region = 'solgrath';
+  // Équipe preset : effectif 11v11 DÉDIÉ (vrais noms de la région du club,
+  // niveau du club), généré via le même système que les ligues de carrière —
+  // au lieu de padder le noyau 7v7 avec des inconnus hors-lore.
+  if(T._preset && T.nation && window.WORLDS && WORLDS.generateSquad){
+    // Les ids WORLDS sont en minuscules (ex: 'valoria') alors que T.nation
+    // vient du champ d'affichage des presets (ex: 'Valoria') — normaliser,
+    // sinon WORLDS.get() ne trouve rien et renvoie un effectif vide.
+    const nationId = String(T.nation).toLowerCase();
+    const region = T.region || (WORLDS.getRegions(nationId)[0]||{}).id;
+    if(region){
+      const level = _levelForPresetTier(T.tier);
+      const squad = WORLDS.generateSquad(nationId, region, {
+        positions: ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT'],
+        bench: ['GB','DC','MC','MC','ATT','DD','DG'],
+        reserves: [],
+        level,
+      });
+      if(squad.players.length){
+        T.players = squad.players;
+        T.bench = squad.bench;
+        return;
+      }
+    }
+  }
+
+  // Nation/région du CLUB si connues, sinon repli générique. Avant, ces deux
+  // valeurs étaient codées en dur (panthalassa/solgrath) : une équipe preset
+  // Valoria récupérait des inconnus hors-lore dès qu'il manquait un joueur.
+  const nation = T.nation || 'panthalassa';
+  const region = T.region || 'solgrath';
+
+  // AVANT de générer qui que ce soit, on rapatrie les réservistes vers le banc
+  // (les équipes preset ont typiquement 7 titulaires + 5 banc + 3 réservistes =
+  // 15 joueurs déjà conçus — largement de quoi remplir un 11v11 sans random).
+  if(T.reserves.length){
+    T.reserves.forEach(p=>{ if(p) p.onBench = true; });
+    T.bench = T.bench.concat(T.reserves);
+    T.reserves = [];
+  }
 
   // Postes pour chaque slot de la formation 4-4-2 (défaut)
   // Slot 0=GB, 1=DD, 2=DC, 3=DC, 4=DG, 5=MC, 6=MC, 7=MC, 8=MC, 9=ATT, 10=ATT
@@ -3367,6 +3446,7 @@ function renderLeague(){
     el.innerHTML='<div style="padding:2px">'+
       // ── Sélecteur de mode ──────────────────────────────────
       '<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<button onclick="setGameMode(\'5v5\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(window.gameMode==='5v5'?'#8840e0':'var(--b1)')+';background:'+(window.gameMode==='5v5'?'rgba(136,64,224,.15)':'var(--dark)')+';color:'+(window.gameMode==='5v5'?'#8840e0':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚡ 5v5</button>'+
       '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(window.gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
       '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:7px;border-radius:8px;border:2px solid '+(window.gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(window.gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(window.gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:12px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
       '</div>'+
@@ -3401,6 +3481,7 @@ function renderLeague(){
   let h='<div>';
   // ── Sélecteur de mode ──────────────────────────────────────────────
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">'+
+    '<button onclick="setGameMode(\'5v5\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='5v5'?'#8840e0':'var(--b1)')+';background:'+(window.gameMode==='5v5'?'rgba(136,64,224,.15)':'var(--dark)')+';color:'+(window.gameMode==='5v5'?'#8840e0':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚡ 5v5</button>'+
     '<button onclick="setGameMode(\'7v7\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='7v7'?'var(--gold)':'var(--b1)')+';background:'+(window.gameMode==='7v7'?'rgba(240,192,40,.15)':'var(--dark)')+';color:'+(window.gameMode==='7v7'?'var(--gold)':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 7v7</button>'+
     '<button onclick="setGameMode(\'11v11\');renderLeague()" style="flex:1;padding:6px;border-radius:8px;border:2px solid '+(window.gameMode==='11v11'?'#18c860':'var(--b1)')+';background:'+(window.gameMode==='11v11'?'rgba(24,200,96,.15)':'var(--dark)')+';color:'+(window.gameMode==='11v11'?'#18c860':'var(--muted)')+';font-size:11px;font-weight:900;cursor:pointer">⚽ 11v11</button>'+
     '</div>';
