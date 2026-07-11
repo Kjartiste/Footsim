@@ -2781,7 +2781,9 @@ function renderTeamSelectPage(){
     if(!pool.length && !vpool.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune équipe ici.</div>';
     // D'abord les presets (effectif fixe), puis les équipes de division.
     pool.forEach(t=>{
-      const sub = t.kind==='nation' ? '🏳️ Sélection · '+t.nation : '⭐ Effectif fixe · '+(TIER_LABELS[t.tier]||t.league);
+      const gm = window.gameMode || '7v7';
+      const fixedLbl = gm==='7v7' ? '⭐ Effectif fixe' : (gm==='5v5' ? '🔄 Effectif futsal dédié' : '🔄 Effectif 11v11 dédié');
+      const sub = t.kind==='nation' ? '🏳️ Sélection · '+t.nation : fixedLbl+' · '+(TIER_LABELS[t.tier]||t.league);
       const badgeHTML=(t.badge&&typeof BadgeCache!=='undefined')?`<img src="${BadgeCache.dataURI(t.badge,36)}" width="36" height="36" style="object-fit:contain">`:`<div style="width:36px;height:36px;border-radius:50%;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
       body += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:11px;background:var(--panel);margin-bottom:8px">
           ${badgeHTML}
