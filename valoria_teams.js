@@ -108,7 +108,25 @@ const VALORIA_TEAMS = [
   {name:"FC Fonderie",color:'#4db6ac',division:'brumefer_r2',region:'Brumefer',tier:'regional'},
   {name:"Racing Acier",color:'#dce775',division:'brumefer_r2',region:'Brumefer',tier:'regional'},
   {name:"RC Âpremont",color:'#ff8a65',division:'brumefer_r2',region:'Brumefer',tier:'regional'},
-  {name:"US Minerai",color:'#ef5350',division:'brumefer_r2',region:'Brumefer',tier:'regional'}
+  {name:"US Minerai",color:'#ef5350',division:'brumefer_r2',region:'Brumefer',tier:'regional'},
+
+  // ── RÉSERVES DES CLUBS PRO NOMMÉS (équipes B/C) ────────────────────────
+  // Un club riche (Valcourt) peut se permettre deux équipes de réserve (B en
+  // Régional 1, C en Régional 2) ; un club pauvre (Brumefer) une seule (B).
+  // Même identité visuelle que le club mère (couleurs/blason repris, juste
+  // dépouillé — bordure simple, 0 étoile), effectif généré normalement comme
+  // les autres équipes de division (pas d'effectif fixe, contrairement au
+  // grand club dans presets.js). `parentClub` est une métadonnée d'affichage.
+  {name:"RC Valcourt B", color:'#2e8b8b', division:'valcourt_r1', region:'Valcourt', tier:'regional', parentClub:'RC Valcourt',
+    badge:{shape:'shield_mod',border:'simple',background:'half_l',colors:['#2e8b8b','#f5f5f5','#ffd700'],icon:'griffin',iconColor:'#ffd700',iconY:-8,text:'RCV B',year:'1922',stars:0,bgOpacity:1}},
+  {name:"RC Valcourt C", color:'#2e8b8b', division:'valcourt_r2', region:'Valcourt', tier:'regional', parentClub:'RC Valcourt',
+    badge:{shape:'shield_mod',border:'simple',background:'half_l',colors:['#2e8b8b','#f5f5f5','#ffd700'],icon:'griffin',iconColor:'#ffd700',iconY:-8,text:'RCV C',year:'1922',stars:0,bgOpacity:1}},
+  {name:"AS Horizon B", color:'#c0392b', division:'valcourt_r1', region:'Valcourt', tier:'regional', parentClub:'AS Horizon',
+    badge:{shape:'shield_fr',border:'simple',background:'solid',colors:['#c0392b','#f8e9d6','#e8c547'],icon:'phoenix',iconColor:'#e8c547',iconY:-6,text:'ASH B',year:'1901',stars:0,bgOpacity:1}},
+  {name:"AS Horizon C", color:'#c0392b', division:'valcourt_r2', region:'Valcourt', tier:'regional', parentClub:'AS Horizon',
+    badge:{shape:'shield_fr',border:'simple',background:'solid',colors:['#c0392b','#f8e9d6','#e8c547'],icon:'phoenix',iconColor:'#e8c547',iconY:-6,text:'ASH C',year:'1901',stars:0,bgOpacity:1}},
+  {name:"FC Brumefer B", color:'#7a5c3a', division:'brumefer_r1', region:'Brumefer', tier:'regional', parentClub:'FC Brumefer',
+    badge:{shape:'shield_en',border:'simple',background:'hstripes',colors:['#7a5c3a','#2e2e2e','#c9a227'],icon:'bear',iconColor:'#c9a227',iconY:-6,text:'FCB B',year:'1898',stars:0,bgOpacity:1}},
 ];
 
 // Attribue à chaque équipe un blason stable dérivé de son nom (si badges.js

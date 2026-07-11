@@ -2793,10 +2793,11 @@ function renderTeamSelectPage(){
     });
     vpool.forEach(t=>{
       const divName=(window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[t.division])?window.VALORIA_DIVISIONS[t.division].name:'';
+      const subLbl = t.parentClub ? `🔗 Réserve de ${t.parentClub} · ${divName}` : `🏟️ ${divName}`;
       const badgeHTML=(t.badge&&typeof BadgeCache!=='undefined')?`<img src="${BadgeCache.dataURI(t.badge,36)}" width="36" height="36" style="object-fit:contain">`:`<div style="width:36px;height:36px;border-radius:50%;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
       body += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:11px;background:var(--panel);margin-bottom:8px">
           ${badgeHTML}
-          <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px;color:var(--text)">${t.name}</div><div style="font-size:10px;color:var(--muted)">🏟️ ${divName}</div></div>
+          <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px;color:var(--text)">${t.name}</div><div style="font-size:10px;color:var(--muted)">${subLbl}</div></div>
           <button onclick="teamSelLoadValoria('${(t.name||'').replace(/'/g,"\\'")}')" style="padding:7px 15px;border-radius:8px;cursor:pointer;font-weight:800;font-size:12px;border:none;background:${t.color};color:#fff;flex-shrink:0">Choisir</button>
         </div>`;
     });
