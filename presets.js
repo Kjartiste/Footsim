@@ -24,6 +24,114 @@ function _mk(name, pos, [spd,sht,def,stam,tec,res], spells){
 }
 
 // Un 7v7 = 1 GB + 6 champ (formation 3-2-1 : GB, DC, DD, DG, MDC, MC, ATT).
+// ═══════════════════════════════════════════════════════════════════════
+//  SORTS & TACTIQUES PRÉFAITS (dérivés du lore Valoria)
+//  Valoria est un pays HUMAIN, sobre en magie (valoria.js preferredSpells).
+//  → densité de sorts selon le NIVEAU du club (rare en district, dense en
+//    pro / sélection nationale), et thème selon la RÉGION + le POSTE.
+//  Tout est DÉTERMINISTE (hash stable du nom + presetId) : les équipes
+//  livrées sont identiques à chaque chargement, aucune part d'aléatoire.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Hash déterministe → [0,1)
+function _presetHash(str){
+  let h=2166136261>>>0;
+  for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619)>>>0; }
+  return (h>>>0)/4294967296;
+}
+
+// Nombre de joueurs porteurs de sorts selon le niveau du club.
+// Valoria = sobre : même en pro on reste loin d'une équipe 100% mages.
+function _spellDensityForTier(tier){
+  switch(tier){
+    case 'national_team': return 5; // élite : la sélection concentre les magiciens
+    case 'pro':           return 3; // Ligue Valorienne : quelques joueurs dotés
+    case 'regional':      return 2;
+    case 'r1': case 'r2': return 2;
+    default:              return 1; // district & amateur : la magie est rare
+  }
+}
+
+// Répertoire de sorts par région × groupe de poste (cohérent avec statMods).
+// Valcourt (tec+/spd+/sht+) : école technique & offensive, tirs travaillés.
+// Brumefer (def+/stam+/res+) : durs au mal, magie défensive & de soin.
+// Les ids doivent exister dans SPELLS (data.js).
+const _PRESET_SPELL_POOL = {
+  valcourt: {
+    GK:   ['main','shield'],
+    DEF:  ['shield','pass','tech'],
+    MID:  ['tech','pass','illusion'],
+    FWD:  ['illusion','fire','tech'],
+  },
+  brumefer: {
+    GK:   ['main','peaupierre'],
+    DEF:  ['peaupierre','shield','tacle_mauvais'],
+    MID:  ['shield','soin','pass'],
+    FWD:  ['tech','fire','soin'],
+  },
+  // Sélection nationale / défaut : les prédilections nationales sobres.
+  _default: {
+    GK:   ['main','shield'],
+    DEF:  ['shield','pass'],
+    MID:  ['tech','pass'],
+    FWD:  ['tech','illusion','fire'],
+  },
+};
+
+// Poste → groupe de sorts (aligné sur ROLE_GROUP de tactics.js, simplifié).
+function _presetPosGroup(pos){
+  if(pos==='GB'||pos==='GK') return 'GK';
+  if(/^(DC|DD|DG|DCD|DCG|LB|RB|FIXO|MDC)/.test(pos)) return 'DEF';
+  if(/^(MC|MCD|MCG|MO|MOG|MOD|AG|AD|ALA)/.test(pos)) return 'MID';
+  return 'FWD';
+}
+
+// Tactique préfaite selon région + niveau (strats 7v7 valides : 321/231/222/133).
+function _presetStratFor(region,tier){
+  if(tier==='national_team') return '231';            // sélection : jeu ambitieux
+  if(region==='valcourt')    return '231';            // capitale offensive
+  if(region==='brumefer')    return '321';            // bloc bas, solide
+  return '321';
+}
+
+// Attribue sorts + tactique à une équipe preset (renvoie une copie enrichie).
+// N'écrase PAS des sorts déjà écrits explicitement dans la définition.
+function _enrichPresetTeam(preset){
+  const region=(preset.region||'').toLowerCase();
+  const tier=preset.tier||'pro';
+  const pool=_PRESET_SPELL_POOL[region]||_PRESET_SPELL_POOL._default;
+  const density=_spellDensityForTier(tier);
+  const roster=(preset.players||[]);
+
+  // Classe les joueurs par "magabilité" déterministe (hash) pondérée par poste :
+  // les joueurs créatifs/offensifs (MID/FWD) portent plus souvent la magie, sans
+  // pour autant exclure un gardien ou un défenseur emblématique.
+  const posWeight={ FWD:0.30, MID:0.22, DEF:0.05, GK:0.10 };
+  const ranked=roster.map((pl,idx)=>{
+    const grp=_presetPosGroup(pl.pos);
+    const base=_presetHash(preset.presetId+'|'+pl.name+'|'+pl.pos);
+    return { idx, score: base*0.7 + (posWeight[grp]||0.1) };
+  }).sort((a,b)=>b.score-a.score);
+  const chosen=new Set(ranked.slice(0,density).map(r=>r.idx));
+
+  const players=roster.map((pl,idx)=>{
+    // Respecte un sort déjà défini à la main.
+    if(pl.spells && pl.spells.length) return pl;
+    if(!chosen.has(idx)) return pl;
+    const grp=_presetPosGroup(pl.pos);
+    const opts=pool[grp]||pool.MID||['tech'];
+    const pick=opts[Math.floor(_presetHash(pl.name+'|'+pl.pos+'|'+preset.presetId)*opts.length)]||opts[0];
+    return { ...pl, spells:[pick] };
+  });
+
+  // La strat régionale remplace le '321' générique par défaut, mais respecte
+  // toute strat non-321 explicitement choisie dans la définition du preset.
+  const strat = (!preset.strat || preset.strat==='321')
+    ? _presetStratFor(region,tier)
+    : preset.strat;
+  return { ...preset, players, strat };
+}
+
 // Équipes de la nation VALORIA (voir valoria.js) : humaine, cosmopolite, deux
 // régions (Valcourt la capitale, Brumefer le bassin industriel meurtri) et une
 // seule ligue pro, la Ligue Valorienne. Les "pays" du sélecteur sont les
@@ -154,7 +262,8 @@ const PRESET_TEAMS = [
 // Convertit un preset au format serialisé attendu par savedTeams, avec les
 // champs runtime complétés. On réutilise serializePlayer si dispo (source de
 // vérité du format), sinon on complète à la main.
-function _presetToSavedTeam(preset){
+function _presetToSavedTeam(rawPreset){
+  const preset=_enrichPresetTeam(rawPreset);
   const toPlayer = (pl, idx, onBench) => {
     const base = {
       id: preset.presetId+'_'+idx,
@@ -232,4 +341,5 @@ if(typeof window!=='undefined'){
   window.injectPresetTeams = injectPresetTeams;
   window.presetCatalog = presetCatalog;
   window._presetToSavedTeam = _presetToSavedTeam;
+  window._enrichPresetTeam = _enrichPresetTeam;
 }
