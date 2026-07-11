@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════
 // PRESETS.JS — Équipes préenregistrées (effectifs fixes)
 // ═══════════════════════════════════════════════════════════
-// Des équipes livrées AVEC le jeu, à effectif FIXE (mêmes joueurs à chaque
+// Ce sont des équipes livrées avec le jeu, à effectif FIXE (mêmes joueurs à chaque
 // fois), sélectionnables via un onglet filtrable par pays / type (club ou
-// sélection nationale) / ligue — façon FIFA/PES.
+// sélection nationale) / ligue comme FIFA/PES pour que ça fasse football manager en soit.
 //
 // Ces équipes s'injectent dans le registre existant (savedTeams / localStorage
 // 'footsim7v7_roster') au chargement, sans écraser les équipes créées par le
@@ -13,7 +13,8 @@
 // FORMAT (aligné sur serializeTeam/serializePlayer de ui.js) :
 //   { presetId, name, color, country, kind:'club'|'nation', league, strat,
 //     players:[ {name,pos,s:{spd,sht,def,stam,tec,res},spells?} x7 ] }
-// Les champs runtime (x,y,hp,mp…) sont complétés à l'injection.
+// Les champs runtime (x,y,hp,mp…) sont complétés à l'injection. Attention j'ai pas encore fais pour les 5v5 et 11v11.
+// J'ai demandé à claude de le faire pour l'instant pour voir ce que ça donnerait car c'est un très gros chantier.
 // ═══════════════════════════════════════════════════════════
 
 // Petit helper interne pour écrire les joueurs de façon compacte :
