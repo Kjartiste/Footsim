@@ -170,7 +170,21 @@ const WORLDS = {
 
     const names = [...(region.names || [])].sort(()=>Math.random()-.5);
     let nameIdx = 0;
-    const nextName = () => names[nameIdx++] || 'Joueuse'+(nameIdx);
+    // Rebouclage sur la liste de prénoms de la région une fois épuisée, au
+    // lieu de basculer sur un nom générique hors-lore ("Joueuse21"…). Un gros
+    // club (D1 : 18 titulaires + 7 banc + 3 réservistes = 28) dépasse vite le
+    // pool de prénoms d'une région (souvent ~20 noms) : on préfère un prénom
+    // déjà utilisé (avec un suffixe romain pour le distinguer) à un nom
+    // générique qui casse l'immersion. On ne retombe sur 'Joueuse' que si la
+    // région n'a strictement aucun prénom défini.
+    const ROMAN = ['','II','III','IV','V','VI','VII','VIII'];
+    const nextName = () => {
+      if(!names.length) return 'Joueuse'+(nameIdx++ +1);
+      const lap  = Math.floor(nameIdx / names.length);
+      const base = names[nameIdx % names.length];
+      nameIdx++;
+      return lap>0 ? base+' '+(ROMAN[lap]||('#'+(lap+1))) : base;
+    };
 
     const positions = options.positions || ['GB','DC','DD','DG','MC','MC','ATT'];
     const benchPos  = options.bench    || ['GB','MC','ATT'];
