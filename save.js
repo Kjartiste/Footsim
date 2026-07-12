@@ -762,6 +762,22 @@ function _applyWeeklyEconomy(){
 }
 
 
+// ── EFFECTIF D'UN CLUB ADVERSE (généré en début de saison) ────────────────
+// Génère un effectif complet (titulaires + banc + réserves) pour un club NPC,
+// dimensionné selon son niveau. Sert à consulter l'adversaire et de base à
+// l'IA de gestion. Compact pour ne pas alourdir la sauvegarde à l'excès.
+function _buildOpponentSquad(nationId, regionId, level, clubName){
+  const sizeByLevel = { d1:{s:14,b:5}, d2:{s:14,b:4}, d3:{s:13,b:4}, r1:{s:12,b:4}, r2:{s:12,b:3}, r3:{s:11,b:3}, dh:{s:11,b:3} };
+  const sz = sizeByLevel[level] || sizeByLevel.dh;
+  const mkPos = (n)=>{ const base=['GB','DC','DC','DD','DG','MDC','MC','MC','MOG','MOD','ATT']; const extra=['DC','MC','ATT','DD','GB','MDC','MOG']; const out=base.slice(); for(let i=0;out.length<n;i++) out.push(extra[i%extra.length]); return out.slice(0,n); };
+  try{
+    const sq = WORLDS.generateSquad(nationId, regionId, {
+      positions: mkPos(sz.s), bench: mkPos(sz.b), reserves: mkPos(3), level: level,
+    });
+    return { players: sq.players||[], bench: sq.bench||[], reserves: sq.reserves||[] };
+  }catch(e){ console.error('opponent squad:',e); return { players:[], bench:[], reserves:[] }; }
+}
+
 function _generateSeasonFixtures(){
   if(!careerV2) return;
 
@@ -807,14 +823,17 @@ function _generateSeasonFixtures(){
       }
       const divTeams = pilierTeamsByDivision(divId).filter(t=>t.name!==club.name);
       const opponents = divTeams.map(function(pt){
-        return { id:'pil_'+pt.name.replace(/[^a-z0-9]/gi,'').slice(0,12)+'_'+Math.random().toString(36).slice(2,6),
+        const opp = { id:'pil_'+pt.name.replace(/[^a-z0-9]/gi,'').slice(0,12)+'_'+Math.random().toString(36).slice(2,6),
           name:pt.name, color:pt.color, badge:pt.badge||null,
           level:pt.level, region:pt.region, valoriaName:pt.name, tier:pt.tier };
+        // Effectif complet généré et stocké (consultable + base pour l'IA).
+        opp.squad = _buildOpponentSquad(nation, pt.region, pt.level, pt.name);
+        return opp;
       });
       const allClubs=[{id:'player_club', name:club.name, color:club.color, badge:club.badge||null, isPlayer:true}].concat(opponents);
       careerV2.standings = allClubs.map(function(c){
         return {id:c.id, name:c.name, color:c.color, badge:c.badge||null, isPlayer:!!c.isPlayer,
-                region:c.region, P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0};
+                region:c.region, level:c.level, squad:c.squad||null, P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0};
       });
       _buildRoundRobinFixtures(allClubs);
       careerV2.divisionName = PILIER_DIVISIONS[divId] ? PILIER_DIVISIONS[divId].name : divId;

@@ -6825,6 +6825,9 @@ function _renderDirectorOverview(){
     h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
     h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:8px 12px">⚡ Simuler</button>';
     h += '</div>';
+    // Voir l'effectif complet du prochain adversaire.
+    const oppId = isHome ? nextFix.away : nextFix.home;
+    h += '<button onclick="_viewOpponentSquad(\''+oppId+'\')" style="width:100%;margin-top:8px;font-size:10px;padding:7px;border-radius:7px;cursor:pointer;border:1px solid var(--b1);background:var(--dark);color:var(--muted)">🔍 Voir l\'effectif de '+opp+'</button>';
   } else {
     h += '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">🏁 Saison terminée !</div>';
     h += '<button class="btn btng" onclick="endCareerSeasonDirector()" style="width:100%;font-size:12px;padding:8px">Saison suivante →</button>';
@@ -6983,6 +6986,57 @@ function _squadSetView(key){
   window._squadView = key;
   const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
 }
+// Affiche l'effectif complet d'un club adverse (depuis les standings).
+function _viewOpponentSquad(oppId){
+  const C=careerV2; if(!C) return;
+  const st=(C.standings||[]).find(s=>s.id===oppId);
+  if(!st || !st.squad){ if(typeof careerLog==='function') careerLog('Effectif adverse indisponible.','#e06060'); return; }
+  window._oppSquadView = { id:oppId, group:'players' };
+  _renderOpponentSquadOverlay(st);
+}
+function _renderOpponentSquadOverlay(st){
+  const sq=st.squad;
+  const view=(window._oppSquadView&&window._oppSquadView.group)||'players';
+  const groups=[
+    {key:'players', label:'Titulaires', list:sq.players||[]},
+    {key:'bench', label:'Banc', list:sq.bench||[]},
+    {key:'reserves', label:'Réserves', list:sq.reserves||[]},
+  ].filter(g=>g.list.length);
+  const cur=groups.find(g=>g.key===view)||groups[0];
+  const badge=(st.badge&&typeof BadgeCache!=='undefined')?'<img src="'+BadgeCache.dataURI(st.badge,32)+'" width="32" height="32" style="object-fit:contain">':'';
+  const grid='grid-template-columns:24px 1fr 60px 52px 30px 60px;';
+  let h='<div style="background:var(--panel);border:2px solid '+(st.color||'#888')+';border-radius:14px;padding:14px;margin-bottom:12px">';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+  h+='<button onclick="_closeOpponentSquad()" style="background:var(--dark);border:1px solid var(--b1);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer;padding:2px 8px">← Retour</button>';
+  if(badge) h+='<span>'+badge+'</span>';
+  h+='<div style="font-size:15px;font-weight:900;color:'+(st.color||'var(--fg)')+'">'+st.name+'</div>';
+  h+='</div>';
+  // Onglets titulaires/banc/réserves
+  h+='<div style="display:flex;gap:4px;margin-bottom:10px">';
+  groups.forEach(function(g){ const on=g.key===cur.key; h+='<button onclick="_oppSquadTab(\''+g.key+'\')" style="padding:4px 10px;border-radius:7px;font-size:10px;font-weight:800;cursor:pointer;border:1.5px solid '+(on?st.color:'var(--b1)')+';background:'+(on?st.color+'22':'transparent')+';color:'+(on?st.color:'var(--muted)')+'">'+g.label+' ('+g.list.length+')</button>'; });
+  h+='</div>';
+  // En-tête colonnes
+  h+='<div style="display:grid;'+grid+'gap:0;padding:6px 8px;font-size:8px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--b1)"><div>N°</div><div>Joueuse</div><div>Poste</div><div>Nat.</div><div style="text-align:center">Âge</div><div style="text-align:right">Note</div></div>';
+  let num=1;
+  cur.list.forEach(function(p){
+    const ovr=_pOvr(p); const ovrCol=ovr>=80?'#18c860':ovr>=68?'#f0c028':'#e06060';
+    const pep=(typeof _isPepite==='function'&&_isPepite(p));
+    h+='<div style="display:grid;'+grid+'gap:0;align-items:center;padding:6px 8px;border-bottom:1px solid var(--panel)">';
+    h+='<div style="font-size:10px;color:var(--muted)">'+(num++)+'</div>';
+    h+='<div style="font-size:11px;font-weight:700;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(pep?'🌟 ':'')+p.name+'</div>';
+    h+='<div style="font-size:10px;color:var(--muted)">'+(p.pos||'?')+'</div>';
+    h+='<div style="font-size:9px;color:var(--muted)">'+_playerNatTag(p)+'</div>';
+    h+='<div style="font-size:10px;color:var(--muted);text-align:center">'+(p.age||'?')+'</div>';
+    h+='<div style="font-size:11px;font-weight:900;color:'+ovrCol+';text-align:right">'+ovr+'</div>';
+    h+='</div>';
+  });
+  h+='<div style="font-size:8px;color:var(--muted);margin-top:8px">Effectif de votre prochain adversaire · 🌟 pépite</div>';
+  h+='</div>';
+  const el=document.getElementById('career-director-content');
+  if(el){ el.innerHTML = h + _renderDirectorOverview(); }
+}
+function _oppSquadTab(g){ if(window._oppSquadView) window._oppSquadView.group=g; const C=careerV2; const st=(C.standings||[]).find(s=>s.id===window._oppSquadView.id); if(st) _renderOpponentSquadOverlay(st); }
+function _closeOpponentSquad(){ window._oppSquadView=null; const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorOverview(); }
 // Fiche joueur détaillée (overlay in-flow).
 function _openPlayerCard(teamKey, pid){
   const C=careerV2; if(!C) return;
