@@ -202,6 +202,61 @@ function loadCareerV2(){
   } catch(e){ careerV2 = null; }
 }
 
+// ── ÉQUIPES RÉSERVES AFFILIÉES (générique) ────────────────────────────────
+// Construit careerV2.affiliates. Générique : pour le Pilier, on pré-remplit
+// avec les autres branches de la Maison du club (Secundus = réserve, Academia
+// = U23…), chacune dans SA division avec un effectif généré à son niveau. Pour
+// les autres nations, aucune affiliée n'est créée ici (le joueur pourra en
+// créer une à la main plus tard, même structure).
+function _buildAffiliate(name, color, badge, level, divisionName, role, nationId, regionId){
+  let squad = { players:[], bench:[], reserves:[] };
+  try{
+    squad = WORLDS.generateSquad(nationId, regionId, {
+      positions: ['GB','DC','DD','DG','MC','MC','ATT'],
+      bench: ['GB','DC','MC','ATT'],
+      reserves: [],
+      level: level,
+    }) || squad;
+  }catch(e){ console.error('generateSquad affiliate:',e); }
+  return {
+    id: 'aff_'+name.replace(/[^a-z0-9]/gi,'').slice(0,14)+'_'+Math.random().toString(36).slice(2,6),
+    name, color, badge: badge||null,
+    level, division: divisionName||'', role: role||'reserve',
+    delegated: true,
+    players: squad.players||[],
+    bench: squad.bench||[],
+    fixtures: [], standings: [],
+    season_stats: { wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0 },
+  };
+}
+
+const _BRANCH_ROLE = { Secundus:'réserve', Academia:'U23 / académie', Custodes:'réserve défensive',
+  Ferrum:'réserve', Sanctum:'réserve', Nova:'nouvelle branche', Ordo:'réserve', Legio:'réserve',
+  Vigilia:'réserve', Mercatoria:'réserve', Excelsior:'réserve élite' };
+
+function _buildAffiliates(clubName, nationId){
+  if(!careerV2) return;
+  careerV2.affiliates = careerV2.affiliates || [];
+  if(nationId==='pilier' && typeof PILIER_TEAMS!=='undefined'){
+    const me = PILIER_TEAMS.find(t=>t.name===clubName);
+    if(!me || !me.house) return;
+    const siblings = PILIER_TEAMS.filter(t=>t.house===me.house && t.name!==clubName);
+    const divMap = (typeof PILIER_DIVISIONS!=='undefined') ? PILIER_DIVISIONS : {};
+    const regionId = careerV2.club.region;
+    siblings.forEach(function(sib){
+      const divName = (divMap[sib.division] ? divMap[sib.division].name : '');
+      const role = _BRANCH_ROLE[sib.branch] || 'réserve';
+      const aff = _buildAffiliate(sib.name, sib.color, sib.badge, sib.level||'dh', divName, role, nationId, regionId);
+      aff.house = me.house; aff.branch = sib.branch;
+      careerV2.affiliates.push(aff);
+    });
+    if(careerV2.affiliates.length){
+      careerV2.house = me.house;
+      logEvent('🏛 Maison '+me.house+' : '+careerV2.affiliates.length+' équipes réserves rattachées.', careerV2.club.color);
+    }
+  }
+}
+
 // ── Initialisation Carrière Dirigeant ────────────────────────────────
 function startCareerDirector(regionId, clubId, nationId){
   nationId = nationId || 'panthalassa';
@@ -210,11 +265,14 @@ function startCareerDirector(regionId, clubId, nationId){
 
   const clubName  = clubId || region.clubNames[0];
   const clubColor = window._careerColor || region.color;
-  // Si on reprend un club existant de Valoria, on récupère son blason.
+  // Si on reprend un club existant (Valoria ou Pilier), on récupère son blason.
   let clubBadge = null;
   if(nationId==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
     const vt=VALORIA_TEAMS.find(function(t){ return t.name===clubName; });
     if(vt && vt.badge) clubBadge = vt.badge;
+  } else if(nationId==='pilier' && typeof PILIER_TEAMS!=='undefined'){
+    const pt=PILIER_TEAMS.find(function(t){ return t.name===clubName; });
+    if(pt && pt.badge) clubBadge = pt.badge;
   }
   const startLevel = region.pyramid.district_groups > 0 ? 'dh' :
                      region.pyramid.has_r3 ? 'r3' : 'r2';
@@ -273,9 +331,17 @@ function startCareerDirector(regionId, clubId, nationId){
     pending_events: [],
     director_reputation: 30,
     director_name: 'Vous',
+    // Équipes réserves affiliées (générique, réutilisable pour toute nation).
+    // Chaque affiliée : {id,name,color,badge,level,division,delegated,players,
+    // bench,fixtures,standings,...}. Pré-remplies pour le Pilier (branches de la
+    // Maison) ; vides ailleurs (le joueur peut en créer via la carrière manager).
+    affiliates: [],
   };
 
   careerV2.club.board_objectives = _generateBoardObjectives(careerV2.club);
+  // Pré-remplir les réserves affiliées si le club appartient à une Maison
+  // (Pilier). Générique : n'a d'effet que si des branches affiliées existent.
+  try{ _buildAffiliates(clubName, nationId); }catch(e){ console.error('affiliates:',e); }
   _generateSeasonFixtures();
   _generateFreeAgents();
   _generateYouthIntake();

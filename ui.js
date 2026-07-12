@@ -6263,7 +6263,11 @@ function _renderClubStep(el, nationId, regionId, mode){
   h += '</div></div>';
 
   // ── Onglets : Créer / Reprendre ────────────────────────────────────────
-  const hasExisting = (nationId==='valoria' && typeof valoriaTeamsByDivision==='function');
+  // Généralisé : disponible pour toute nation ayant un pool d'équipes de
+  // division (Valoria via VALORIA_TEAMS, Pilier via PILIER_TEAMS…).
+  const _career_isValoria = (nationId==='valoria' && typeof valoriaTeamsByDivision==='function');
+  const _career_isPilier  = (nationId==='pilier' && typeof pilierTeamsByDivision==='function');
+  const hasExisting = _career_isValoria || _career_isPilier;
   if(hasExisting){
     h += '<div style="display:flex;gap:6px;margin-bottom:12px">';
     h += '<button class="career-club-tab" data-tab="create" style="flex:1;padding:8px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;border:2px solid '+(tab==='create'?region.color:'var(--b1)')+';background:'+(tab==='create'?region.color+'22':'var(--dark)')+';color:'+(tab==='create'?'#fff':'var(--muted)')+'">✏️ Créer mon équipe</button>';
@@ -6273,9 +6277,23 @@ function _renderClubStep(el, nationId, regionId, mode){
 
   if(hasExisting && tab==='existing'){
     // ── REPRENDRE : liste des équipes + FICHE DÉTAILLÉE au clic ────────────
-    const divId = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
-    const divTeams = divId ? valoriaTeamsByDivision(divId) : [];
-    const divName = (divId&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[divId]?window.VALORIA_DIVISIONS[divId].name:'');
+    // Division de départ + pool d'équipes, selon la nation.
+    let divId, divTeams, divName, divMap;
+    if(_career_isPilier){
+      divMap = window.PILIER_DIVISIONS || {};
+      // Le Pilier démarre dans les Fondations. On laisse choisir la Fondation
+      // via window._careerPilierDiv (déf. : 1re Fondation).
+      const fondDivs = Object.entries(divMap).filter(([id,d])=>d.tier==='district').sort((a,b)=>a[1].order-b[1].order).map(([id])=>id);
+      if(!fondDivs.includes(window._careerPilierDiv)) window._careerPilierDiv = fondDivs[0];
+      divId = window._careerPilierDiv;
+      divTeams = pilierTeamsByDivision(divId);
+      divName = (divMap[divId] ? divMap[divId].name : '');
+    } else {
+      divMap = window.VALORIA_DIVISIONS || {};
+      divId = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
+      divTeams = divId ? valoriaTeamsByDivision(divId) : [];
+      divName = (divId&&divMap[divId]?divMap[divId].name:'');
+    }
     // Club actuellement déployé (fiche ouverte). Par défaut : le premier.
     if(divTeams.length && !divTeams.some(t=>t.name===window._careerClubPreview)){
       window._careerClubPreview = divTeams[0].name;
@@ -6488,9 +6506,12 @@ function renderCareerDirector(el){
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
   const tabs = ['overview','squad','mercato','finances','infra','staff','calendar'];
+  // Onglet Réserves : seulement si le club a des équipes affiliées.
+  if(C.affiliates && C.affiliates.length) tabs.push('affiliates');
   const tabLabels = {
     overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato',
-    finances:'💰 Finances', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier'
+    finances:'💰 Finances', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
+    affiliates:'🏛 Réserves'
   };
 
   let tabBtns = '';
@@ -6603,7 +6624,60 @@ function renderCareerDirectorTab(tab){
   else if(tab==='infra') el.innerHTML = _renderDirectorInfra();
   else if(tab==='staff') el.innerHTML = _renderDirectorStaff();
   else if(tab==='calendar') el.innerHTML = _renderDirectorCalendar();
+  else if(tab==='affiliates') el.innerHTML = _renderDirectorAffiliates();
   else el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px">A venir...</div>';
+}
+
+// ── ONGLET RÉSERVES (équipes affiliées) — étape 1 : affichage ─────────────
+function _affOvr(aff){
+  const all=[...(aff.players||[]),...(aff.bench||[])];
+  if(!all.length) return null;
+  let sum=0,n=0;
+  all.forEach(function(p){ const v=Object.values(p.s||{}); if(v.length){ sum+=v.reduce((a,b)=>a+b,0)/v.length; n++; } });
+  return n?Math.round(sum/n):null;
+}
+function _renderDirectorAffiliates(){
+  const C = careerV2;
+  const affs = C.affiliates || [];
+  let h = '<div style="padding:14px">';
+  h += '<div style="font-size:15px;font-weight:900;color:var(--gold);margin-bottom:4px">🏛 '+(C.house?('Maison '+C.house):'Équipes réserves')+'</div>';
+  h += '<div style="font-size:10px;color:var(--muted);margin-bottom:14px">Vos équipes réserves jouent leur propre championnat. Vous pouvez les gérer vous-même ou déléguer.</div>';
+  if(!affs.length){
+    h += '<div style="font-size:11px;color:var(--muted);text-align:center;padding:24px">Aucune équipe réserve pour le moment.</div>';
+    h += '</div>'; return h;
+  }
+  affs.forEach(function(aff,i){
+    const ovr = _affOvr(aff);
+    const nb = (aff.players||[]).length + (aff.bench||[]).length;
+    const badgeHTML = (aff.badge && typeof BadgeCache!=='undefined')
+      ? '<img src="'+BadgeCache.dataURI(aff.badge,40)+'" width="40" height="40" style="object-fit:contain">'
+      : '<div style="width:40px;height:40px;border-radius:50%;background:'+aff.color+'33;border:2px solid '+aff.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:'+aff.color+'">'+(typeof teamIni==='function'?teamIni(aff.name):'?')+'</div>';
+    h += '<div style="background:var(--panel);border:1px solid '+aff.color+'55;border-radius:12px;padding:12px;margin-bottom:10px">';
+    h += '<div style="display:flex;align-items:center;gap:12px">';
+    h += '<div style="flex-shrink:0">'+badgeHTML+'</div>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:14px;font-weight:800;color:'+aff.color+'">'+aff.name+'</div>';
+    h += '<div style="font-size:9px;color:var(--muted)">'+(aff.branch?('🔹 '+aff.branch+' · '):'')+(aff.role||'réserve')+'</div>';
+    h += '<div style="font-size:9px;color:var(--muted)">🏟️ '+(aff.division||'')+'</div>';
+    h += '</div>';
+    h += '<div style="text-align:right;flex-shrink:0">';
+    if(ovr!=null) h += '<div style="font-size:16px;font-weight:900;color:'+aff.color+'">'+ovr+'</div><div style="font-size:8px;color:var(--muted)">OVR moyen</div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:2px">👥 '+nb+' joueurs</div>';
+    h += '</div></div>';
+    // Statut géré / délégué (bascule — étape 2 activera la vraie gestion)
+    h += '<div style="display:flex;gap:6px;margin-top:10px">';
+    h += '<button onclick="_toggleAffiliateDelegate('+i+')" style="flex:1;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px solid '+(aff.delegated?'var(--b1)':aff.color)+';background:'+(aff.delegated?'var(--dark)':aff.color+'22')+';color:'+(aff.delegated?'var(--muted)':aff.color)+'">'+(aff.delegated?'🤖 Déléguée (cliquer pour gérer)':'🎮 Gérée par vous')+'</button>';
+    h += '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+function _toggleAffiliateDelegate(i){
+  const C=careerV2; if(!C||!C.affiliates||!C.affiliates[i]) return;
+  C.affiliates[i].delegated = !C.affiliates[i].delegated;
+  try{ saveCareerV2(); }catch(e){}
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
 }
 
 function _renderDirectorOverview(){
