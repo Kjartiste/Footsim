@@ -6832,7 +6832,31 @@ function _renderDirectorOverview(){
   h += '</div>';
   h += '</div>';
 
-  // ── Classement ────────────────────────────────────────────────────────
+  // ── Coupe du Pilier (parcours) ────────────────────────────────────────
+  if(C.cup){
+    const cup=C.cup;
+    h += '<div style="background:var(--panel);border:1px solid var(--b1);border-left:4px solid #f0c028;border-radius:10px;padding:14px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#f0c028;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏆 '+cup.name+'</div>';
+    if(cup.winner){
+      h += '<div style="font-size:13px;font-weight:800;color:'+(cup.winner.isPlayer?'#f0c028':'var(--muted)')+'">'+(cup.winner.isPlayer?'👑 Vous avez remporté la coupe !':('Remportée par '+cup.winner.name))+'</div>';
+    } else if(cup.playerOut){
+      h += '<div style="font-size:12px;color:#e06060">Éliminé. La coupe se poursuit sans vous.</div>';
+    } else {
+      const rn = cup.roundNames[cup.round] || 'Tour';
+      const nextWk = cup.weeks[cup.round];
+      // Trouver le prochain adversaire du joueur dans le bracket courant.
+      let oppName=null;
+      (cup.bracket||[]).forEach(function(m){
+        if(m.a&&m.a.isPlayer) oppName=m.b?m.b.name:'(exempt)';
+        else if(m.b&&m.b.isPlayer) oppName=m.a?m.a.name:'(exempt)';
+      });
+      h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">Tour : '+rn+'</div>';
+      if(oppName) h += '<div style="font-size:12px;color:var(--muted)">Prochain adversaire : <b style="color:var(--fg)">'+oppName+'</b> (semaine '+nextWk+')</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-top:6px">Le match de coupe se joue automatiquement à la semaine indiquée.</div>';
+    }
+    h += '</div>';
+  }
+
   if(standings.length > 0){
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px;margin-bottom:12px">';
     h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏆 Classement</div>';
@@ -7353,6 +7377,9 @@ function advanceCareerWeek(){
   // Avancement des chantiers d'infrastructure (permis, construction, tranches)
   try{ if(typeof _advanceInfraWorks==='function') _advanceInfraWorks(); }catch(e){ console.error('works:',e); }
 
+  // Avancement de la coupe nationale (si semaine de coupe)
+  try{ if(typeof _advanceNationalCup==='function') _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
+
   // Toutes les 4 semaines : refresh des joueurs libres
   if(C.week % 4 === 0){
     _generateFreeAgents();
@@ -7775,6 +7802,28 @@ function endCareerSeasonDirector(){
         if(res.message) logEvent(res.message, C.club.color||'#f0c028');
       }
     }catch(e){ console.error('valoriaResolvePlayerSeason:',e); }
+  } else if((C.nation==='pilier') && typeof pilierResolveSeason==='function' && C.club && C.club.level){
+    // Système à 3 blocs fermés du Pilier (+ barrages inter-blocs).
+    try{
+      const res = pilierResolveSeason(C.club, myPos, total);
+      if(res){
+        if(res.playoff){
+          // Barrage d'accession : simulé (le joueur affronte 3× le dernier du
+          // bloc supérieur). Version auto pour l'instant.
+          let wins=0;
+          for(let g=0; g<res.playoff.winsNeeded+2 && wins<res.playoff.winsNeeded; g++){
+            // Chance de gagner un match de barrage (avantage au 1er de son bloc).
+            if(Math.random() < 0.5) wins++;
+          }
+          const br = pilierResolveBarrage(res.playoff, wins);
+          if(br.promoted && br.newLevel){ C.club.level = br.newLevel; C.club.pilierDivId = br.newDivId; }
+          logEvent(br.message, C.club.color||'#f0c028');
+        } else {
+          if(res.newLevel && res.newLevel!==C.club.level){ C.club.level = res.newLevel; C.club.pilierDivId = res.newDivId; }
+          if(res.message) logEvent(res.message, C.club.color||'#f0c028');
+        }
+      }
+    }catch(e){ console.error('pilierResolveSeason:',e); }
   } else if(myPos <= 2){
     const pyramid = WORLDS.getPyramid(C.nation||'panthalassa');
     const levels = pyramid.map(function(p){ return p.id; });

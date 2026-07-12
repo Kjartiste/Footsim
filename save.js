@@ -280,10 +280,12 @@ function startCareerDirector(regionId, clubId, nationId){
   let startLevel = region.pyramid.district_groups > 0 ? 'dh' :
                    region.pyramid.has_r3 ? 'r3' : 'r2';
   let startDivName = null;
+  let startPilierDivId = null;
   if(nationId==='pilier' && typeof PILIER_TEAMS!=='undefined'){
     const pt=PILIER_TEAMS.find(function(t){ return t.name===clubName; });
     if(pt){
       if(pt.level) startLevel = pt.level;
+      startPilierDivId = pt.division;
       if(typeof PILIER_DIVISIONS!=='undefined' && PILIER_DIVISIONS[pt.division]) startDivName = PILIER_DIVISIONS[pt.division].name;
     }
   } else if(nationId==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
@@ -379,6 +381,7 @@ function startCareerDirector(regionId, clubId, nationId){
       badge: clubBadge,
       level: startLevel,
       divisionName: startDivName || null,
+      pilierDivId: startPilierDivId || null,
       group: 0,
       budget: budget,
       transferBudget: Math.round(budget * 0.40),
@@ -888,7 +891,110 @@ function _buildRoundRobinFixtures(allClubs){
   fixtures.forEach(function(f, i){ f.week = Math.floor(i/2) + 1; });
   careerV2.fixtures = fixtures;
   logEvent('📅 Calendrier généré — '+fixtures.length+' matchs cette saison !','#18c860');
+  // Générer la coupe nationale (Pilier) en parallèle du championnat.
+  try{ _generateNationalCup(); }catch(e){ console.error('cup:',e); }
 }
+
+// ═══════════════════════════════════════════════════════════
+// COUPE NATIONALE (Pilier : « Coupe du Pilier ») — élimination directe
+// ───────────────────────────────────────────────────────────
+// Une coupe à élimination directe qui se joue EN PARALLÈLE du championnat, à
+// des semaines dédiées. Ton club affronte des clubs tirés au sort dans tout le
+// Pilier (toutes divisions confondues) ; les autres confrontations sont
+// simulées. Progresser rapporte du prestige et des primes.
+// ───────────────────────────────────────────────────────────
+function _cupTeamStrength(divLevel){
+  // Force approximative d'un club selon le niveau de sa division (0-1).
+  const map = { d1:0.92, d2:0.82, d3:0.72, r1:0.60, r2:0.48, r3:0.36, dh:0.26 };
+  return map[divLevel] || 0.4;
+}
+function _generateNationalCup(){
+  const C = careerV2;
+  if(!C || C.nation!=='pilier' || typeof PILIER_TEAMS==='undefined') return;
+  // Rassembler un plateau de coupe : le club joueur + un échantillon d'autres
+  // clubs du Pilier (toutes divisions), taille en puissance de 2 (16).
+  const others = PILIER_TEAMS.filter(t=>t.name!==C.club.name);
+  // Mélange déterministe léger.
+  for(let i=others.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [others[i],others[j]]=[others[j],others[i]]; }
+  const SIZE = 16;
+  const field = [{ name:C.club.name, color:C.club.color, badge:C.club.badge||null, level:C.club.level, isPlayer:true }]
+    .concat(others.slice(0, SIZE-1).map(t=>({ name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh', isPlayer:false })));
+  // Tableau de tours (16 → 8 → 4 → 2 → 1). Semaines de coupe espacées.
+  C.cup = {
+    name: 'Coupe du Pilier',
+    field, round: 0,
+    roundNames: ['16es','8es','Quarts','Demies','Finale'],
+    // Les matchs de coupe tombent toutes les ~3 journées de championnat.
+    weeks: [3,6,9,12,15],
+    bracket: _cupPairUp(field),
+    eliminated: false, winner: null, playerOut: false,
+  };
+  logEvent('🏆 '+C.cup.name+' : ton club entre en lice ('+field.length+' équipes) !', C.club.color||'#f0c028');
+}
+function _cupPairUp(teams){
+  // Apparie la liste en paires successives pour le tour courant.
+  const pairs=[];
+  for(let i=0;i<teams.length;i+=2){ pairs.push({ a:teams[i], b:teams[i+1]||null, sa:null, sb:null, played:false, winner:null }); }
+  return pairs;
+}
+// Simule un match de coupe entre deux équipes (par leur niveau de division).
+function _cupSimMatch(a,b){
+  if(!b) return a; // bye
+  const sa=_cupTeamStrength(a.level), sb=_cupTeamStrength(b.level);
+  // Buts ~ Poisson simplifié pondéré par la force + hasard de coupe.
+  const gA=Math.max(0, Math.round((sa*2.2 + Math.random()*2.2) - sb*1.2));
+  const gB=Math.max(0, Math.round((sb*2.2 + Math.random()*2.2) - sa*1.2));
+  let ga=gA, gb=gB;
+  if(ga===gb){ // pas de nul en coupe : tirs au but ~ favorise le plus fort
+    if(Math.random() < 0.5 + (sa-sb)*0.5) ga++; else gb++;
+  }
+  return { winner: ga>gb?a:b, ga, gb };
+}
+// Fait avancer la coupe si la semaine courante est une semaine de coupe.
+function _advanceNationalCup(){
+  const C=careerV2; if(!C || !C.cup || C.cup.winner) return;
+  const cup=C.cup;
+  const roundIdx = cup.round;
+  if(roundIdx>=cup.weeks.length) return;
+  if(C.week < cup.weeks[roundIdx]) return; // pas encore l'heure de ce tour
+  // Jouer tout le tour courant.
+  const survivors=[];
+  cup.bracket.forEach(function(m){
+    if(m.played){ if(m.winner) survivors.push(m.winner); return; }
+    const res=_cupSimMatch(m.a, m.b);
+    if(res.winner){ m.winner=res.winner; m.ga=res.ga; m.gb=res.gb; m.played=true; survivors.push(res.winner); }
+    // Notifier si le match concerne le joueur.
+    if((m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer)){
+      const me=m.a&&m.a.isPlayer?m.a:m.b; const opp=m.a&&m.a.isPlayer?m.b:m.a;
+      const win = res.winner && res.winner.isPlayer;
+      const myG = m.a&&m.a.isPlayer?res.ga:res.gb, opG = m.a&&m.a.isPlayer?res.gb:res.ga;
+      if(win){
+        const prime = 4000 + roundIdx*3000;
+        C.club.budget += prime;
+        careerLog('🏆 Coupe du Pilier ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+' ! Prime '+fmtG(prime), '#18c860');
+      } else {
+        cup.playerOut=true;
+        careerLog('🏆 Coupe du Pilier ('+cup.roundNames[roundIdx]+') — élimination '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+'.', '#e06060');
+      }
+    }
+  });
+  cup.round++;
+  if(survivors.length<=1){
+    cup.winner = survivors[0] || null;
+    if(cup.winner && cup.winner.isPlayer){
+      const prize=30000;
+      C.club.budget += prize;
+      C.club.reputation = Math.min(100, (C.club.reputation||0)+10);
+      careerLog('👑 VOUS REMPORTEZ LA '+cup.name.toUpperCase()+' ! Prime '+fmtG(prize)+', réputation +10 !', '#f0c028');
+    } else if(cup.winner){
+      careerLog('🏆 '+cup.name+' remportée par '+cup.winner.name+'.', '#f0c028');
+    }
+  } else {
+    // Préparer le tour suivant.
+    cup.bracket = _cupPairUp(survivors);
+  }
+}
+
 
 function _generateInitialJobOffers(regionId, nationId){
   nationId = nationId || 'panthalassa';

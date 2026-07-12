@@ -230,8 +230,10 @@ const PILIER_TEAMS = [
   {name:"Lyra Primus",color:'#c0a0d0',division:'fond4',region:'Le Pilier',tier:'district',house:"Lyra",houseColor:'#c0a0d0',branch:"Primus",level:'dh'},
 ];
 
-function pilierTeamsByDivision(divId){ return PILIER_TEAMS.filter(t=>t.division===divId); }
-function pilierHouseClubs(house){ return PILIER_TEAMS.filter(t=>t.house===house); }
+function pilierTeamsByDivision(divId){ const r=PILIER_TEAMS.filter(t=>t.division===divId); r.forEach(_pilierBadgeOnDemand); return r; }
+function pilierHouseClubs(house){ const r=PILIER_TEAMS.filter(t=>t.house===house); r.forEach(_pilierBadgeOnDemand); return r; }
+// Génère le badge d'un club à la demande s'il manque (badges.js désormais prêt).
+function _pilierBadgeOnDemand(t){ if(t && !t.badge && typeof BadgeGenerator!=='undefined'){ const b=_pilierMakeBadge(t); if(b) t.badge=b; } }
 
 // ═══════════════════════════════════════════════════════════
 // BLASONS DU PILIER (déterministes, thème céleste/infernal)
@@ -271,11 +273,23 @@ function _pilierAccent(hex){
   const r=Math.min(255,parseInt(hex.slice(1,3),16)+60), g=Math.min(255,parseInt(hex.slice(3,5),16)+60), b=Math.min(255,parseInt(hex.slice(5,7),16)+60);
   return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
 }
-// Générer et attacher les blasons à tous les clubs (une seule fois).
-(function _pilierGenBadges(){
-  if(typeof BadgeGenerator==='undefined') return; // badges.js pas encore chargé
-  PILIER_TEAMS.forEach(function(t){ if(!t.badge){ const b=_pilierMakeBadge(t); if(b) t.badge=b; } });
-})();
+// Générer et attacher les blasons à tous les clubs. Robuste à l'ordre de
+// chargement : si badges.js n'est pas encore prêt, on réessaie un peu plus tard
+// (au prochain tick, puis au load) plutôt que d'abandonner silencieusement.
+function _pilierEnsureBadges(){
+  if(typeof BadgeGenerator==='undefined' || !BadgeGenerator.fromSeed) return false;
+  let done=0;
+  PILIER_TEAMS.forEach(function(t){ if(!t.badge){ const b=_pilierMakeBadge(t); if(b){ t.badge=b; done++; } } });
+  return true;
+}
+if(!_pilierEnsureBadges()){
+  // badges.js pas encore chargé → réessais différés.
+  if(typeof setTimeout!=='undefined') setTimeout(_pilierEnsureBadges, 0);
+  if(typeof window!=='undefined' && window.addEventListener){
+    window.addEventListener('DOMContentLoaded', _pilierEnsureBadges);
+    window.addEventListener('load', _pilierEnsureBadges);
+  }
+}
 
 if(typeof window!=='undefined'){
   window.PILIER_TEAMS = PILIER_TEAMS;
@@ -283,4 +297,98 @@ if(typeof window!=='undefined'){
   window.pilierTeamsByDivision = pilierTeamsByDivision;
   window.pilierHouseClubs = pilierHouseClubs;
   window.pilierMakeBadge = _pilierMakeBadge;
+  window._pilierEnsureBadges = _pilierEnsureBadges;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROMOTION / RELÉGATION DU PILIER — 3 blocs fermés
+// ───────────────────────────────────────────────────────────
+// Trois blocs étanches : PRO (gtd,zenith), CÉLESTES (cel1..cel4),
+// FONDATIONS (fond1..fond4). À l'intérieur d'un bloc : 2 montées / 2 descentes
+// entre divisions adjacentes. Entre blocs : FERMÉ, sauf BARRAGE exceptionnel —
+// le 1er de la 1re Fondation (fond1) peut monter en Céleste s'il bat 3× le
+// dernier de la 4e Céleste (cel4) ; le 1er de la 1re Céleste (cel1) peut monter
+// en Pro s'il bat 3× le dernier du Zénith (zenith).
+const PILIER_BLOCKS = {
+  pro: ['gtd','zenith'],
+  celeste: ['cel1','cel2','cel3','cel4'],
+  fondation: ['fond1','fond2','fond3','fond4'],
+};
+function _pilierBlockOf(divId){
+  for(const b in PILIER_BLOCKS){ if(PILIER_BLOCKS[b].includes(divId)) return b; }
+  return null;
+}
+function _pilierDivOfLevel(level){
+  // Un club stocke un `level` moteur (d1,d2,r1,...). On retrouve sa division
+  // Pilier via PILIER_DIVISIONS (chaque division a un `level`).
+  const e = Object.entries(PILIER_DIVISIONS).find(([id,d])=>d.level===level);
+  return e ? e[0] : null;
+}
+// Résout la fin de saison pour le club joueur au Pilier.
+// pos = position finale (1 = premier), total = nb d'équipes.
+// Retourne { newLevel, message, playoff } — playoff signale un barrage à jouer.
+function pilierResolveSeason(club, pos, total){
+  // Retrouver la division actuelle par son id stocké ou via le level.
+  let divId = club.pilierDivId || _pilierDivOfLevel(club.level);
+  if(!divId || !PILIER_DIVISIONS[divId]) return null;
+  const block = _pilierBlockOf(divId);
+  const order = PILIER_DIVISIONS[divId].order;
+  const blockDivs = PILIER_BLOCKS[block];
+  const idxInBlock = blockDivs.indexOf(divId);
+  const isTopOfBlock = idxInBlock===0;
+  const isBottomOfBlock = idxInBlock===blockDivs.length-1;
+
+  let newDivId = divId, message = null, playoff = null;
+
+  // MONTÉE (2 premiers) — vers la division au-dessus DANS le bloc.
+  if(pos<=2 && !isTopOfBlock){
+    newDivId = blockDivs[idxInBlock-1];
+    message = '🎉 PROMOTION ! Vous montez en '+PILIER_DIVISIONS[newDivId].name+' !';
+  }
+  // DESCENTE (2 derniers) — vers la division en-dessous DANS le bloc.
+  else if(pos>=total-1 && !isBottomOfBlock){
+    newDivId = blockDivs[idxInBlock+1];
+    message = '🔻 Relégation en '+PILIER_DIVISIONS[newDivId].name+'.';
+  }
+  // BARRAGE inter-blocs : 1er d'une tête de bloc inférieur → tente de monter.
+  else if(pos===1 && isTopOfBlock && block!=='pro'){
+    // fond1 (1er des Fondations) vise cel4 ; cel1 (1er des Célestes) vise zenith.
+    const target = block==='fondation' ? 'cel4' : 'zenith';
+    playoff = {
+      type:'promotion_barrage',
+      fromDiv: divId, targetDiv: target,
+      desc: 'Barrage d\'accession : battez 3× le dernier de '+PILIER_DIVISIONS[target].name+' pour monter d\'un bloc !',
+      winsNeeded: 3,
+    };
+    message = '⚔️ Vous êtes 1er ! Un barrage d\'accession vous attend contre le dernier de '+PILIER_DIVISIONS[target].name+'.';
+  }
+  else if(isTopOfBlock && pos<=2 && block==='pro' && divId==='gtd'){
+    message = '👑 Champion du Grand Trône Divin — sommet du Pilier atteint !';
+  }
+
+  return {
+    newLevel: PILIER_DIVISIONS[newDivId].level,
+    newDivId,
+    message,
+    playoff,
+  };
+}
+// Résout un barrage d'accession : le joueur doit gagner `winsNeeded` matchs.
+// Retourne { promoted, newLevel, newDivId, message }.
+function pilierResolveBarrage(playoff, playerWins){
+  if(playerWins >= playoff.winsNeeded){
+    return {
+      promoted:true,
+      newLevel: PILIER_DIVISIONS[playoff.targetDiv].level,
+      newDivId: playoff.targetDiv,
+      message:'🏆 BARRAGE RÉUSSI ! Vous accédez à '+PILIER_DIVISIONS[playoff.targetDiv].name+' — un exploit historique !',
+    };
+  }
+  return { promoted:false, message:'⚔️ Barrage perdu ('+playerWins+'/'+playoff.winsNeeded+' victoires). Vous restez dans votre bloc.' };
+}
+
+if(typeof window!=='undefined'){
+  window.PILIER_BLOCKS = PILIER_BLOCKS;
+  window.pilierResolveSeason = pilierResolveSeason;
+  window.pilierResolveBarrage = pilierResolveBarrage;
 }
