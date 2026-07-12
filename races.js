@@ -100,6 +100,21 @@ function pickRaceForRegion(region, seed){
   return 'human';
 }
 
+// Migration : attribue une race aux joueurs d'une save antérieure au système
+// (ceux sans champ `race`). Déterministe par nom pour rester stable.
+function ensurePlayerRace(p, region){
+  if(!p) return;
+  if(p.race && RACE_MODIFIERS[p.race]) return; // déjà une race valide
+  p.race = pickRaceForRegion(region||'', (p.name||'')+(p.pos||''));
+}
+function ensureTeamRaces(team){
+  if(!team) return;
+  const region = team.region || team.regionId || '';
+  ['players','bench','reserves'].forEach(key=>{
+    if(Array.isArray(team[key])) team[key].forEach(p=>ensurePlayerRace(p, region));
+  });
+}
+
 if(typeof window!=='undefined'){
   window.RACE_MODIFIERS = RACE_MODIFIERS;
   window.RACE_IDS = RACE_IDS;
@@ -108,4 +123,6 @@ if(typeof window!=='undefined'){
   window.raceMeta = raceMeta;
   window.RACE_WEIGHTS_BY_REGION = RACE_WEIGHTS_BY_REGION;
   window.pickRaceForRegion = pickRaceForRegion;
+  window.ensurePlayerRace = ensurePlayerRace;
+  window.ensureTeamRaces = ensureTeamRaces;
 }

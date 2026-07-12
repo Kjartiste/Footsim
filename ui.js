@@ -1408,6 +1408,7 @@ function _prepareTeamsForMode(){
   // mouvement sur tous les joueurs (y compris ceux générés en complément).
   if(typeof ensureAllS2==='function'){ try{ ensureAllS2(); }catch(e){} }
   if(typeof ensureAllProfiles==='function'){ try{ ensureAllProfiles(); }catch(e){} }
+  if(typeof ensureTeamRaces==='function'){ try{ [0,1].forEach(function(ti){ if(teams[ti]) ensureTeamRaces(teams[ti]); }); }catch(e){} }
   [0,1].forEach(function(ti){ (teams[ti].players||[]).forEach(_ensureMotionFields); });
 }
 
@@ -1955,10 +1956,15 @@ function _renderPlayerEditor(p,T,source){
   document.getElementById('mttl').textContent=p.name+' · '+p.pos+label;
   document.getElementById('mcnt').innerHTML=`
   <div style="display:flex;gap:11px;align-items:flex-start;margin-bottom:12px">
-    <div>
+    <div style="position:relative">
       <div class="av" id="mav" style="width:52px;height:52px;font-size:15px;font-weight:800;cursor:pointer;border-color:${T.color}60;background:${T.color}22" onclick="document.getElementById('fup').click()" title="Cliquer pour changer la photo">
         ${p.img?`<img src="${p.img}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<span style="color:${T.color}">${p.ini}</span>`}
       </div>
+      ${(()=>{
+        if(!p.race||p.race==='human'||typeof raceMeta!=='function')return '';
+        const m=raceMeta(p.race);
+        return `<div title="${m.name}" style="position:absolute;bottom:14px;right:-4px;width:20px;height:20px;border-radius:50%;background:#0c0e14;border:1.5px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;font-size:12px">${m.emoji}</div>`;
+      })()}
       <input type="file" id="fup" accept="image/*" style="display:none" onchange="handleImg(event)">
       <div style="font-size:8px;color:var(--muted);text-align:center;margin-top:2px;letter-spacing:.5px;cursor:pointer" onclick="document.getElementById('fup').click()">PHOTO</div>
     </div>
