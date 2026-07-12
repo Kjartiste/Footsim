@@ -100,6 +100,35 @@ function pickRaceForRegion(region, seed){
   return 'human';
 }
 
+// ── PILIER CÉLESTE : races par ALTITUDE (division), pas par région ─────────
+// Le Pilier n'a qu'une région mais une répartition verticale : anges dominants
+// aux sommets, démons dominants aux fondations. On choisit donc la table de
+// poids selon le `level` de la division. ~5 % de peuples « autres » n'existent
+// que dans les basses divisions (r3/dh), jamais dans l'élite.
+const PILIER_RACE_WEIGHTS_BY_LEVEL = {
+  d1: { angel:80, demon:20 },                         // Grand Trône Divin : anges
+  d2: { angel:70, demon:30 },                         // Zénith
+  d3: { angel:58, demon:42 },                         // 1re Céleste : équilibre
+  r1: { angel:45, demon:55 },                         // 2e Céleste
+  r2: { angel:32, demon:63, human:2, orc:1, goblin:1, vampire:1 }, // 3e Céleste : autres apparaissent
+  r3: { angel:20, demon:73, human:3, orc:1, goblin:1, dwarf:1, lycan:1 }, // 4e Céleste
+  dh: { angel:12, demon:78, human:4, orc:2, goblin:2, dwarf:1, lycan:1 }, // Fondations : ~10 % autres
+};
+function pickRaceForPilier(level, seed){
+  const table = PILIER_RACE_WEIGHTS_BY_LEVEL[level] || PILIER_RACE_WEIGHTS_BY_LEVEL.dh;
+  const entries = Object.entries(table).filter(([,w])=>w>0);
+  const total = entries.reduce((s,[,w])=>s+w,0);
+  let r;
+  if(seed!=null){
+    let h=2166136261>>>0; const s=String(seed);
+    for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619)>>>0; }
+    h^=h>>>16; h=Math.imul(h,2246822507)>>>0; h^=h>>>13; h=Math.imul(h,3266489909)>>>0; h^=h>>>16;
+    r=(h>>>0)/4294967296*total;
+  } else r=Math.random()*total;
+  for(const [race,w] of entries){ r-=w; if(r<=0) return race; }
+  return 'demon';
+}
+
 // Migration : attribue une race aux joueurs d'une save antérieure au système
 // (ceux sans champ `race`). Déterministe par nom pour rester stable.
 function ensurePlayerRace(p, region){
@@ -123,6 +152,7 @@ if(typeof window!=='undefined'){
   window.raceMeta = raceMeta;
   window.RACE_WEIGHTS_BY_REGION = RACE_WEIGHTS_BY_REGION;
   window.pickRaceForRegion = pickRaceForRegion;
+  window.pickRaceForPilier = pickRaceForPilier;
   window.ensurePlayerRace = ensurePlayerRace;
   window.ensureTeamRaces = ensureTeamRaces;
 }

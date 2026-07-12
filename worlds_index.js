@@ -14,6 +14,7 @@ const WORLDS = {
   nations: [
     PANTHALASSA,
     VALORIA,
+    PILIER,
     // AUTRE_NATION,  ← ajouter ici quand tu crées une nouvelle nation
   ],
 
@@ -63,9 +64,16 @@ const WORLDS = {
     if(!nation || !region) return null;
 
     // Déterminer la race
-    const nonSirenChance = region.statMods?.non_siren_chance || 0;
-    const isNonSiren = Math.random() < nonSirenChance;
-    const race = isNonSiren ? 'human' : 'siren';
+    let race, isNonSiren;
+    if(nationId==='pilier' && typeof pickRaceForPilier==='function'){
+      // Pilier Céleste : race choisie par altitude (division) → anges haut, démons bas.
+      race = pickRaceForPilier(level, (name||'')+(pos||''));
+      isNonSiren = true; // jamais de sirène ici
+    } else {
+      const nonSirenChance = region.statMods?.non_siren_chance || 0;
+      isNonSiren = Math.random() < nonSirenChance;
+      race = isNonSiren ? 'human' : 'siren';
+    }
     const baseStats = (isNonSiren && nation.races?.human?.statOverride)
       ? nation.races.human.statOverride
       : nation.baseStats;
