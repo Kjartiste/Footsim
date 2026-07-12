@@ -970,7 +970,11 @@ function _formBaseForPos(ti,pi,posOverride){
         // Base y "naturelle" de chaque poste, puis on resserre/évase autour de
         // l'axe selon la présence de postes larges.
         const anyWide = wideCount > 0;
-        const spreadHalf = anyWide ? 0.39 : 0.16; // resserré si tout est central
+        // Écartement des postes CENTRAUX autour de l'axe. On veut des DC bien
+        // groupés près du milieu : amplitude très faible pour une ligne 100%
+        // centrale (deux DC quasi collés à l'axe), un peu plus large seulement
+        // s'il y a des postes larges (DD/DG) qui, eux, tiennent les couloirs.
+        const spreadHalf = anyWide ? 0.39 : 0.07; // resserré si tout est central
         const t = (k-(n-1)/2)/((n-1)/2||1);
         // Si le poste du joueur est lui-même large, on respecte son côté ; sinon
         // on le laisse près de l'axe.
@@ -978,8 +982,9 @@ function _formBaseForPos(ti,pi,posOverride){
         const isWideSelf = (myBaseY <= 0.30 || myBaseY >= 0.70);
         let fy;
         if(anyWide && !isWideSelf){
-          // Ligne mixte, joueur central : reste proche de l'axe.
-          fy = clamp(0.5 + t*0.14, 0.30, 0.70);
+          // Ligne mixte, joueur central (DC entouré de latéraux) : reste très
+          // proche de l'axe, juste un léger décalage pour ne pas se superposer.
+          fy = clamp(0.5 + t*0.08, 0.40, 0.60);
         } else {
           fy = clamp(0.5 + t*spreadHalf, 0.08, 0.92);
         }

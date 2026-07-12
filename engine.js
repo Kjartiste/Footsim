@@ -521,7 +521,10 @@ function roleTarget(ti,p,pi){
           // MAINTENANT : ancré sur fb.y (place de formation, centrale pour un
           // DC), avec seulement une LÉGÈRE dérive vers le ballon. Le DC reste
           // dans son couloir central quel que soit le côté du ballon.
-          const dcTrack = clamp(0.18 + compactPull*0.15, 0.08, 0.35);
+          // Dérive latérale très faible : les DC restent groupés sur l'axe
+          // central même quand le ballon est excentré (ancré sur fb.y, place de
+          // formation centrale). On garde juste un soupçon de suivi.
+          const dcTrack = clamp(0.08 + compactPull*0.08, 0.04, 0.18);
           const dcY = is222dc
             ? lerp(fb.y, PCY, 0.20)
             : lerp(fb.y, pred.y, dcTrack);
