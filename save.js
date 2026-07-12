@@ -325,6 +325,26 @@ function startCareerDirector(regionId, clubId, nationId){
   const budget = Math.round(prof.budget * natMul * eliteMul * _bvar / 100) * 100;
 
   // Effectif complet cohérent avec le niveau (postes variés, banc, réserves).
+  // ── Adapter la taille au format de jeu actif ────────────────────────
+  // AVANT : le profil ci-dessus (pensé pour du 11v11, jusqu'à 28 joueurs en
+  // D1) était utilisé tel quel quel que soit le mode. En 7v7 ou 5v5, ça
+  // faisait beaucoup trop de monde par rapport à la taille d'une équipe sur
+  // le terrain (et ça épuisait le pool de prénoms de la région, d'où des
+  // noms génériques). On applique désormais des MINIMUMS par format (le
+  // niveau du club peut toujours amener plus de monde qu'un petit club,
+  // mais jamais moins que ce plancher) :
+  //   11v11 → 11 titulaires / 7 banc / 3 réservistes minimum
+  //   7v7   →  7 titulaires / 5 banc / 3 réservistes minimum
+  //   5v5   →  5 titulaires / 5 banc / 3 réservistes minimum
+  const _mode = window.gameMode || '7v7';
+  const _xiMin      = _mode==='11v11' ? 11 : _mode==='5v5' ? 5 : 7;
+  const _benchMin   = _mode==='11v11' ? 7  : 5;
+  const _resMin     = 3;
+  const _modeScale  = _mode==='11v11' ? 1 : _mode==='5v5' ? 0.4 : 0.55;
+  const squadCount    = Math.max(_xiMin + 2, Math.round(prof.squad * _modeScale));
+  const benchCount    = Math.max(_benchMin, Math.round(prof.bench * _modeScale));
+  const reservesCount = Math.max(_resMin, Math.round(prof.reserves * _modeScale));
+
   const _mkPositions = (n)=>{
     // Compo réaliste : 1 GB + défenseurs + milieux + attaquants, complétée.
     const base = ['GB','DC','DC','DD','DG','MDC','MC','MC','MOG','MOD','ATT'];
@@ -334,9 +354,9 @@ function startCareerDirector(regionId, clubId, nationId){
     return out.slice(0,n);
   };
   const squad = WORLDS.generateSquad(nationId, regionId, {
-    positions: _mkPositions(prof.squad),
-    bench: _mkPositions(prof.bench),
-    reserves: _mkPositions(prof.reserves),
+    positions: _mkPositions(squadCount),
+    bench: _mkPositions(benchCount),
+    reserves: _mkPositions(reservesCount),
     level: startLevel,
   });
 

@@ -7489,8 +7489,8 @@ function playCareerMatchV2(){
                : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
                :                  ['GB','DC','DD','DG','MC','MC','ATT'];
   const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
-                  : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
-                  :                  ['GB','MC','ATT'];
+                  : mode==='5v5'   ? ['GB','DC','MC','ATT','DC']
+                  :                  ['GB','MC','ATT','DC','MC'];
   const xiSize = XI_POS.length;
 
   // ── Équipe du joueur (team 0) : on compose une XI + un banc de la bonne
@@ -7520,6 +7520,14 @@ function playCareerMatchV2(){
 
   const usedIds = starters.concat(matchBench);
   const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
+
+  // IMPORTANT : (ré)initialiser onBench/subbedOut sur les joueurs qu'on vient
+  // de répartir. Sans ça, un joueur venant du pool "titulaires" (C.players,
+  // jamais marqué onBench) qui atterrit sur le banc du match gardait
+  // onBench=false → l'écran d'avant-match l'affichait "Indispo" et
+  // empêchait tout changement manuel avec lui.
+  starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
+  matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
 
   teams[0] = {
     name:    C.club.name,
