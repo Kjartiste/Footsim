@@ -298,14 +298,17 @@ function startCareerDirector(regionId, clubId, nationId){
   // infrastructures déjà développées ; un club de district part de rien.
   // Budgets calés sur l'ÉCHELLE RÉELLE du jeu (joueur ≈ 300-1600 pièces, effectif
   // ≈ 20k) : un géant a ~30-50k pièces, un club de district quelques centaines.
+  // Budgets calés sur la NOUVELLE échelle (1 pièce ≈ 100 €). Un club de L1 doit
+  // couvrir ~10 000 pièces/sem de masse salariale (~52M€/an) + transferts, d'où
+  // un budget de l'ordre du million de pièces (~100-150M€). Échelonné par niveau.
   const _lvlProfile = {
-    d1: { squad:18, bench:7, reserves:3, budget:38000, infra:{stadium:4,training:4,formation:3,medical:4,scout:3} },
-    d2: { squad:18, bench:6, reserves:3, budget:22000, infra:{stadium:3,training:3,formation:3,medical:3,scout:2} },
-    d3: { squad:17, bench:6, reserves:2, budget:12000, infra:{stadium:3,training:2,formation:2,medical:2,scout:2} },
-    r1: { squad:16, bench:5, reserves:2, budget:6000,  infra:{stadium:2,training:2,formation:1,medical:2,scout:1} },
-    r2: { squad:15, bench:5, reserves:2, budget:3000,  infra:{stadium:2,training:1,formation:1,medical:1,scout:1} },
-    r3: { squad:14, bench:4, reserves:1, budget:1500,  infra:{stadium:1,training:1,formation:0,medical:1,scout:0} },
-    dh: { squad:13, bench:4, reserves:1, budget:700,   infra:{stadium:0,training:0,formation:0,medical:0,scout:0} },
+    d1: { squad:18, bench:7, reserves:3, budget:1500000, infra:{stadium:4,training:4,formation:3,medical:4,scout:3}, cap:35000, staff:true },
+    d2: { squad:18, bench:6, reserves:3, budget:600000,  infra:{stadium:3,training:3,formation:3,medical:3,scout:2}, cap:22000, staff:true },
+    d3: { squad:17, bench:6, reserves:2, budget:220000,  infra:{stadium:3,training:2,formation:2,medical:2,scout:2}, cap:14000, staff:true },
+    r1: { squad:16, bench:5, reserves:2, budget:80000,   infra:{stadium:2,training:2,formation:1,medical:2,scout:1}, cap:8000,  staff:false },
+    r2: { squad:15, bench:5, reserves:2, budget:28000,   infra:{stadium:2,training:1,formation:1,medical:1,scout:1}, cap:4500,  staff:false },
+    r3: { squad:14, bench:4, reserves:1, budget:9000,    infra:{stadium:1,training:1,formation:0,medical:1,scout:0}, cap:2000,  staff:false },
+    dh: { squad:13, bench:4, reserves:1, budget:3000,    infra:{stadium:0,training:0,formation:0,medical:0,scout:0}, cap:800,   staff:false },
   };
   const prof = _lvlProfile[startLevel] || _lvlProfile.dh;
   // Prestige du CHAMPIONNAT (nation) : tous les pays ne se valent pas. Le Pilier
@@ -378,15 +381,20 @@ function startCareerDirector(regionId, clubId, nationId){
       divisionName: startDivName || null,
       group: 0,
       budget: budget,
-      transferBudget: Math.round(budget * 0.25),
-      wage_budget: Math.round(budget * 0.35),
+      transferBudget: Math.round(budget * 0.40),
+      wage_budget: Math.round(budget * 0.45),
       weekly_costs: 0,
       reputation: WORLDS.startReputation(startLevel, region),
       fanbase: _startFanbase(region),
       infra: Object.assign({ stadium:0, training:0, formation:0, medical:0, scout:0 }, prof.infra),
       sponsor: null,
-      stadium_capacity: 500 + region.population * 100,
-      staff: { manager:null, scout:null, physio:null, coach:null },
+      stadium_capacity: prof.cap || (500 + region.population * 100),
+      staff: prof.staff ? {
+        manager:{name:'Entraîneur en poste', rating:3},
+        scout:{name:'Recruteur', rating:3},
+        physio:{name:'Préparateur physique', rating:3},
+        coach:{name:'Adjoint', rating:3},
+      } : { manager:null, scout:null, physio:null, coach:null },
       board_objectives: [],
       history: [],
     },
@@ -1968,11 +1976,11 @@ const INFRA_DEFS = {
 // fin. Un chantier avance à chaque advanceCareerWeek().
 // ───────────────────────────────────────────────────────────
 const INFRA_V2_DEFS = {
-  stadium:  { name:'Stade',              icon:'🏟️', max:5, permitWeeks:[0,2,3,3,4], buildWeeks:[0,4,6,8,10], baseCost:[0,450,1100,2600,5500], effect:'+places · +revenus billetterie' },
-  training: { name:"Centre d'entraînement", icon:'⚽', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,3,4,5,6],  baseCost:[0,320,750,1600,3200], effect:'+gain de stats à l\'entraînement' },
-  formation:{ name:'Académie / centre jeunes', icon:'🌱', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,5,7,9],  baseCost:[0,400,950,2000,4000], effect:'+qualité et quantité des jeunes' },
-  medical:  { name:'Centre médical',     icon:'🏥', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,2,4,5,6],  baseCost:[0,260,620,1300,2600], effect:'-blessures · +récupération' },
-  scout:    { name:'Réseau de scouts',   icon:'🔭', max:5, permitWeeks:[0,0,1,1,1], buildWeeks:[0,2,3,4,5],  baseCost:[0,240,520,1100,2200], effect:'+découverte de talents' },
+  stadium:  { name:'Stade',              icon:'🏟️', max:5, permitWeeks:[0,2,3,3,4], buildWeeks:[0,4,6,8,10], baseCost:[0,14000,34000,80000,170000], effect:'+places · +revenus billetterie' },
+  training: { name:"Centre d'entraînement", icon:'⚽', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,3,4,5,6],  baseCost:[0,10000,23000,50000,100000], effect:'+gain de stats à l\'entraînement' },
+  formation:{ name:'Académie / centre jeunes', icon:'🌱', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,5,7,9],  baseCost:[0,12000,29000,62000,125000], effect:'+qualité et quantité des jeunes' },
+  medical:  { name:'Centre médical',     icon:'🏥', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,2,4,5,6],  baseCost:[0,8000,19000,40000,80000], effect:'-blessures · +récupération' },
+  scout:    { name:'Réseau de scouts',   icon:'🔭', max:5, permitWeeks:[0,0,1,1,1], buildWeeks:[0,2,3,4,5],  baseCost:[0,7000,16000,34000,68000], effect:'+découverte de talents' },
 };
 
 // Noms d'état lisibles selon la qualité (0-100) d'une installation.
@@ -2080,9 +2088,18 @@ const CAREER_AGENT_NAMES = ['Marco Rossi','João Silva','Ahmed Kazi','Luca Brun'
 let careerState = null;
 
 const careerOvr = p => { const s=p.s||{}; return Math.round(((s.sht||50)+(s.spd||50)+(s.def||50)+(s.stam||50)+(s.tec||50)+(s.res||50))/6); };
-const careerValue = p => { const o=careerOvr(p); return Math.round(o*o*0.2); };     // ~80-1200 golds
-const careerWeeklySalary = p => Math.max(1, Math.round(careerOvr(p)*0.06));          // OVR65→4g/sem
-const fmtG = n => { const abs=Math.abs(n); return (n<0?'-':'')+'🪙'+(abs>=1000?(abs/1000).toFixed(1)+'K':abs); };
+// Échelle : 1 pièce d'or ≈ 100 €. Valeur EXPONENTIELLE de l'OVR (un crack vaut
+// des dizaines de fois un joueur moyen), calée sur des ordres de grandeur réels :
+// OVR40≈20k€, OVR70≈4M€, OVR80≈25M€, OVR88≈100M€, OVR92≈210M€.
+const careerValue = p => { const o=careerOvr(p); return Math.round(200*Math.exp(0.178*(o-40))); };
+// Salaire hebdo ≈ 12 % de la valeur / an. OVR70≈10k€/sem, OVR80≈57k€/sem, star≈240k€/sem.
+const careerWeeklySalary = p => Math.max(1, Math.round(careerValue(p)*0.12/52));
+const fmtG = n => {
+  const abs=Math.abs(n); const sign=n<0?'-':'';
+  if(abs>=1000000) return sign+'🪙'+(abs/1000000).toFixed(2).replace(/\.?0+$/,'')+'M';
+  if(abs>=1000) return sign+'🪙'+(abs/1000).toFixed(1).replace(/\.0$/,'')+'K';
+  return sign+'🪙'+abs;
+};
 const infraWeekly = C => Object.entries(C.playerClub?.infra||{}).reduce((s,[k,lvl])=>s+(lvl>0?((INFRA_DEFS[k]?.weekly||0)*lvl):0),0);
 const totalWeekly = C => (C.weeklyWage||0) + infraWeekly(C);
 

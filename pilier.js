@@ -85,7 +85,7 @@ const PILIER = {
       // vraie répartition ange/démon/autre est gérée par division (voir races.js
       // + generatePlayer). Léger bonus technique (héritage des académies).
       statMods: { tec:+4, spd:+3, sht:+2, def:+1, stam:0, res:+2, non_siren_chance:0.98 },
-      names: ['Uriel','Séraphine','Azraël','Lilith','Michaël','Nyx','Gabriel','Bael','Raphaëlle','Malphas','Camaël','Astaroth','Zadkiel','Naberius','Ariel','Focalor','Israfel','Vepar','Sariel','Andras'],
+      names: ['Uriel','Séraphine','Azraël','Lilith','Michaël','Nyx','Gabriel','Bael','Raphaëlle','Malphas','Camaël','Astaroth','Zadkiel','Naberius','Ariel','Focalor','Israfel','Vepar','Sariel','Andras','Cassiel','Abaddon','Ambriel','Belial','Haniel','Dagon','Jophiel','Furfur','Raziel','Marbas','Selaphiel','Orias','Barachiel','Vassago','Muriel','Amon','Remiel','Stolas','Nathaniel','Gremory','Zephon','Valac','Ithuriel','Gusion','Sabriel','Halphas','Penemue','Zagan','Chamuel','Buer','Anael','Sitri','Jehoel','Crocell'],
       clubNames: ['Aether Primus','Lux Primus','Aether Secundus','Lux Secundus','Ventus Primus','Aether Custodes','Lux Ordo','Aether Ferrum','Lux Aurora','Aether Nova','Lux Gloria','Aether Sanctum','Lux Excelsior','Ventus Academia','Aether Academia','Lux Academia','Aether Legio','Lux Vigilia','Ventus Sanctum','Aether Excelsior'],
       spellBonus: ['aile','folie'],
     },
