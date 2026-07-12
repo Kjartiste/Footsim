@@ -6234,6 +6234,13 @@ function _valoriaClubCard(t, divName){
   return c;
 }
 
+function _careerPickPilierDiv(divId){
+  window._careerPilierDiv = divId;
+  window._careerClubPreview = null; // forcer la re-sélection du 1er club de la nouvelle division
+  const el = document.getElementById('career-out') || document.getElementById('career-director-content');
+  if(el) _renderClubStep(el, window._careerNation||'pilier', window._careerRegion, window._careerMode||'director');
+}
+
 function _renderClubStep(el, nationId, regionId, mode){
   const nation = WORLDS.get(nationId);
   const region = WORLDS.getRegion(nationId, regionId);
@@ -6279,15 +6286,27 @@ function _renderClubStep(el, nationId, regionId, mode){
     // ── REPRENDRE : liste des équipes + FICHE DÉTAILLÉE au clic ────────────
     // Division de départ + pool d'équipes, selon la nation.
     let divId, divTeams, divName, divMap;
+    let _pilierDivSelector = '';
     if(_career_isPilier){
       divMap = window.PILIER_DIVISIONS || {};
-      // Le Pilier démarre dans les Fondations. On laisse choisir la Fondation
-      // via window._careerPilierDiv (déf. : 1re Fondation).
-      const fondDivs = Object.entries(divMap).filter(([id,d])=>d.tier==='district').sort((a,b)=>a[1].order-b[1].order).map(([id])=>id);
-      if(!fondDivs.includes(window._careerPilierDiv)) window._careerPilierDiv = fondDivs[0];
+      // Le joueur peut choisir SA division de départ parmi les 10 du Pilier
+      // (window._careerPilierDiv). Par défaut : la 1re Fondation (bas de la
+      // pyramide), mais on peut viser plus haut.
+      const allDivs = Object.entries(divMap).sort((a,b)=>a[1].order-b[1].order).map(([id])=>id);
+      if(!allDivs.includes(window._careerPilierDiv)){
+        const fond = Object.entries(divMap).filter(([id,d])=>d.tier==='district').sort((a,b)=>a[1].order-b[1].order).map(([id])=>id);
+        window._careerPilierDiv = fond[0] || allDivs[0];
+      }
       divId = window._careerPilierDiv;
       divTeams = pilierTeamsByDivision(divId);
       divName = (divMap[divId] ? divMap[divId].name : '');
+      // Sélecteur de division (puces cliquables).
+      _pilierDivSelector = '<div style="font-size:9px;color:var(--muted);margin-bottom:6px">Division :</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">';
+      allDivs.forEach(function(id){
+        const d=divMap[id]; const on=(id===divId);
+        _pilierDivSelector += '<button onclick="_careerPickPilierDiv(\''+id+'\')" style="padding:4px 9px;border-radius:14px;cursor:pointer;font-size:9px;font-weight:800;border:1.5px solid '+(on?'var(--gold)':'var(--b1)')+';background:'+(on?'rgba(240,192,40,.16)':'transparent')+';color:'+(on?'var(--gold)':'var(--muted)')+'">'+d.name.replace('Ligue ','').replace('Ligue du ','').replace('Ligue des ','')+'</button>';
+      });
+      _pilierDivSelector += '</div>';
     } else {
       divMap = window.VALORIA_DIVISIONS || {};
       divId = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
@@ -6299,7 +6318,8 @@ function _renderClubStep(el, nationId, regionId, mode){
       window._careerClubPreview = divTeams[0].name;
     }
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:12px">';
-    h += '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:4px">📋 Choisis ton club</div>';
+    h += '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px">📋 Choisis ton club</div>';
+    h += _pilierDivSelector;
     h += '<div style="font-size:9px;color:var(--muted);margin-bottom:10px">'+divName+' — '+divTeams.length+' clubs</div>';
     if(!divTeams.length){
       h += '<div style="font-size:10px;color:var(--muted)">Aucune équipe existante dans cette division.</div>';
@@ -6984,6 +7004,74 @@ function _renderDirectorFinances(){
 function _renderDirectorInfra(){
   const C = careerV2; const club = C.club;
   const infra = club.infra || {};
+  const works = club.works || [];
+  const defs = (typeof INFRA_V2_DEFS!=='undefined') ? INFRA_V2_DEFS : null;
+  // Fallback : ancien écran si les nouvelles défs ne sont pas chargées.
+  if(!defs){ return _renderDirectorInfraLegacy(); }
+
+  const col = club.color || '#f0c028';
+  let h = '<div style="padding:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+  h += '<div style="font-size:15px;font-weight:900;color:var(--gold)">🏗 Infrastructures</div>';
+  h += '<div style="font-size:10px;color:var(--muted)">Budget : <b style="color:'+(club.budget<0?'#e06060':'#18c860')+'">'+_fmtMoney(club.budget)+'</b></div>';
+  h += '</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px">Les travaux prennent du temps : permis, construction, paiement en tranches. Un chantier peut être retardé ou dépasser son budget.</div>';
+
+  Object.keys(defs).forEach(function(key){
+    const def = defs[key];
+    const lvl = infra[key]||0;
+    const work = works.find(w=>w.key===key);
+    // Qualité 0-100 dérivée du niveau (pour l'état visuel).
+    const pct = Math.round((lvl/def.max)*100);
+    const state = infraStateLabel(pct);
+    const stars = '★'.repeat(lvl)+'☆'.repeat(def.max-lvl);
+
+    h += '<div style="background:var(--panel);border:1px solid '+col+'44;border-radius:12px;padding:12px;margin-bottom:10px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
+    h += '<div style="width:38px;height:38px;border-radius:9px;background:'+col+'22;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+def.icon+'</div>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:13px;font-weight:800;color:var(--text)">'+def.name+'</div>';
+    h += '<div style="font-size:9px;color:var(--muted)">Niveau '+lvl+'/'+def.max+' · qualité '+pct+'/100</div>';
+    h += '</div>';
+    h += '<div style="text-align:right;flex-shrink:0"><div style="font-size:9px;color:var(--gold)">'+stars+'</div>';
+    h += '<div style="font-size:8px;color:'+state.col+';margin-top:2px">'+state.txt+'</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:8px;color:var(--muted);margin-bottom:8px">Effet : '+def.effect+'</div>';
+
+    if(work){
+      // Chantier en cours : barre de progression + phase.
+      const done = work.weeksTotal - work.weeksLeft;
+      const prog = Math.round((done/Math.max(1,work.weeksTotal))*100);
+      const phaseLbl = work.delayed ? '⏸ Suspendu (trésorerie)' : (work.phase==='permit' ? '📋 Autorisation en cours' : '🚧 Construction');
+      const phaseCol = work.delayed ? '#e06060' : (work.phase==='permit' ? '#f0c028' : '#00bcd4');
+      h += '<div style="background:var(--dark);border-radius:8px;padding:8px 10px">';
+      h += '<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:5px"><span style="color:'+phaseCol+';font-weight:700">'+phaseLbl+' → niv '+work.target+'</span><span style="color:var(--muted)">'+work.weeksLeft+' sem. restantes</span></div>';
+      h += '<div style="height:7px;background:var(--b1);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+prog+'%;background:'+phaseCol+'"></div></div>';
+      h += '<div style="font-size:8px;color:var(--muted);margin-top:5px">Tranche : '+_fmtMoney(work.weeklyInstalment)+'/sem · payé '+_fmtMoney(work.paid)+' / '+_fmtMoney(work.totalCost)+'</div>';
+      h += '</div>';
+    } else if(lvl>=def.max){
+      h += '<div style="font-size:10px;color:#18c860;text-align:center;padding:4px">✅ Niveau maximum atteint</div>';
+    } else {
+      const nextCost = def.baseCost[lvl+1]||0;
+      const nextWeeks = (def.permitWeeks[lvl+1]||0)+(def.buildWeeks[lvl+1]||0);
+      const deposit = Math.round(nextCost*0.10);
+      const canStart = (club.budget||0) >= deposit;
+      h += '<button onclick="_infraStartWork(\''+key+'\')" style="width:100%;padding:8px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;border:none;background:'+(canStart?col:'var(--b1)')+';color:'+(canStart?'#1a1a1a':'var(--muted)')+';'+(canStart?'':'opacity:.6;cursor:not-allowed')+'">🔨 Lancer les travaux → niv '+(lvl+1)+' · '+_fmtMoney(nextCost)+' · '+nextWeeks+' sem.</button>';
+      if(!canStart) h += '<div style="font-size:8px;color:#e06060;text-align:center;margin-top:4px">Acompte requis : '+_fmtMoney(deposit)+'</div>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+function _infraStartWork(key){
+  if(typeof startInfraWork==='function') startInfraWork(key);
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorInfra();
+}
+
+function _renderDirectorInfraLegacy(){
+  const C = careerV2; const club = C.club;
+  const infra = club.infra || {};
   const items = [
     {key:'stadium', label:'🏟 Stade', max:5},
     {key:'training', label:'⚽ Entrainement', max:5},
@@ -7157,6 +7245,9 @@ function advanceCareerWeek(){
 
   // Économie hebdomadaire
   _applyWeeklyEconomy();
+
+  // Avancement des chantiers d'infrastructure (permis, construction, tranches)
+  try{ if(typeof _advanceInfraWorks==='function') _advanceInfraWorks(); }catch(e){ console.error('works:',e); }
 
   // Toutes les 4 semaines : refresh des joueurs libres
   if(C.week % 4 === 0){

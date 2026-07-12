@@ -1857,6 +1857,112 @@ const INFRA_DEFS = {
   medical:  { name:"Centre médical",      icon:'🏥',  desc:'-50% blessures, +HP récup',     cost:450,  weekly:8,  lvlMax:2 },
 };
 
+// ═══════════════════════════════════════════════════════════
+// CHANTIERS D'INFRASTRUCTURE (careerV2) — travaux réalistes
+// ───────────────────────────────────────────────────────────
+// Améliorer une infra n'est plus instantané : on lance un CHANTIER qui dure
+// plusieurs semaines, passe par une phase d'AUTORISATION (permis) puis de
+// CONSTRUCTION, se paie en TRANCHES hebdomadaires, et peut subir des RETARDS
+// ou DÉPASSEMENTS de budget. L'effet (montée de niveau) ne s'applique qu'à la
+// fin. Un chantier avance à chaque advanceCareerWeek().
+// ───────────────────────────────────────────────────────────
+const INFRA_V2_DEFS = {
+  stadium:  { name:'Stade',              icon:'🏟️', max:5, permitWeeks:[0,2,3,3,4], buildWeeks:[0,4,6,8,10], baseCost:[0,6000,14000,30000,60000], effect:'+places · +revenus billetterie' },
+  training: { name:"Centre d'entraînement", icon:'⚽', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,3,4,5,6],  baseCost:[0,4000,9000,18000,32000], effect:'+gain de stats à l\'entraînement' },
+  formation:{ name:'Académie / centre jeunes', icon:'🌱', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,5,7,9],  baseCost:[0,5000,11000,22000,40000], effect:'+qualité et quantité des jeunes' },
+  medical:  { name:'Centre médical',     icon:'🏥', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,2,4,5,6],  baseCost:[0,3000,7000,14000,26000], effect:'-blessures · +récupération' },
+  scout:    { name:'Réseau de scouts',   icon:'🔭', max:5, permitWeeks:[0,0,1,1,1], buildWeeks:[0,2,3,4,5],  baseCost:[0,3000,6000,12000,22000], effect:'+découverte de talents' },
+};
+
+// Noms d'état lisibles selon la qualité (0-100) d'une installation.
+function infraStateLabel(pct){
+  if(pct>=75) return {txt:'🟢 Optimal', col:'#18c860'};
+  if(pct>=45) return {txt:'🟡 À surveiller', col:'#f0c028'};
+  return {txt:'🔴 Critique', col:'#e06060'};
+}
+
+// Lance un chantier d'amélioration vers le niveau suivant. Retourne un message.
+function startInfraWork(key){
+  const C = careerV2; if(!C) return;
+  const def = INFRA_V2_DEFS[key]; if(!def){ logEvent('Infrastructure inconnue','#e02030'); return; }
+  C.club.works = C.club.works || [];
+  if(C.club.works.some(w=>w.key===key)){ logEvent('⚠️ Un chantier est déjà en cours sur cette installation.','#f0c028'); return; }
+  const lvl = (C.club.infra&&C.club.infra[key])||0;
+  const target = lvl+1;
+  if(target>def.max){ logEvent('✅ Installation déjà au niveau maximum.','#18c860'); return; }
+  const permit = def.permitWeeks[target]||0;
+  const build  = def.buildWeeks[target]||0;
+  const totalWeeks = permit+build;
+  const totalCost = def.baseCost[target]||0;
+  // Acompte au lancement (10%) — le reste est payé en tranches hebdomadaires.
+  const deposit = Math.round(totalCost*0.10);
+  if((C.club.budget||0) < deposit){ logEvent('💸 Budget insuffisant pour lancer les travaux (acompte '+_fmtMoney(deposit)+').','#e02030'); return; }
+  C.club.budget -= deposit;
+  const weeklyInstalment = Math.round((totalCost-deposit)/Math.max(1,totalWeeks));
+  C.club.works.push({
+    key, target, phase: permit>0?'permit':'build',
+    permitLeft: permit, buildLeft: build,
+    weeksTotal: totalWeeks, weeksLeft: totalWeeks,
+    weeklyInstalment, paid: deposit, totalCost,
+    delayed:false,
+  });
+  logEvent('🏗 Travaux lancés : '+def.name+' → niveau '+target+' ('+totalWeeks+' sem., acompte '+_fmtMoney(deposit)+').', C.club.color||'#f0c028');
+  try{ saveCareerV2(); }catch(e){}
+}
+
+// Fait avancer TOUS les chantiers d'une semaine : paiement de la tranche,
+// phases permis→build, aléas (retard, dépassement), et achèvement.
+function _advanceInfraWorks(){
+  const C = careerV2; if(!C || !C.club || !C.club.works || !C.club.works.length) return;
+  const remaining = [];
+  C.club.works.forEach(function(w){
+    const def = INFRA_V2_DEFS[w.key]; if(!def){ return; }
+    // Paiement de la tranche hebdomadaire (si budget le permet).
+    if(w.weeksLeft>0 && w.weeklyInstalment>0){
+      if((C.club.budget||0) >= w.weeklyInstalment){
+        C.club.budget -= w.weeklyInstalment; w.paid += w.weeklyInstalment;
+      } else {
+        // Pas payé → chantier retardé cette semaine (les travaux s'arrêtent).
+        w.delayed = true;
+        if(typeof careerLog==='function') careerLog('⏸ Travaux ('+def.name+') suspendus : trésorerie insuffisante pour la tranche.','#e06060');
+        remaining.push(w); return;
+      }
+    }
+    w.delayed = false;
+    // Phase autorisation d'abord.
+    if(w.phase==='permit' && w.permitLeft>0){
+      w.permitLeft--;
+      // Petit risque de retard administratif (permis rallongé d'1 semaine).
+      if(Math.random()<0.12){ w.permitLeft++; w.weeksLeft++; if(typeof careerLog==='function') careerLog('📋 Retard administratif sur '+def.name+' (+1 sem.).','#f0c028'); }
+      if(w.permitLeft<=0){ w.phase='build'; if(typeof careerLog==='function') careerLog('✅ Permis accordé pour '+def.name+' — les travaux commencent !','#18c860'); }
+      w.weeksLeft = Math.max(0, w.weeksLeft-1);
+      remaining.push(w); return;
+    }
+    // Phase construction.
+    if(w.buildLeft>0){
+      w.buildLeft--;
+      // Risque de dépassement (surcoût imprévu) + parfois retard.
+      if(Math.random()<0.10){
+        const extra = Math.round(w.totalCost*0.05);
+        w.totalCost += extra; w.weeklyInstalment = Math.round((w.totalCost-w.paid)/Math.max(1,w.buildLeft+1));
+        if(typeof careerLog==='function') careerLog('💰 Dépassement sur '+def.name+' : +'+_fmtMoney(extra)+' de surcoût.','#e06060');
+      }
+      if(Math.random()<0.08){ w.buildLeft++; w.weeksLeft++; if(typeof careerLog==='function') careerLog('🚧 Retard de chantier ('+def.name+') : +1 sem.','#f0c028'); }
+      w.weeksLeft = Math.max(0, w.weeksLeft-1);
+    }
+    // Achèvement.
+    if(w.buildLeft<=0 && w.phase==='build'){
+      C.club.infra = C.club.infra || {};
+      C.club.infra[w.key] = w.target;
+      if(typeof careerLog==='function') careerLog('🎉 '+def.name+' terminé — niveau '+w.target+' ! ('+def.effect+')','#18c860');
+    } else {
+      remaining.push(w);
+    }
+  });
+  C.club.works = remaining;
+}
+
+
 const TRAINING_SESSIONS = [
   { id:'light',    name:'Légère',        cost:12,  chance:.35, stats:['stam','res'],         desc:'Récupération endurance' },
   { id:'tactical', name:'Tactique',      cost:20,  chance:.30, stats:['tec','def'],          desc:'Technique & défense' },
