@@ -293,13 +293,50 @@ function startCareerDirector(regionId, clubId, nationId){
       if(typeof valoriaNormalizeLevel==='function' && vt.division) startLevel = vt.division;
     }
   }
-  const budget = WORLDS.startBudget(nationId, regionId);
+  // ── PROFIL DE DÉPART SELON LE NIVEAU ──────────────────────────────────
+  // Un grand club (D1) démarre avec un gros effectif, un vrai budget et des
+  // infrastructures déjà développées ; un club de district part de rien.
+  // Budgets calés sur l'ÉCHELLE RÉELLE du jeu (joueur ≈ 300-1600 pièces, effectif
+  // ≈ 20k) : un géant a ~30-50k pièces, un club de district quelques centaines.
+  const _lvlProfile = {
+    d1: { squad:18, bench:7, reserves:3, budget:38000, infra:{stadium:4,training:4,formation:3,medical:4,scout:3} },
+    d2: { squad:18, bench:6, reserves:3, budget:22000, infra:{stadium:3,training:3,formation:3,medical:3,scout:2} },
+    d3: { squad:17, bench:6, reserves:2, budget:12000, infra:{stadium:3,training:2,formation:2,medical:2,scout:2} },
+    r1: { squad:16, bench:5, reserves:2, budget:6000,  infra:{stadium:2,training:2,formation:1,medical:2,scout:1} },
+    r2: { squad:15, bench:5, reserves:2, budget:3000,  infra:{stadium:2,training:1,formation:1,medical:1,scout:1} },
+    r3: { squad:14, bench:4, reserves:1, budget:1500,  infra:{stadium:1,training:1,formation:0,medical:1,scout:0} },
+    dh: { squad:13, bench:4, reserves:1, budget:700,   infra:{stadium:0,training:0,formation:0,medical:0,scout:0} },
+  };
+  const prof = _lvlProfile[startLevel] || _lvlProfile.dh;
+  // Prestige du CHAMPIONNAT (nation) : tous les pays ne se valent pas. Le Pilier
+  // est un grand championnat riche ; Valoria est modeste (petits budgets), sauf
+  // une poignée de clubs "cadors" qui sortent du lot.
+  const _nationPrestige = { pilier:1.0, valoria:0.15, panthalassa:0.5 };
+  const _eliteClubs = {
+    // Clubs "cadors" d'un petit championnat : gros budget malgré la nation modeste.
+    valoria: ['SC Mystère','RC Tonnerre'], // les 2 grands de la Ligue Valorienne
+  };
+  const natMul = _nationPrestige[nationId] != null ? _nationPrestige[nationId] : 0.5;
+  const isElite = (_eliteClubs[nationId]||[]).includes(clubName);
+  const eliteMul = isElite ? 2.6 : 1.0; // un cador ~2.6× un club normal du même pays
+  // Variation par club (±35%), déterministe par nom.
+  let _bh=2166136261>>>0; for(let i=0;i<clubName.length;i++){ _bh^=clubName.charCodeAt(i); _bh=Math.imul(_bh,16777619)>>>0; }
+  const _bvar = 0.65 + ((_bh>>>0)/4294967296)*0.70; // 0.65 .. 1.35
+  const budget = Math.round(prof.budget * natMul * eliteMul * _bvar / 100) * 100;
 
-  // Petit effectif de départ : 7 titulaires + 2-3 remplaçants max
+  // Effectif complet cohérent avec le niveau (postes variés, banc, réserves).
+  const _mkPositions = (n)=>{
+    // Compo réaliste : 1 GB + défenseurs + milieux + attaquants, complétée.
+    const base = ['GB','DC','DC','DD','DG','MDC','MC','MC','MOG','MOD','ATT'];
+    const extra = ['DC','MC','ATT','DD','DG','GB','MDC','MOG','ATT','MC'];
+    const out = base.slice();
+    for(let i=0; out.length<n; i++) out.push(extra[i%extra.length]);
+    return out.slice(0,n);
+  };
   const squad = WORLDS.generateSquad(nationId, regionId, {
-    positions: ['GB','DC','DD','DG','MC','MC','ATT'],
-    bench: ['GB','MC','ATT'],
-    reserves: [],
+    positions: _mkPositions(prof.squad),
+    bench: _mkPositions(prof.bench),
+    reserves: _mkPositions(prof.reserves),
     level: startLevel,
   });
 
@@ -326,7 +363,7 @@ function startCareerDirector(regionId, clubId, nationId){
       weekly_costs: 0,
       reputation: WORLDS.startReputation(startLevel, region),
       fanbase: _startFanbase(region),
-      infra: { stadium:0, training:0, formation:0, medical:0, scout:0 },
+      infra: Object.assign({ stadium:0, training:0, formation:0, medical:0, scout:0 }, prof.infra),
       sponsor: null,
       stadium_capacity: 500 + region.population * 100,
       staff: { manager:null, scout:null, physio:null, coach:null },
@@ -334,10 +371,10 @@ function startCareerDirector(regionId, clubId, nationId){
       history: [],
     },
 
-    // Petit effectif de départ
+    // Effectif complet, dimensionné selon le niveau du club
     players:  squad.players,
     bench:    squad.bench,
-    reserves: [],
+    reserves: squad.reserves||[],
 
     mercato: {
       window_open: false, window_type: null,
@@ -726,6 +763,32 @@ function _generateSeasonFixtures(){
     _buildRoundRobinFixtures(allClubs);
     careerV2.divisionName = (typeof _valDivName==='function')?_valDivName(divId):divId;
     return;
+  }
+
+  // ── CAS PILIER : adversaires = les 20 vrais clubs de la division ─────────
+  if(nation==='pilier' && typeof PILIER_TEAMS!=='undefined' && typeof pilierTeamsByDivision==='function'){
+    // Retrouver la division du club joueur (par son nom).
+    const me = PILIER_TEAMS.find(t=>t.name===club.name);
+    const divId = me ? me.division : null;
+    if(divId){
+      if(club.level!==(PILIER_DIVISIONS[divId]?PILIER_DIVISIONS[divId].level:club.level)){
+        club.level = PILIER_DIVISIONS[divId].level;
+      }
+      const divTeams = pilierTeamsByDivision(divId).filter(t=>t.name!==club.name);
+      const opponents = divTeams.map(function(pt){
+        return { id:'pil_'+pt.name.replace(/[^a-z0-9]/gi,'').slice(0,12)+'_'+Math.random().toString(36).slice(2,6),
+          name:pt.name, color:pt.color, badge:pt.badge||null,
+          level:pt.level, region:pt.region, valoriaName:pt.name, tier:pt.tier };
+      });
+      const allClubs=[{id:'player_club', name:club.name, color:club.color, badge:club.badge||null, isPlayer:true}].concat(opponents);
+      careerV2.standings = allClubs.map(function(c){
+        return {id:c.id, name:c.name, color:c.color, badge:c.badge||null, isPlayer:!!c.isPlayer,
+                region:c.region, P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0};
+      });
+      _buildRoundRobinFixtures(allClubs);
+      careerV2.divisionName = PILIER_DIVISIONS[divId] ? PILIER_DIVISIONS[divId].name : divId;
+      return;
+    }
   }
 
   // Générer 8-12 clubs adversaires du même niveau
@@ -1885,11 +1948,11 @@ const INFRA_DEFS = {
 // fin. Un chantier avance à chaque advanceCareerWeek().
 // ───────────────────────────────────────────────────────────
 const INFRA_V2_DEFS = {
-  stadium:  { name:'Stade',              icon:'🏟️', max:5, permitWeeks:[0,2,3,3,4], buildWeeks:[0,4,6,8,10], baseCost:[0,6000,14000,30000,60000], effect:'+places · +revenus billetterie' },
-  training: { name:"Centre d'entraînement", icon:'⚽', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,3,4,5,6],  baseCost:[0,4000,9000,18000,32000], effect:'+gain de stats à l\'entraînement' },
-  formation:{ name:'Académie / centre jeunes', icon:'🌱', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,5,7,9],  baseCost:[0,5000,11000,22000,40000], effect:'+qualité et quantité des jeunes' },
-  medical:  { name:'Centre médical',     icon:'🏥', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,2,4,5,6],  baseCost:[0,3000,7000,14000,26000], effect:'-blessures · +récupération' },
-  scout:    { name:'Réseau de scouts',   icon:'🔭', max:5, permitWeeks:[0,0,1,1,1], buildWeeks:[0,2,3,4,5],  baseCost:[0,3000,6000,12000,22000], effect:'+découverte de talents' },
+  stadium:  { name:'Stade',              icon:'🏟️', max:5, permitWeeks:[0,2,3,3,4], buildWeeks:[0,4,6,8,10], baseCost:[0,450,1100,2600,5500], effect:'+places · +revenus billetterie' },
+  training: { name:"Centre d'entraînement", icon:'⚽', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,3,4,5,6],  baseCost:[0,320,750,1600,3200], effect:'+gain de stats à l\'entraînement' },
+  formation:{ name:'Académie / centre jeunes', icon:'🌱', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,5,7,9],  baseCost:[0,400,950,2000,4000], effect:'+qualité et quantité des jeunes' },
+  medical:  { name:'Centre médical',     icon:'🏥', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,2,4,5,6],  baseCost:[0,260,620,1300,2600], effect:'-blessures · +récupération' },
+  scout:    { name:'Réseau de scouts',   icon:'🔭', max:5, permitWeeks:[0,0,1,1,1], buildWeeks:[0,2,3,4,5],  baseCost:[0,240,520,1100,2200], effect:'+découverte de talents' },
 };
 
 // Noms d'état lisibles selon la qualité (0-100) d'une installation.
