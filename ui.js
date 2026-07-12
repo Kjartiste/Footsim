@@ -7478,21 +7478,49 @@ function playCareerMatchV2(){
   const nation  = C.nation || 'panthalassa';
   const region  = C.club.region;
 
-  // ── Équipe du joueur (team 0) ──────────────────────────────────────
+  // ── Format de match actif (5v5 / 7v7 / 11v11) ───────────────────────
+  // AVANT : le joueur envoyait TOUT son effectif de carrière sur le
+  // terrain (jusqu'à 18 joueurs en D1) alors que l'adversaire IA était
+  // toujours généré en 7v7 fixe (7 titulaires) → un joueur en mode 11v11
+  // se retrouvait à jouer 18 (ou 11) contre 7. On aligne maintenant les
+  // deux équipes sur le format réellement actif (window.gameMode).
+  const mode = window.gameMode || '7v7';
+  const XI_POS = mode==='11v11' ? ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT']
+               : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
+               :                  ['GB','DC','DD','DG','MC','MC','ATT'];
+  const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
+                  : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
+                  :                  ['GB','MC','ATT'];
+  const xiSize = XI_POS.length;
+
+  // ── Équipe du joueur (team 0) : on compose une XI de la bonne taille
+  // à partir des MEILLEURS joueurs de l'effectif complet de carrière (au
+  // lieu d'aligner l'effectif entier), le reste passant sur le banc. ──
+  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
+    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
+  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; })
+    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; })
+    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const starters = [];
+  if(gkPool[0]) starters.push(gkPool[0]);
+  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
+  const remaining = fullSquad.filter(function(p){ return starters.indexOf(p) < 0; });
+
   teams[0] = {
     name:    C.club.name,
     color:   C.club.color || '#e02030',
     img:     C.club.img   || '',
     strat:   C.club.strat || '321',
-    players: C.players.map(function(p){ return Object.assign({}, p); }),
-    bench:   (C.bench||[]).map(function(p){ return Object.assign({}, p); }),
+    players: starters,
+    bench:   remaining,
     reserves:(C.reserves||[]).map(function(p){ return Object.assign({}, p); }),
   };
 
-  // ── Équipe adversaire IA (team 1) — générée au bon niveau ──────────
+  // ── Équipe adversaire IA (team 1) — générée au même format et niveau ─
   const aiSquad = WORLDS.generateSquad(nation, region, {
-    positions: ['GB','DC','DD','DG','MC','MC','ATT'],
-    bench: ['GB','MC','ATT'],
+    positions: XI_POS,
+    bench: BENCH_POS,
     reserves: [],
     level: level,
   });
