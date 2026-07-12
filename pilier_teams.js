@@ -232,9 +232,55 @@ const PILIER_TEAMS = [
 
 function pilierTeamsByDivision(divId){ return PILIER_TEAMS.filter(t=>t.division===divId); }
 function pilierHouseClubs(house){ return PILIER_TEAMS.filter(t=>t.house===house); }
+
+// ═══════════════════════════════════════════════════════════
+// BLASONS DU PILIER (déterministes, thème céleste/infernal)
+// ───────────────────────────────────────────────────────────
+// On génère un blason stable par club à partir de son nom (via
+// BadgeGenerator.fromSeed), en forçant une icône selon la BRANCHE (Custodes →
+// bouclier, Sanctum → étoile, Legio/Ferrum → épée, Primus → couronne/dragon…)
+// et en teintant avec la couleur de la Maison. Généré une fois au chargement.
+// ───────────────────────────────────────────────────────────
+const _PILIER_BRANCH_ICON = {
+  Primus:['crown','dragon','phoenix'], Secundus:['griffin','eagle'],
+  Excelsior:['crown','star'], Academia:['leaf','star'],
+  Custodes:['shield','tower'], Ordo:['sword','shield'],
+  Legio:['sword','flame'], Ferrum:['sword','anchor'],
+  Vigilia:['raven','tower'], Mercatoria:['anchor','star'],
+  Sanctum:['star','laurel'], Nova:['bolt','flame'],
+};
+function _pilierMakeBadge(team){
+  if(typeof BadgeGenerator==='undefined' || !BadgeGenerator.fromSeed) return null;
+  const iconPool = _PILIER_BRANCH_ICON[team.branch] || ['star','flame','bolt'];
+  // Choix d'icône déterministe (depuis le nom) dans le pool de la branche.
+  let h=0; for(let i=0;i<team.name.length;i++){ h=(h*31+team.name.charCodeAt(i))>>>0; }
+  const icon = iconPool[h % iconPool.length];
+  // Couleur de Maison → teinte principale du blason.
+  const mc = team.houseColor || team.color || '#d4af37';
+  try{
+    return BadgeGenerator.fromSeed(team.name, {
+      icon: icon,
+      colors: [mc, '#f5f0e0', _pilierAccent(mc)],
+      iconColor: '#f5f0e0',
+    });
+  }catch(e){ return null; }
+}
+// Couleur d'accent (éclaircie) dérivée de la couleur de Maison.
+function _pilierAccent(hex){
+  hex=String(hex||'#d4af37'); if(/^#[0-9a-fA-F]{3}$/.test(hex)) hex='#'+hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3];
+  const r=Math.min(255,parseInt(hex.slice(1,3),16)+60), g=Math.min(255,parseInt(hex.slice(3,5),16)+60), b=Math.min(255,parseInt(hex.slice(5,7),16)+60);
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+// Générer et attacher les blasons à tous les clubs (une seule fois).
+(function _pilierGenBadges(){
+  if(typeof BadgeGenerator==='undefined') return; // badges.js pas encore chargé
+  PILIER_TEAMS.forEach(function(t){ if(!t.badge){ const b=_pilierMakeBadge(t); if(b) t.badge=b; } });
+})();
+
 if(typeof window!=='undefined'){
   window.PILIER_TEAMS = PILIER_TEAMS;
   window.PILIER_DIVISIONS = PILIER_DIVISIONS;
   window.pilierTeamsByDivision = pilierTeamsByDivision;
   window.pilierHouseClubs = pilierHouseClubs;
+  window.pilierMakeBadge = _pilierMakeBadge;
 }
