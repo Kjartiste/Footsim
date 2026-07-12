@@ -133,6 +133,87 @@ function ensureValoriaBadges(){
   VALORIA_TEAMS.forEach(t=>{ if(!t.badge){ t.badge = BadgeGenerator.fromSeed(t.name, {text: (typeof teamIni==='function'?teamIni(t.name):'')}); } });
 }
 function valoriaTeamsByDivision(divId){ return VALORIA_TEAMS.filter(t=>t.division===divId); }
+
+// ═══════════════════════════════════════════════════════════
+// DÉTAILS DE CLUB (déterministes par nom, ton manga/fun)
+// ───────────────────────────────────────────────────────────
+// Chaque club Valoria n'a que name/color/division/tier. On génère à la volée
+// une « fiche » crédible et stable (toujours la même pour un nom donné) : année
+// de fondation, surnom épique, stade, réputation, statut, finances, objectif
+// du board et infrastructures. Le TIER module l'échelle (un club pro est plus
+// riche/réputé qu'un club de district). Le ton se veut fun, pas administratif.
+// ═══════════════════════════════════════════════════════════
+function _vclubHash(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+// Petit PRNG déterministe (mulberry32) amorcé par le nom → suite stable.
+function _vclubRng(seed){ let a=seed>>>0; return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function _vpick(rng,arr){ return arr[Math.floor(rng()*arr.length)]; }
+
+function valoriaClubDetails(team){
+  if(!team) return null;
+  if(team._details) return team._details; // cache
+  const name = team.name || 'Club';
+  const tier = team.tier || 'regional';
+  const rng = _vclubRng(_vclubHash(name));
+
+  // ── Année de fondation : les clubs pro sont plus anciens/prestigieux ──────
+  const foundBase = tier==='pro' ? 1890 : tier==='regional' ? 1925 : 1955;
+  const founded = foundBase + Math.floor(rng()*45);
+
+  // ── Surnom épique (ton manga) ─────────────────────────────────────────────
+  const nickA = ['Les','L\'Escadron','La Brigade','Le Clan','La Meute','L\'Ordre','La Légion','Les Chevaliers','La Garde','L\'Équipage'];
+  const nickB = tier==='pro'
+    ? ['Dragons Célestes','Foudres d\'Argent','Titans Écarlates','Lames du Destin','Phénix Éternels','Gardiens du Ciel','Étoiles Filantes','Croix de Feu','Ombres Royales','Fauves Dorés']
+    : tier==='regional'
+    ? ['Loups d\'Acier','Corbeaux Noirs','Vagues Furieuses','Griffes de Fer','Éclairs Bleus','Renards Rusés','Sabres Jumeaux','Vents Hurlants','Boucliers Fêlés','Tigres de Bronze']
+    : ['Cœurs Vaillants','Petits Poucets','Gamins du Quartier','Rêveurs Têtus','Chats de Gouttière','Étincelles','Bleus Courageux','Poings Serrés','Sans-Peur','Va-Nu-Pieds'];
+  const nickname = _vpick(rng,nickA)+' '+_vpick(rng,nickB);
+
+  // ── Stade + capacité (échelle par tier) ───────────────────────────────────
+  const stadPrefix = ['Stade','Arène','Colisée','Enceinte','Chaudron','Antre'];
+  const stadName = ['de la Tempête','des Braves','du Vieux Chêne','de l\'Aurore','des Cent Lances','du Croissant','de Fer','des Murmures','du Levant','de la Dernière Chance'];
+  const capBase = tier==='pro' ? 22000 : tier==='regional' ? 6000 : 900;
+  const capacity = capBase + Math.floor(rng()*(tier==='pro'?28000:tier==='regional'?9000:2600));
+  const stadium = _vpick(rng,stadPrefix)+' '+_vpick(rng,stadName);
+
+  // ── Réputation 0-100 (par tier + variation) ───────────────────────────────
+  const repBase = tier==='pro' ? 62 : tier==='regional' ? 38 : 16;
+  const reputation = Math.max(1,Math.min(100, repBase + Math.floor(rng()*22) - 6));
+
+  // ── Statut (ton manga) ────────────────────────────────────────────────────
+  const status = tier==='pro'
+    ? _vpick(rng,['⚔️ Écurie légendaire','🔥 Cadors du championnat','🏆 Habitué des sommets','💎 Grand club ambitieux'])
+    : tier==='regional'
+    ? _vpick(rng,['💪 Solide semi-pro','⚡ Outsider tenace','🌱 Club qui monte','🛡️ Valeur sûre du coin'])
+    : _vpick(rng,['🍜 Bande de copains','✨ Petit club de cœur','🎒 Amateurs passionnés','🏮 Fierté du village']);
+
+  // ── Finances (ton fun) ────────────────────────────────────────────────────
+  const finances = tier==='pro'
+    ? _vpick(rng,['💰 Coffres pleins','📈 Solides','🪙 Confortables','💵 Grand train de vie'])
+    : tier==='regional'
+    ? _vpick(rng,['⚖️ Équilibrées','😬 Serrées','📉 Fragiles','🧧 Ça passe… de justesse'])
+    : _vpick(rng,['🥟 Tirelire du dimanche','🕳️ Fauchés mais heureux','🍥 Bouts de ficelle','🪹 Presque à sec']);
+
+  // ── Objectif du board (Board Expectation, ton fun) ────────────────────────
+  const boardGoal = tier==='pro'
+    ? _vpick(rng,['🏆 Vainqueur','⭐ Titre ou rien','🥇 Podium exigé','🔝 Haut de tableau'])
+    : tier==='regional'
+    ? _vpick(rng,['📈 Jouer la montée','🎯 Milieu de tableau','✊ Se maintenir dignement','🌟 Créer la surprise'])
+    : _vpick(rng,['❤️ Prendre du plaisir','🛟 Éviter la dernière place','🌱 Faire grandir les jeunes','🎉 Un exploit en coupe']);
+
+  // ── Infrastructures (⭐ sur 5) ────────────────────────────────────────────
+  const infraBase = tier==='pro' ? 3 : tier==='regional' ? 2 : 1;
+  const training = Math.max(1,Math.min(5, infraBase + Math.floor(rng()*3) - 1));
+  const youth    = Math.max(1,Math.min(5, infraBase + Math.floor(rng()*3) - 1));
+
+  const d = { founded, nickname, stadium, capacity, reputation, status, finances, boardGoal, training, youth };
+  try{ Object.defineProperty(team,'_details',{value:d,enumerable:false}); }catch(e){ team._details=d; }
+  return d;
+}
+
+if(typeof window!=='undefined'){
+  window.valoriaClubDetails = valoriaClubDetails;
+}
+
 if(typeof window!=='undefined'){
   window.VALORIA_TEAMS = VALORIA_TEAMS;
   window.VALORIA_DIVISIONS = VALORIA_DIVISIONS;

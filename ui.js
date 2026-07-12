@@ -6137,6 +6137,58 @@ function _renderRegionStep(el, nationId, mode){
   });
 }
 
+// Fiche détaillée d'un club Valoria façon "Choose Team" (ton fun/manga).
+// Grand blason + nom, puis une grille de stats générées déterministe­ment.
+function _valoriaClubCard(t, divName){
+  if(!t) return '';
+  const d = (typeof valoriaClubDetails==='function') ? valoriaClubDetails(t) : null;
+  const col = t.color || '#888';
+  const bigBadge = (t.badge && typeof BadgeCache!=='undefined')
+    ? '<img src="'+BadgeCache.dataURI(t.badge,64)+'" width="64" height="64" style="object-fit:contain">'
+    : '<div style="width:64px;height:64px;border-radius:50%;background:'+col+'33;border:3px solid '+col+';display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:'+col+'">'+teamIni(t.name)+'</div>';
+
+  // Barre de réputation en ★ (sur 5, dérivée du /100)
+  const repStars = d ? Math.max(1,Math.round(d.reputation/20)) : 3;
+  const stars = function(n){ return '★★★★★'.slice(0,n)+'☆☆☆☆☆'.slice(0,5-n); };
+
+  let c = '<div style="background:linear-gradient(135deg,'+col+'22,transparent);border:2px solid '+col+';border-radius:12px;padding:14px;margin-bottom:6px">';
+  // En-tête : blason + nom + division
+  c += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">';
+  c += '<div style="flex-shrink:0">'+bigBadge+'</div>';
+  c += '<div style="min-width:0">';
+  c += '<div style="font-size:18px;font-weight:900;color:'+col+';line-height:1.1">'+t.name+'</div>';
+  if(d) c += '<div style="font-size:11px;font-style:italic;color:var(--text);opacity:.85">« '+d.nickname+' »</div>';
+  c += '<div style="font-size:9px;color:var(--muted);margin-top:2px">🏟️ '+(divName||'')+'</div>';
+  c += '</div></div>';
+
+  if(d){
+    // Objectif du board mis en avant (comme "Board Expectation")
+    c += '<div style="background:var(--dark);border-radius:8px;padding:8px 10px;margin-bottom:10px;display:flex;align-items:center;gap:8px">';
+    c += '<span style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Objectif</span>';
+    c += '<span style="font-size:12px;font-weight:800;color:'+col+'">'+d.boardGoal+'</span>';
+    c += '</div>';
+    // Grille de détails
+    const cell = function(label,val){
+      return '<div style="background:var(--dark);border-radius:7px;padding:7px 9px">'
+        +'<div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">'+label+'</div>'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text)">'+val+'</div></div>';
+    };
+    c += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+    c += cell('📅 Fondé en', d.founded);
+    c += cell('⭐ Réputation', stars(repStars)+' <span style="color:var(--muted);font-size:9px">('+d.reputation+')</span>');
+    c += cell('🏟️ Stade', d.stadium+'<br><span style="color:var(--muted);font-size:9px">'+d.capacity.toLocaleString('fr-FR')+' places</span>');
+    c += cell('📊 Statut', d.status);
+    c += cell('💰 Finances', d.finances);
+    c += cell('🏋️ Entraînement', stars(d.training));
+    c += cell('🌱 Centre jeunes', stars(d.youth));
+    c += '</div>';
+  }
+  // Bouton reprendre
+  c += '<button id="career-take-club" class="btn btng" style="width:100%;margin-top:12px;font-size:13px;padding:9px;background:'+col+'">✅ Reprendre '+t.name+'</button>';
+  c += '</div>';
+  return c;
+}
+
 function _renderClubStep(el, nationId, regionId, mode){
   const nation = WORLDS.get(nationId);
   const region = WORLDS.getRegion(nationId, regionId);
@@ -6175,42 +6227,68 @@ function _renderClubStep(el, nationId, regionId, mode){
   }
 
   if(hasExisting && tab==='existing'){
-    // ── REPRENDRE : liste des équipes de la division de départ ────────────
+    // ── REPRENDRE : liste des équipes + FICHE DÉTAILLÉE au clic ────────────
     const divId = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
     const divTeams = divId ? valoriaTeamsByDivision(divId) : [];
+    const divName = (divId&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[divId]?window.VALORIA_DIVISIONS[divId].name:'');
+    // Club actuellement déployé (fiche ouverte). Par défaut : le premier.
+    if(divTeams.length && !divTeams.some(t=>t.name===window._careerClubPreview)){
+      window._careerClubPreview = divTeams[0].name;
+    }
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:12px">';
-    h += '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:4px">📋 Reprendre un club existant</div>';
-    h += '<div style="font-size:9px;color:var(--muted);margin-bottom:10px">'+(divId&&window.VALORIA_DIVISIONS&&window.VALORIA_DIVISIONS[divId]?window.VALORIA_DIVISIONS[divId].name:'')+' — '+divTeams.length+' clubs</div>';
+    h += '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:4px">📋 Choisis ton club</div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-bottom:10px">'+divName+' — '+divTeams.length+' clubs</div>';
     if(!divTeams.length){
       h += '<div style="font-size:10px;color:var(--muted)">Aucune équipe existante dans cette division.</div>';
-    } else {
-      h += '<div style="display:flex;flex-direction:column;gap:5px;max-height:320px;overflow-y:auto">';
-      divTeams.forEach(function(t){
-        const bHTML = (t.badge && typeof BadgeCache!=='undefined')
-          ? '<img src="'+BadgeCache.dataURI(t.badge,30)+'" width="30" height="30" style="object-fit:contain">'
-          : '<div style="width:30px;height:30px;border-radius:50%;background:'+t.color+'33;border:2px solid '+t.color+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:'+t.color+'">'+teamIni(t.name)+'</div>';
-        h += '<div class="career-existing-team" data-name="'+t.name.replace(/"/g,'&quot;')+'" data-color="'+t.color+'" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--b1);border-radius:8px;cursor:pointer;background:var(--dark)">';
-        h += '<span style="width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+bHTML+'</span>';
-        h += '<span style="flex:1;font-size:12px;font-weight:700;color:'+t.color+'">'+t.name+'</span>';
-        h += '<span style="font-size:10px;color:var(--muted)">Reprendre &rarr;</span>';
-        h += '</div>';
-      });
-      h += '</div>';
+      h += '</div></div>';
+      el.innerHTML = h;
+      el.querySelectorAll('.career-club-tab').forEach(function(b){ b.addEventListener('click', function(){ window._careerClubTab=b.dataset.tab; _renderClubStep(el, nationId, regionId, mode); }); });
+      document.getElementById('back-to-regions').addEventListener('click', function(){ _renderRegionStep(el, nationId, mode); });
+      return;
     }
+    // FICHE DÉTAILLÉE du club déployé (façon FM, ton fun)
+    const sel = divTeams.find(t=>t.name===window._careerClubPreview) || divTeams[0];
+    h += _valoriaClubCard(sel, divName);
+    // LISTE compacte cliquable
+    h += '<div style="font-size:9px;color:var(--muted);margin:12px 0 6px">Autres clubs de la division :</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto">';
+    divTeams.forEach(function(t){
+      const isSel = t.name===sel.name;
+      const bHTML = (t.badge && typeof BadgeCache!=='undefined')
+        ? '<img src="'+BadgeCache.dataURI(t.badge,26)+'" width="26" height="26" style="object-fit:contain">'
+        : '<div style="width:26px;height:26px;border-radius:50%;background:'+t.color+'33;border:2px solid '+t.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:'+t.color+'">'+teamIni(t.name)+'</div>';
+      const d = (typeof valoriaClubDetails==='function') ? valoriaClubDetails(t) : null;
+      h += '<div class="career-preview-team" data-name="'+t.name.replace(/"/g,'&quot;')+'" style="display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid '+(isSel?t.color:'var(--b1)')+';border-radius:8px;cursor:pointer;background:'+(isSel?t.color+'18':'var(--dark)')+'">';
+      h += '<span style="width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+bHTML+'</span>';
+      h += '<span style="flex:1;min-width:0"><span style="font-size:12px;font-weight:700;color:'+t.color+'">'+t.name+'</span>';
+      if(d) h += '<span style="display:block;font-size:8px;color:var(--muted)">'+d.boardGoal+'</span>';
+      h += '</span>';
+      h += '<span style="font-size:9px;color:var(--muted)">'+(isSel?'👁️':'voir')+'</span>';
+      h += '</div>';
+    });
+    h += '</div>';
     h += '</div>';
     h += '</div>';
     el.innerHTML = h;
     // Onglets
     el.querySelectorAll('.career-club-tab').forEach(function(b){ b.addEventListener('click', function(){ window._careerClubTab=b.dataset.tab; _renderClubStep(el, nationId, regionId, mode); }); });
     document.getElementById('back-to-regions').addEventListener('click', function(){ _renderRegionStep(el, nationId, mode); });
-    // Reprendre un club
-    el.querySelectorAll('.career-existing-team').forEach(function(row){
+    // Déployer la fiche d'un autre club
+    el.querySelectorAll('.career-preview-team').forEach(function(row){
       row.addEventListener('click', function(){
-        window._careerClub = row.dataset.name;
-        window._careerColor = row.dataset.color;
-        confirmStartCareer();
+        window._careerClubPreview = row.dataset.name;
+        _renderClubStep(el, nationId, regionId, mode);
       });
     });
+    // Reprendre le club affiché
+    const takeBtn = document.getElementById('career-take-club');
+    if(takeBtn){
+      takeBtn.addEventListener('click', function(){
+        window._careerClub = sel.name;
+        window._careerColor = sel.color;
+        confirmStartCareer();
+      });
+    }
     return;
   }
 
