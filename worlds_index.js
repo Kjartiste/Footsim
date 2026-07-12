@@ -11,12 +11,15 @@
 const WORLDS = {
 
   // ── Registre des nations ────────────────────────────────────────────
+  // On n'inclut que les nations réellement définies : si un fichier de nation
+  // n'a pas été chargé (404, ordre de script…), on l'ignore proprement au lieu
+  // de planter tout le jeu sur un ReferenceError.
   nations: [
-    PANTHALASSA,
-    VALORIA,
-    PILIER,
+    typeof PANTHALASSA!=='undefined' ? PANTHALASSA : null,
+    typeof VALORIA!=='undefined' ? VALORIA : null,
+    typeof PILIER!=='undefined' ? PILIER : null,
     // AUTRE_NATION,  ← ajouter ici quand tu crées une nouvelle nation
-  ],
+  ].filter(Boolean),
 
   // ── Accès rapide par ID ─────────────────────────────────────────────
   get(nationId){
