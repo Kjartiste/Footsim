@@ -43,6 +43,40 @@ const PILIER = {
   // ── Sorts de prédilection (pays sacré : magie céleste/infernale) ──
   preferredSpells: ['tech','shield','soin','heal','aile','folie'],
 
+  // ── Nationalité & noms de lignée ──────────────────────────────────
+  demonym: 'Céleste',              // gentilé des natifs du Pilier
+  foreignChance: 0.04,             // ~4 % d'étrangers dans les ligues pro
+  lineageChance: 0.55,             // ~55 % des natifs portent un nom de lignée
+  // Répartition des sexes : le Pilier est très majoritairement féminin, avec
+  // une part de joueurs non-genrés/autres. F=femme, M=homme, X=non-genré/autre.
+  sexRatio: { F:0.80, M:0.12, X:0.08 },
+  // Prénoms par sexe (le prénom colle au sexe du joueur). F/M/X.
+  firstNamesBySex: {
+    F: ["Séraphine","Raphaëlle","Gabrielle","Ambrielle","Murielle","Anaëlle","Célestine","Arielle","Uriélle","Camaëlle","Zéphirine","Auriane","Lucine","Séléné","Astrée","Aurore","Éloane","Ismérie","Angélie","Cassielle","Jophielle","Sariélle","Zadkielle","Barachielle","Israfelle","Ramielle","Haniélle","Nathaële","Raziélle","Sabrielle","Ithuriélle","Penemuelle","Chamuelle","Séléstiel","Aube","Clairlaine","Lumine","Étoile","Céleste","Aurélie","Soléane","Éthérie","Astralie","Nimbe","Lilith","Nyx","Morrigane","Hécate","Naamah","Lamia","Circé","Médée","Abyssa","Ishtar","Vespera","Nocturne","Malicia","Belladone","Ravenne","Ombreline","Sombra","Nyssa","Érèbe","Kali","Méphista","Astarté","Proserpine","Perséphone","Lilika","Draconia","Gorgone","Empusa","Carmilla","Séléna","Nocturna","Tenebra","Umbrella","Cendria","Suie","Braise","Écarlate","Vénéfica","Morgane","Nihila","Livia","Aurelia","Cornelia","Valeria","Octavia","Claudia","Julia","Flavia","Antonia","Drusilla","Marcella","Fabiola","Severina","Maximilla","Tullia","Aemilia","Cassia","Portia","Lucilla","Vibia","Domitia","Agrippina","Calpurnia","Hortensia","Servilia","Terentia","Fulvia","Aurélia","Sabina","Lépida","Junia","Pompeia","Metella","Vipsania","Antistia","Rubria","Caecilia","Plautia","Sempronia","Volusia"],
+    M: ["Uriel","Gabriel","Michaël","Raphaël","Camaël","Zadkiel","Sariel","Israfel","Cassiel","Barachiel","Selaphiel","Jophiel","Raziel","Haniel","Nathaniel","Chamuel","Remiel","Ambriel","Ithuriel","Sabriel","Métatron","Sandalphon","Raguel","Jérahmeel","Zéphon","Puriel","Théliel","Anael","Séraphin","Ariel","Bael","Astaroth","Malphas","Naberius","Focalor","Andras","Abaddon","Belial","Dagon","Furfur","Marbas","Orias","Vassago","Amon","Stolas","Gremory","Valac","Gusion","Halphas","Zagan","Buer","Sitri","Crocell","Penemue","Vepar","Belphégor","Asmodée","Mammon","Léviathan","Baalzébuth","Moloch","Azazel","Béhémoth","Xaphan","Rimmon","Adramelech","Nergal","Paimon","Berith","Forneus","Marcus","Lucius","Gaius","Titus","Aulus","Quintus","Cassius","Aurelius","Cornelius","Fabius","Valerius","Octavius","Severus","Maximus","Tiberius","Decimus","Servius","Gnaeus","Publius","Vitellius","Claudius","Flavius","Antonius","Aemilius","Horatius","Tullius","Sempronius","Vibius","Marcellus","Drusus","Cassien","Aurélien","Valérien","Sévérin","Maximin","Octave","Tibère","Fabien","Julien","Adrien"],
+    X: ["Ariel","Sael","Nael","Zephyr","Ombre","Aube","Astre","Séraph","Vesper","Nox","Ael","Iel","Sol","Aeon","Écho","Onyx","Ciel","Aster","Wren","Sable","Éther","Nimbe","Brume","Cendre","Crépuscule","Aurore","Zénith","Nadir","Éclat","Pénombre","Silel","Lior","Alix","Sacha","Camille","Ange","Éden","Séraphael","Nyel"],
+  },
+  // Noms de lignée (patronymes façon Maison/noblesse) — indépendants du club.
+  lineageNames: [
+    'Aetheris','Luxen','Ignaris','Umbrael','Ventaris','Terravox','Aquaris','Fulgaris',
+    'Noctaris','Auralis','Seraphel','Abyssia','Caelor','Infernis','Astrael','Gehennis',
+    'Gloriel','Tenebrae','Solarian','Lunaris','Feroxis','Sanctael','Mortis','Vitalis',
+    'Corvaris','Aquilon','Draconis','Leonis','Phoenar','Serparis','Taurel','Luparis',
+    'Cygnaris','Hydris','Pavonis','Vulparis','Ursalis','Lyraeth','Orionis','Stellaris',
+    'de Aetheris','del Solarian','di Caelor','von Umbrael','de la Gloriel','della Astrael',
+  ],
+  // Joueurs étrangers (structure prête pour d'autres pays). Noms d'autres styles
+  // + nationalité distincte. À enrichir quand les autres nations existeront.
+  foreignNames: [
+    {name:'Kaito Tanaka', nat:'Insulaire'}, {name:'Bjorn Halvarsson', nat:'Nordique'},
+    {name:'Diego Vargas', nat:'Méridional'}, {name:'Kwame Osei', nat:'Sablier'},
+    {name:'Ivan Petrov', nat:'Steppique'}, {name:'Liam O\'Brien', nat:'Brumeux'},
+    {name:'Chen Wei', nat:'Oriental'}, {name:'Omar Haddad', nat:'Dunaire'},
+    {name:'Sven Eriksson', nat:'Nordique'}, {name:'Rafael Costa', nat:'Méridional'},
+    {name:'Yuki Nakamura', nat:'Insulaire'}, {name:'Dmitri Volkov', nat:'Steppique'},
+    {name:'Amara Ndiaye', nat:'Sablier'}, {name:'Tarek Mansour', nat:'Dunaire'},
+  ],
+
   // ── Pyramide nationale (10 divisions de 20 clubs = 200 clubs) ──────
   // On mappe les 10 ligues du lore sur les paliers du moteur (d1…dh). Les
   // divisions au-dessus de d1 restent « nationales » ; en dessous, on garde
@@ -85,7 +119,7 @@ const PILIER = {
       // vraie répartition ange/démon/autre est gérée par division (voir races.js
       // + generatePlayer). Léger bonus technique (héritage des académies).
       statMods: { tec:+4, spd:+3, sht:+2, def:+1, stam:0, res:+2, non_siren_chance:0.98 },
-      names: ['Uriel','Séraphine','Azraël','Lilith','Michaël','Nyx','Gabriel','Bael','Raphaëlle','Malphas','Camaël','Astaroth','Zadkiel','Naberius','Ariel','Focalor','Israfel','Vepar','Sariel','Andras','Cassiel','Abaddon','Ambriel','Belial','Haniel','Dagon','Jophiel','Furfur','Raziel','Marbas','Selaphiel','Orias','Barachiel','Vassago','Muriel','Amon','Remiel','Stolas','Nathaniel','Gremory','Zephon','Valac','Ithuriel','Gusion','Sabriel','Halphas','Penemue','Zagan','Chamuel','Buer','Anael','Sitri','Jehoel','Crocell'],
+      names: ["Gnaeus d'Infernalis","Aulus Julius","Furfur del Cassius","Ithuriel Luminaris","Penemue Drusus","Buer Nocturnus","Valac Vibius","Arielle di Solaris","Vepar Caelestis","Valac Cassius","Andras Caelestis","Michaël Flavius","Anaëlle Solaris","Sabriel Luminaris","Valerius Igneus","Aurelius Flavius","Sariel d'Aemilius","Israfel Vibius","Titus d'Octavius","Decimus del Seraphis","Morrigane Abyssalis","Hécate Marcellus","Abaddon Marcellus","Zagan Marcellus","Aurelius Julius","Maximus del Aurelius","Gnaeus Igneus","Buer de la Vibius","Naamah della Fulguris","Penemue Caelestis","Decimus Luminaris","Maximus Abyssalis","Ariel Aurelius","Jophiel Vesperis","Arielle Valerius","Servius della Aemilius","Cassius Draconis","Penemue Severus","Octavius de Stellaris","Marcus Antonius","Tiberius Vesperis","Gnaeus Horatius","Vepar Aetherius","Naberius de la Luminaris","Naberius Mortalis","Anaëlle Vibius","Vepar Sanctus","Lucius del Nocturnus","Aulus di Infernalis","Séraphine Antonius","Israfel del Drusus","Dagon Claudius","Morrigane de Mortalis","Gabrielle d'Flavius","Nyx van Sempronius","Abaddon della Antonius","Raphaël Cassius","Aulus Gloriae","Ariel Cassius","Israfel Flavius","Severus Stellaris","Célestine de la Mortalis","Belial Caelestis","Jophiel d'Infernalis","Jophiel de Valerius","Gaius d'Drusus","Tiberius Cassius","Camaël di Vesperis","Gabriel Gloriae","Naamah Infernalis","Gaius d'Flavius","Remiel Luminaris","Raphaëlle Sempronius","Anaëlle de Sempronius","Penemue Tenebris","Séraphine de la Severus","Abaddon Sanctus","Morrigane Valerius","Uriel Abyssalis","Dagon van Horatius","Naberius Aemilius","Fabius Draconis","Cornelius von Severus","Focalor Drusus","Ambrielle Aurelius","Lilith Solaris","Aulus van Octavius","Selaphiel Antonius","Raziel del Umbralis","Jophiel del Antonius","Bael Igneus","Vassago Cornelius","Gnaeus de la Infernalis","Orias Aemilius","Célestine Nocturnus","Naamah Fulguris","Fabius Horatius","Dagon Umbralis","Buer Marcellus","Murielle del Aetherius","Raphaëlle del Abyssalis","Dagon Solaris","Cornelius Drusus","Vitellius Mortalis","Astaroth Umbralis","Servius d'Infernalis","Aurelius della Cornelius","Quintus Cornelius","Cassiel d'Marcellus","Anaëlle Fulguris"],
       clubNames: ['Aether Primus','Lux Primus','Aether Secundus','Lux Secundus','Ventus Primus','Aether Custodes','Lux Ordo','Aether Ferrum','Lux Aurora','Aether Nova','Lux Gloria','Aether Sanctum','Lux Excelsior','Ventus Academia','Aether Academia','Lux Academia','Aether Legio','Lux Vigilia','Ventus Sanctum','Aether Excelsior'],
       spellBonus: ['aile','folie'],
     },

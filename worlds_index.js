@@ -143,9 +143,53 @@ const WORLDS = {
     }
     const spells = nbSpells > 0 ? [...fullPool].sort(()=>Math.random()-.5).slice(0, nbSpells) : [];
 
+    // ── SEXE ──────────────────────────────────────────────────────────────
+    // Répartition définie par la nation (sexRatio). Ex : le Pilier est très
+    // majoritairement féminin. Valeurs : 'F' (femme), 'M' (homme), 'X' (non-genré
+    // /autre). Défaut équilibré si la nation ne précise rien.
+    const _sr = nation.sexRatio || { F:0.5, M:0.5, X:0 };
+    let sex = 'F'; {
+      const r = Math.random();
+      const pF = _sr.F||0, pM = _sr.M||0;
+      if(r < pF) sex='F'; else if(r < pF+pM) sex='M'; else sex='X';
+    }
+
+    // ── NATIONALITÉ + NOM DE LIGNÉE ───────────────────────────────────────
+    // Chaque joueur a une nationalité. En pro, une petite fraction sont des
+    // ÉTRANGERS (foreign_chance de la nation) : ils portent un nom d'un autre
+    // style (foreignNames) et un tag de nationalité distinct — la structure est
+    // prête pour quand d'autres pays existeront.
+    const isPro = ['d1','d2','d3'].includes(level);
+    const foreignChance = isPro ? (nation.foreignChance || 0) : 0;
+    // Prénom cohérent avec le SEXE si la nation fournit des pools par sexe.
+    // (Sinon on garde le `name` transmis par generateSquad.)
+    let baseFirst = name;
+    if(nation.firstNamesBySex){
+      const pool = nation.firstNamesBySex[sex] || nation.firstNamesBySex.F || [];
+      if(pool.length) baseFirst = pool[Math.floor(Math.random()*pool.length)];
+    }
+    let finalName = baseFirst;
+    let nationality = nation.demonym || nation.name || nationId;
+    if(Math.random() < foreignChance && Array.isArray(nation.foreignNames) && nation.foreignNames.length){
+      // Joueur étranger : nom + nationalité d'ailleurs.
+      const fn = nation.foreignNames[Math.floor(Math.random()*nation.foreignNames.length)];
+      finalName = fn.name;
+      nationality = fn.nat;
+    } else {
+      // Natif : une partie porte un NOM DE LIGNÉE (patronyme façon Maison), pas
+      // seulement les joueurs de clubs pro — une lignée est indépendante du club.
+      const lineages = nation.lineageNames || region.lineageNames || null;
+      if(lineages && lineages.length && !/\s/.test(finalName) && Math.random() < (nation.lineageChance || 0.5)){
+        finalName = finalName + ' ' + lineages[Math.floor(Math.random()*lineages.length)];
+      }
+    }
+
     return {
       id: 'p_'+Date.now()+'_'+Math.random().toString(36).slice(2),
-      name,
+      name: finalName,
+      nationality,
+      foreign: nationality !== (nation.demonym || nation.name || nationId),
+      sex,
       pos,
       nation: nationId,
       region: regionId,
@@ -173,7 +217,7 @@ const WORLDS = {
       mSh: 0, mTk: 0, mPass: 0, mGoal: 0,
       _hm: Math.round((Math.random()+Math.random()-1)*8),
       _fm: Math.round(Math.random()*6),
-      ini: (name||'??').slice(0,2).toUpperCase(),
+      ini: (finalName||'??').slice(0,2).toUpperCase(),
       // Âge : distribution réaliste (16-34). Les jeunes ont un potentiel de
       // progression ; sert à repérer les pépites en réserve.
       age: (function(){ const r=Math.random(); return r<0.18?16+Math.floor(Math.random()*4) : r<0.75?20+Math.floor(Math.random()*9) : 29+Math.floor(Math.random()*6); })(),
