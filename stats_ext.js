@@ -233,9 +233,13 @@ const _STATOF_MAP_GK = {
 
 function statOf(p, baseKey){
   const base = (p && p.s && p.s[baseKey]!=null) ? p.s[baseKey] : 50;
-  // Mode Lite → stat brute, moteur identique au jeu actuel
-  if(!(window.GS && window.GS.statMode==='complet')) return base;
-  if(!p || !p.s2) return base;
+  // Modificateur de race (physiologique) : appliqué dans TOUS les modes.
+  // Repli neutre si pas de race / humain / fonction absente.
+  const withRace = (p && p.race && typeof applyRaceStat==='function')
+    ? applyRaceStat(p.race, baseKey, base) : base;
+  // Mode Lite → stat (race incluse), moteur identique au jeu actuel
+  if(!(window.GS && window.GS.statMode==='complet')) return withRace;
+  if(!p || !p.s2) return withRace;
   const map = (p.pos==='GB') ? _STATOF_MAP_GK : _STATOF_MAP;
   const subs = map[baseKey];
   if(!subs || !subs.length) return base;
@@ -247,7 +251,9 @@ function statOf(p, baseKey){
   // (un joueur à sht 80 ne devient pas soudainement médiocre) tout en
   // laissant les sous-stats peser réellement sur le comportement.
   const blended = detailed*0.55 + base*0.45;
-  return Math.max(1, Math.min(99, Math.round(blended)));
+  const blendedRace = (p.race && typeof applyRaceStat==='function')
+    ? applyRaceStat(p.race, baseKey, blended) : blended;
+  return Math.max(1, Math.min(99, Math.round(blendedRace)));
 }
 
 window.statOf = statOf;
@@ -263,10 +269,14 @@ function _mag(p, key, def){
   if(!p || !p.s2 || p.s2[key]==null) return null;
   return p.s2[key];
 }
-// Multiplicateur de PUISSANCE d'un sort (affinité) : 0.8 → 1.25
+// Multiplicateur de PUISSANCE d'un sort (affinité × race).
+// La composante raciale s'applique dans TOUS les modes ; l'affinité détaillée
+// seulement en Complet (repli neutre en Lite).
 function magPowerMult(p){
-  const v=_mag(p,'affinite'); if(v==null) return 1;
-  return 0.8 + (v/99)*0.45;
+  const raceMul = (p && p.race && typeof raceMagicMul==='function') ? raceMagicMul(p.race) : 1;
+  const v=_mag(p,'affinite');
+  const affMul = (v==null) ? 1 : (0.8 + (v/99)*0.45);
+  return raceMul * affMul;
 }
 // Multiplicateur de COÛT en mana (contrôle du mana) : 1.2 → 0.75
 function magCostMult(p){

@@ -380,6 +380,30 @@ const FORM_ROLES={
   '1332':['GB','DC','DD','DG','MOG','MO','MOD'],
 };
 
+// ── Sort par défaut cohérent avec le poste (remplace le 'tech' universel) ──
+// Renvoie un tableau [sortId] varié selon le poste. Déterministe si un seed est
+// fourni (nom du joueur), sinon aléatoire léger. Tous les ids existent dans SPELLS.
+function spellForPos(pos, seed){
+  const P={
+    GK:  ['main','shield','peaupierre'],
+    DEF: ['shield','peaupierre','pass','tacle_mauvais'],
+    MID: ['pass','tech','soin','illusion'],
+    FWD: ['fire','tech','illusion','fireball'],
+  };
+  let g='MID';
+  if(pos==='GB'||pos==='GK') g='GK';
+  else if(/^(DC|DD|DG|DCD|DCG|LB|RB|FIXO|MDC)/.test(pos)) g='DEF';
+  else if(/^(AG|AD|ALA|ATT|ATT2|PIVOT|MO)/.test(pos)) g=(/^(ATT|PIVOT|MO)/.test(pos))?'FWD':'MID';
+  const opts=P[g]||P.MID;
+  let idx;
+  if(seed!=null){
+    let h=0; const s=String(seed); for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;
+    idx=h%opts.length;
+  } else idx=Math.floor(Math.random()*opts.length);
+  return [opts[idx]];
+}
+if(typeof window!=='undefined'){ window.spellForPos=spellForPos; }
+
 function mkPlayers(ti){
   const na=ti===0
     ?['Renard','Moreau','Leblanc','Dupuis','Garnier','Martin','Gauthier']
@@ -394,7 +418,7 @@ function mkPlayers(ti){
   return na.map((name,i)=>({
     id:`t${ti}p${i}`,name,pos:ROLE[i],img:'',ini:name.slice(0,2).toUpperCase(),
     s:{spd:42+~~(Math.random()*52),sht:38+~~(Math.random()*58),def:38+~~(Math.random()*58),stam:55+~~(Math.random()*40),tec:42+~~(Math.random()*52),res:35+~~(Math.random()*60)},
-    spells:pools[i]||['tech'],
+    spells:pools[i]||['tech'],race:pickRaceForRegion('',name+ti+i),
     x:0,y:0,vx:0,vy:0,tx:0,ty:0,
     hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
     injLevel:0,injT:0,  // 0=sain 1=légère 2=sérieuse 3=grave
@@ -420,7 +444,7 @@ function mkBench(ti){
   return na.map((name,i)=>({
     id:`t${ti}b${i}`,name,pos:pos[i],img:'',ini:name.slice(0,2).toUpperCase(),
     s:{spd:38+~~(Math.random()*52),sht:36+~~(Math.random()*55),def:36+~~(Math.random()*55),stam:62+~~(Math.random()*34),tec:38+~~(Math.random()*52),res:40+~~(Math.random()*55)},
-    spells:pools[i]||['tech'],
+    spells:pools[i]||['tech'],race:pickRaceForRegion('',name+ti+i),
     x:-10,y:PCY,vx:0,vy:0,tx:-10,ty:PCY,
     hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
     injLevel:0,injT:0,
@@ -439,10 +463,11 @@ function mkBench(ti){
 function mkReserves(ti){
   const na=ti===0?['Blondel','Dupond','Marchand']:['Alvarado','Gimenez','Fuentes'];
   const pos=['DC','ATT','MC'];
+  const rpools=[['shield','peaupierre'],['fire','tech'],['pass','soin']];
   return na.map((name,i)=>({
     id:`t${ti}r${i}`,name,pos:pos[i],img:'',ini:name.slice(0,2).toUpperCase(),
     s:{spd:30+~~(Math.random()*45),sht:28+~~(Math.random()*45),def:28+~~(Math.random()*45),stam:55+~~(Math.random()*40),tec:30+~~(Math.random()*45),res:35+~~(Math.random()*50)},
-    spells:['tech'],
+    spells:rpools[i]||['pass'],race:pickRaceForRegion('',name+ti+i),
     hp:100,mp:100,injLevel:0,
     _img:null,isReserve:true,
   }));

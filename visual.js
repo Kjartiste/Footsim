@@ -631,6 +631,18 @@ function drawPlayer(T,p){
     } else drawInitials(px,py+safeBob,r,p.ini);
   } else drawInitials(px,py+safeBob,r,p.ini);
 
+  // Badge de race (non-humains seulement) — petit emoji en bas à droite
+  if(p.race && p.race!=='human' && typeof raceMeta==='function'){
+    const em=raceMeta(p.race).emoji;
+    if(em){
+      ctx.save();
+      ctx.font=(r*0.85|0)+'px serif';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(em, px+r*0.7, py+safeBob+r*0.7);
+      ctx.restore();
+    }
+  }
+
   // HP bar (above player, more visible)
   const hp=clamp(p.hp,0,100);
   const mp=clamp(p.mp,0,100);

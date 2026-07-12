@@ -3093,7 +3093,7 @@ function mkAIPlayers(tid){
   return names.map((name,i)=>({
     id:`ta${tid}p${i}`,name,pos:ROLE[i],img:'',ini:name.slice(0,2).toUpperCase(),
     s:{spd:32+~~(Math.random()*36),sht:30+~~(Math.random()*36),def:30+~~(Math.random()*36),stam:45+~~(Math.random()*30),tec:32+~~(Math.random()*36),res:28+~~(Math.random()*38)},
-    spells:['tech'],x:0,y:0,vx:0,vy:0,tx:0,ty:0,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
+    spells:spellForPos(ROLE[i],name),race:pickRaceForRegion('',name+tid+i),x:0,y:0,vx:0,vy:0,tx:0,ty:0,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
     injLevel:0,injT:0,mG:0,mSh:0,mTk:0,mSp:0,_img:null,
     _hm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
     _hm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
@@ -3107,7 +3107,7 @@ function mkAIBench(tid){
   return names.map((name,i)=>({
     id:`ta${tid}b${i}`,name,pos:['MC','ATT','DC','DD','MC'][i],img:'',ini:name.slice(0,2).toUpperCase(),
     s:{spd:35+~~(Math.random()*48),sht:35+~~(Math.random()*48),def:35+~~(Math.random()*48),stam:55+~~(Math.random()*38),tec:35+~~(Math.random()*48),res:35+~~(Math.random()*50)},
-    spells:['tech'],x:-10,y:PCY,vx:0,vy:0,tx:-10,ty:PCY,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
+    spells:spellForPos(['MC','ATT','DC','DD','MC'][i],name),race:pickRaceForRegion('',name+tid+i),x:-10,y:PCY,vx:0,vy:0,tx:-10,ty:PCY,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
     injLevel:0,injT:0,mG:0,mSh:0,mTk:0,mSp:0,_img:null,onBench:true,
     _spdDebuff:0,_charmed:0,_atkBuff:0,_pacified:0,_invis:0,_folie:0,_aile:0,_sixsens:0,_sylvestre:0,_dragon:0,
     bobPhase:Math.random()*Math.PI*2,wPhaseX:Math.random()*Math.PI*2,wPhaseY:Math.random()*Math.PI*2,wSpeed:1.4+Math.random()*1.2,
@@ -3118,7 +3118,7 @@ function mkAIReserves(tid){
   return names.map((name,i)=>({
     id:`ta${tid}r${i}`,name,pos:['GB','DC','ATT'][i]||'MC',img:'',ini:name.slice(0,2).toUpperCase(),
     s:{spd:30+~~(Math.random()*45),sht:30+~~(Math.random()*45),def:30+~~(Math.random()*45),stam:50+~~(Math.random()*35),tec:30+~~(Math.random()*45),res:30+~~(Math.random()*45)},
-    spells:['tech'],x:-10,y:PCY,vx:0,vy:0,tx:-10,ty:PCY,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
+    spells:spellForPos(['GB','DC','ATT'][i]||'MC',name),race:pickRaceForRegion('',name+tid+i),x:-10,y:PCY,vx:0,vy:0,tx:-10,ty:PCY,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
     injLevel:0,injT:0,mG:0,mSh:0,mTk:0,mSp:0,_img:null,
     _hm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
     _fm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
@@ -5207,7 +5207,7 @@ function cteAddPlayer(ref,src){
   const arr=src==='bench'?(r.ref.bench=r.ref.bench||[]):(r.ref.reserves=r.ref.reserves||[]);
   const name=AI_NAMES[Math.floor(Math.random()*AI_NAMES.length)]||'Joueur';
   const p=serializePlayer({id:'cte_'+Date.now()+'_'+Math.floor(Math.random()*9999),name,pos:'MC',
-    s:{spd:55,sht:55,def:55,stam:55,tec:55,res:55},spells:['tech'],ini:name.slice(0,2).toUpperCase(),onBench:src==='bench'});
+    s:{spd:55,sht:55,def:55,stam:55,tec:55,res:55},spells:spellForPos('MC',name),race:pickRaceForRegion('',name),ini:name.slice(0,2).toUpperCase(),onBench:src==='bench'});
   arr.push(p);
   _cteCommit(ref);
   openCupTeamRoster(ref);
@@ -5533,7 +5533,7 @@ function mkCupNPCTeamData(npc, i){
     id:`${tid}_${suffix}_${idx}`, name:names[idx%AI_NAMES.length]||'PNJ', pos,
     ini:(names[idx%AI_NAMES.length]||'PJ').slice(0,2).toUpperCase(), img:'',
     s:{spd:sc(),sht:sc(),def:sc(),stam:sc(),tec:sc(),res:sc()},
-    spells:['tech'],
+    spells:spellForPos(pos,names[idx%AI_NAMES.length]),race:pickRaceForRegion('',names[idx%AI_NAMES.length]+pos+idx),
     x:0,y:0,vx:0,vy:0,tx:0,ty:0,hp:100,mp:100,yc:0,red:false,stunT:0,hasBall:false,
     injLevel:0,injT:0,mG:0,mSh:0,mTk:0,mSp:0,_img:null,
     _hm:(()=>{const r=(Math.random()+Math.random()-1)*10;return Math.round(Math.max(-10,Math.min(10,r)));})(),
@@ -6552,7 +6552,7 @@ function _renderDirectorSquad(){
     return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--b1)">'
       + '<div style="width:26px;font-size:9px;color:var(--muted);text-align:center">'+p.pos+'</div>'
       + '<div style="flex:1;font-size:10px;font-weight:700">'+p.name+'</div>'
-      + '<div style="font-size:9px;color:'+(p.race==='human'?'#f0c028':'#00bcd4')+'">'+(p.race==='human'?'👤':'🧜')+'</div>'
+      + '<div title="'+((typeof raceMeta==='function'?raceMeta(p.race).name:p.race)||'Humain')+'" style="font-size:9px;color:'+(p.race==='human'||!p.race?'#f0c028':'#00bcd4')+'">'+((typeof raceMeta==='function'?raceMeta(p.race).emoji:'👤')||'👤')+'</div>'
       + '<div style="font-size:11px;font-weight:900;color:'+ovrCol+';width:28px;text-align:center">'+ovr+'</div>'
       + (p._isGem?'<div style="font-size:9px;color:#9c27b0">💎</div>':'')
       + '</div>';
@@ -6601,7 +6601,7 @@ function _renderDirectorMercato(){
         h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)">';
         h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + p.pos + '</div>';
         h += '<div style="flex:1"><div style="font-size:10px;font-weight:700">' + p.name + '</div>';
-        h += '<div style="font-size:8px;color:var(--muted)">' + (p.race==='human'?'👤':'🧜') + ' · ' + (p.region||'?') + '</div></div>';
+        h += '<div style="font-size:8px;color:var(--muted)">' + ((typeof raceMeta==='function'?raceMeta(p.race).emoji+' '+raceMeta(p.race).name:'👤') ) + ' · ' + (p.region||'?') + '</div></div>';
         h += '<div style="font-size:11px;font-weight:900;color:' + ovrCol + ';width:24px;text-align:center">' + ovr + '</div>';
         if(p._isPotentialPro){
           h += '<div style="font-size:8px;color:#9c27b0" title="Potentiel pro détecté !">💎</div>';

@@ -115,13 +115,21 @@ function _enrichPresetTeam(preset){
   const chosen=new Set(ranked.slice(0,density).map(r=>r.idx));
 
   const players=roster.map((pl,idx)=>{
+    // Race : cosmopolite (~40% non-humains), pondérée par région, déterministe.
+    // Respecte une race déjà définie à la main.
+    const withRace = pl.race ? pl : {
+      ...pl,
+      race:(typeof pickRaceForRegion==='function')
+        ? pickRaceForRegion(region, preset.presetId+'|'+pl.name+'|race')
+        : 'human'
+    };
     // Respecte un sort déjà défini à la main.
-    if(pl.spells && pl.spells.length) return pl;
-    if(!chosen.has(idx)) return pl;
-    const grp=_presetPosGroup(pl.pos);
+    if(withRace.spells && withRace.spells.length) return withRace;
+    if(!chosen.has(idx)) return withRace;
+    const grp=_presetPosGroup(withRace.pos);
     const opts=pool[grp]||pool.MID||['tech'];
-    const pick=opts[Math.floor(_presetHash(pl.name+'|'+pl.pos+'|'+preset.presetId)*opts.length)]||opts[0];
-    return { ...pl, spells:[pick] };
+    const pick=opts[Math.floor(_presetHash(withRace.name+'|'+withRace.pos+'|'+preset.presetId)*opts.length)]||opts[0];
+    return { ...withRace, spells:[pick] };
   });
 
   // La strat régionale remplace le '321' générique par défaut, mais respecte
