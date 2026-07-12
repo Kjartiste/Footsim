@@ -6685,10 +6685,16 @@ function _renderDirectorAffiliates(){
     if(ovr!=null) h += '<div style="font-size:16px;font-weight:900;color:'+aff.color+'">'+ovr+'</div><div style="font-size:8px;color:var(--muted)">OVR moyen</div>';
     h += '<div style="font-size:9px;color:var(--muted);margin-top:2px">👥 '+nb+' joueurs</div>';
     h += '</div></div>';
-    // Statut géré / délégué (bascule — étape 2 activera la vraie gestion)
+    // Boutons : voir l'effectif + gérer/déléguer
+    const isOpen = (window._affOpenIdx===i);
     h += '<div style="display:flex;gap:6px;margin-top:10px">';
-    h += '<button onclick="_toggleAffiliateDelegate('+i+')" style="flex:1;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px solid '+(aff.delegated?'var(--b1)':aff.color)+';background:'+(aff.delegated?'var(--dark)':aff.color+'22')+';color:'+(aff.delegated?'var(--muted)':aff.color)+'">'+(aff.delegated?'🤖 Déléguée (cliquer pour gérer)':'🎮 Gérée par vous')+'</button>';
+    h += '<button onclick="_toggleAffiliateSquad('+i+')" style="flex:1;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px solid '+aff.color+';background:'+aff.color+'18;color:'+aff.color+'">'+(isOpen?'▲ Masquer l\'effectif':'👁 Voir l\'effectif')+'</button>';
+    h += '<button onclick="_toggleAffiliateDelegate('+i+')" style="flex:1;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px solid '+(aff.delegated?'var(--b1)':aff.color)+';background:'+(aff.delegated?'var(--dark)':aff.color+'22')+';color:'+(aff.delegated?'var(--muted)':aff.color)+'">'+(aff.delegated?'🤖 Déléguée':'🎮 Gérée')+'</button>';
     h += '</div>';
+    // Effectif déplié (avec repérage des pépites)
+    if(isOpen){
+      h += _affiliateSquadHTML(aff, i);
+    }
     h += '</div>';
   });
   h += '</div>';
@@ -6697,6 +6703,67 @@ function _renderDirectorAffiliates(){
 function _toggleAffiliateDelegate(i){
   const C=careerV2; if(!C||!C.affiliates||!C.affiliates[i]) return;
   C.affiliates[i].delegated = !C.affiliates[i].delegated;
+  try{ saveCareerV2(); }catch(e){}
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
+}
+function _toggleAffiliateSquad(i){
+  window._affOpenIdx = (window._affOpenIdx===i) ? null : i;
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
+}
+// OVR d'un joueur (réutilise careerOvr si dispo).
+function _pOvr(p){ if(typeof careerOvr==='function') return careerOvr(p); const s=p.s||{}; return Math.round(((s.sht||50)+(s.spd||50)+(s.def||50)+(s.stam||50)+(s.tec||50)+(s.res||50))/6); }
+// Détecte une "pépite" : jeune (≤ 21 ans) avec un OVR déjà correct pour son âge,
+// ou fort potentiel — candidat à promouvoir en équipe première.
+function _isPepite(p, teamAvgOvr){
+  if(p._isGem) return true; // joueur exceptionnel (sorts rares, stats boostées)
+  const age = p.age||24;
+  const ovr = _pOvr(p);
+  // Pépite = jeune (≤21) nettement au-dessus de la moyenne de SON équipe
+  // (potentiel de progression), ou déjà très bon dans l'absolu.
+  if(age>21) return false;
+  if(ovr>=72) return true;
+  if(teamAvgOvr!=null && ovr >= teamAvgOvr+4) return true; // surdoué local
+  return false;
+}
+function _affiliateSquadHTML(aff, affIdx){
+  const all = [...(aff.players||[]).map(p=>({p,grp:'Titulaires'})), ...(aff.bench||[]).map(p=>({p,grp:'Banc'}))];
+  if(!all.length) return '<div style="font-size:9px;color:var(--muted);padding:8px">Effectif vide.</div>';
+  // Trier par OVR décroissant pour voir les meilleurs en premier.
+  all.sort((a,b)=>_pOvr(b.p)-_pOvr(a.p));
+  const teamAvg = Math.round(all.reduce((s,o)=>s+_pOvr(o.p),0)/all.length);
+  let h = '<div style="margin-top:10px;border-top:1px solid var(--b1);padding-top:8px">';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:6px">Effectif ('+all.length+') — 🌟 = pépite à promouvoir</div>';
+  all.forEach(function(o){
+    const p=o.p; const ovr=_pOvr(p); const pep=_isPepite(p, teamAvg);
+    const age=p.age||'?'; const nbSp=(p.spells||[]).length;
+    h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:6px;margin-bottom:3px;background:'+(pep?'rgba(240,192,40,.10)':'var(--dark)')+';border:1px solid '+(pep?'var(--gold)':'transparent')+'">';
+    h += '<span style="font-size:8px;color:var(--muted);width:24px">'+(p.pos||'?')+'</span>';
+    h += '<span style="flex:1;font-size:11px;font-weight:700;color:var(--text)">'+(pep?'🌟 ':'')+p.name+'</span>';
+    h += '<span style="font-size:8px;color:var(--muted)">'+age+'a</span>';
+    if(nbSp>0) h += '<span style="font-size:8px;color:#a080e0">✦'+nbSp+'</span>';
+    h += '<span style="font-size:12px;font-weight:900;color:'+(ovr>=80?'#18c860':ovr>=70?'#f0c028':'var(--muted)')+'">'+ovr+'</span>';
+    // Bouton promouvoir en équipe première
+    h += '<button onclick="_promoteFromAffiliate('+affIdx+',\''+(p.id||'')+'\')" style="font-size:8px;padding:2px 6px;border-radius:5px;cursor:pointer;border:1px solid '+aff.color+';background:transparent;color:'+aff.color+'">↑ Promouvoir</button>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+// Promeut un joueur d'une réserve vers l'effectif première (le retire de la
+// réserve, l'ajoute au banc de l'équipe principale).
+function _promoteFromAffiliate(affIdx, playerId){
+  const C=careerV2; if(!C||!C.affiliates||!C.affiliates[affIdx]) return;
+  const aff=C.affiliates[affIdx];
+  let p=null, from=null;
+  ['players','bench'].forEach(function(k){
+    const idx=(aff[k]||[]).findIndex(x=>x.id===playerId);
+    if(idx>=0 && !p){ p=aff[k][idx]; from=k; aff[k].splice(idx,1); }
+  });
+  if(!p){ return; }
+  p.onBench=true;
+  C.bench = C.bench || [];
+  C.bench.push(p);
+  if(typeof careerLog==='function') careerLog('⬆ '+p.name+' promu de '+aff.name+' vers l\'équipe première !', C.club.color||'#18c860');
   try{ saveCareerV2(); }catch(e){}
   const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
 }
