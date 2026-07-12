@@ -2123,7 +2123,7 @@ function renderCareer(){
           </div>
         </div>
       </div>
-      <button class="btn btng" style="width:100%;justify-content:center;font-size:14px;padding:10px;margin-bottom:6px" onclick="startCareer()">🎽 Nouvelle Carrière</button>
+      <button class="btn btng" style="width:100%;justify-content:center;font-size:14px;padding:10px;margin-bottom:6px" onclick="renderCareerV2Choice()">🎽 Nouvelle Carrière</button>
       <button class="btn" style="width:100%;justify-content:center;font-size:11px;padding:7px;margin-bottom:4px" onclick="rescueCareer()">🔧 Réparer une carrière existante</button>
     </div>`;
     return;
