@@ -631,14 +631,23 @@ function drawPlayer(T,p){
     } else drawInitials(px,py+safeBob,r,p.ini);
   } else drawInitials(px,py+safeBob,r,p.ini);
 
-  // Badge de race (non-humains seulement) — petit emoji en bas à droite
+  // Badge de race (non-humains seulement) — pastille circulaire discrète
   if(p.race && p.race!=='human' && typeof raceMeta==='function'){
-    const em=raceMeta(p.race).emoji;
+    const meta=raceMeta(p.race);
+    const em=meta.emoji;
     if(em){
+      const bx=px+r*0.72, by=py+safeBob-r*0.72; // coin haut-droit
+      const br=r*0.52;
       ctx.save();
-      ctx.font=(r*0.85|0)+'px serif';
+      // fond de la pastille
+      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);
+      ctx.fillStyle='rgba(12,14,20,.82)';ctx.fill();
+      ctx.lineWidth=Math.max(0.6,r*0.09);
+      ctx.strokeStyle='rgba(255,255,255,.55)';ctx.stroke();
+      // emoji centré dans la pastille
+      ctx.font=(br*1.35|0)+'px serif';
       ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText(em, px+r*0.7, py+safeBob+r*0.7);
+      ctx.fillText(em, bx, by+br*0.08);
       ctx.restore();
     }
   }

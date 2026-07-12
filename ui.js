@@ -1773,7 +1773,11 @@ function renderTB(ti){
         ${p.img?`<img src="${p.img}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<span style="font-size:9px;font-weight:700;color:${T.color}">${p.ini}</span>`}
       </div>
       <div class="pi" style="flex:1;cursor:pointer" onclick="openM(${ti},${pi},'${source}')">
-        <div class="pn">${p.name}${inj}${miss}</div>
+        <div class="pn">${p.name}${(()=>{
+          if(!p.race||p.race==='human'||typeof raceMeta!=='function')return '';
+          const m=raceMeta(p.race);
+          return ` <span title="${m.name}" style="font-size:10px;vertical-align:baseline">${m.emoji}</span>`;
+        })()}${inj}${miss}</div>
         <div class="pp">${p.pos} <span style="color:${T.color};font-weight:700;font-size:9px">OVR ${pOvr(p)}</span>${(()=>{const eff=playerMatchOvr(p);const diff=eff-pOvr(p);return diff!==0?` <span style="color:${diff>0?'#18c860':'#e06060'};font-weight:700;font-size:8px" title="OVR effectif en match (forme/moral/sorts inclus)">→ ${eff}</span>`:'';})()}</div>
         <div class="sm">
           <span class="sb">V${p.s.spd}</span><span class="sb">T${p.s.sht}</span><span class="sb">D${p.s.def}</span>
@@ -1968,6 +1972,26 @@ function _renderPlayerEditor(p,T,source){
           ).map(po=>`<option${po===p.pos?' selected':''}>${po}</option>`).join('')}
         </select>
       </div>
+      <div class="frow"><span class="lbl">Race</span>
+        <select class="inp" id="prace" style="cursor:pointer" onchange="if(editP()){editP().race=this.value; if(typeof _reRenderOpenPlayerEditor==='function')_reRenderOpenPlayerEditor();}">
+          ${(window.RACE_IDS||['human']).map(rid=>{
+            const m=(typeof raceMeta==='function')?raceMeta(rid):{name:rid,emoji:''};
+            const sel=((p.race||'human')===rid)?' selected':'';
+            return `<option value="${rid}"${sel}>${m.emoji} ${m.name}</option>`;
+          }).join('')}
+        </select>
+      </div>
+      ${(()=>{
+        const m=(typeof raceMeta==='function')?raceMeta(p.race):null;
+        if(!m||(p.race||'human')==='human') return '<div style="font-size:9px;color:var(--muted);margin-top:-2px">Aucun modificateur physiologique (humain).</div>';
+        const keys=[['spd','VIT'],['sht','TIR'],['def','DEF'],['stam','END'],['res','RÉS'],['tec','TEC'],['magic','MAG']];
+        const chips=keys.filter(([k])=>m[k]!=null&&m[k]!==1).map(([k,l])=>{
+          const pct=Math.round((m[k]-1)*100);
+          const pos=pct>0;
+          return `<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:${pos?'#18c86022':'#e0203022'};color:${pos?'#18c860':'#e02030'}">${l} ${pos?'+':''}${pct}%</span>`;
+        }).join(' ');
+        return `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px">${chips}</div>`;
+      })()}
     </div>
   </div>
   <div class="slbl" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
@@ -2027,7 +2051,22 @@ function _renderPlayerEditor(p,T,source){
     if(!(window.isComplet && window.isComplet())) return '';
     if(typeof ensurePlayerProfile==='function') ensurePlayerProfile(p);
     const perso = (typeof personaOf==='function') ? personaOf(p) : null;
-    const traits = Array.isArray(p.traits) ? p.traits.map(id=>window.TRAIT_BY_ID&&TRAIT_BY_ID[id]).filter(Boolean) : [];
+    const activeTraits = Array.isArray(p.traits) ? p.traits.slice() : [];
+    const CAT_LABELS={off:'⚔️ Offensif',def:'🛡️ Défensif',tech:'✨ Technique',ment:'🧠 Mental',magie:'🔮 Magie'};
+    const allTraits = (window.TRAITS||[]);
+    const byCat={};
+    allTraits.forEach(t=>{ (byCat[t.cat]=byCat[t.cat]||[]).push(t); });
+    const traitsGrid = Object.keys(byCat).map(cat=>`
+      <div style="margin-top:5px">
+        <div style="font-size:8px;font-weight:800;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin:4px 0 3px">${CAT_LABELS[cat]||cat}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${byCat[cat].map(t=>{
+            const on=activeTraits.includes(t.id);
+            return `<span title="${t.d}" onclick="tgTrait('${t.id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;border-radius:12px;padding:3px 9px;transition:all .12s;border:1px solid ${on?'var(--gold)':'var(--b2)'};background:${on?'#f0c02826':'transparent'};opacity:${on?1:.55};color:var(--text)">${t.icon} ${t.n}</span>`;
+          }).join('')}
+        </div>
+      </div>`).join('');
+    const traitsHtml = `<div id="traits-grid">${traitsGrid}</div>`;
     const persoHtml = perso ? `
       <div style="display:flex;align-items:center;gap:8px;background:${perso.col}18;border:1px solid ${perso.col}55;border-radius:8px;padding:7px 9px;margin-bottom:6px">
         <span style="font-size:20px">${perso.icon}</span>
@@ -2036,12 +2075,8 @@ function _renderPlayerEditor(p,T,source){
           <div style="font-size:9px;color:var(--muted);line-height:1.3">${perso.d}</div>
         </div>
       </div>` : '';
-    const traitsHtml = traits.length ? `
-      <div style="display:flex;flex-wrap:wrap;gap:5px">
-        ${traits.map(t=>`<span title="${t.d}" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:var(--panel);border:1px solid var(--b2);border-radius:12px;padding:3px 9px;color:var(--text)">${t.icon} ${t.n}</span>`).join('')}
-      </div>` : `<div style="font-size:9px;color:var(--muted)">Aucun trait particulier.</div>`;
     return `
-      <div class="slbl">Personnalité & Traits</div>
+      <div class="slbl">Personnalité & Traits <span style="color:var(--muted);font-weight:600;font-size:9px">(cliquez pour activer/désactiver)</span></div>
       ${persoHtml}
       ${traitsHtml}
     `;
@@ -2080,6 +2115,15 @@ function _renderPlayerEditor(p,T,source){
   </div>`;
   document.getElementById('pmodal').classList.add('on');
 }
+// Active/désactive un trait sur le joueur en cours d'édition.
+function tgTrait(id){
+  const p=editP(); if(!p) return;
+  p.traits=Array.isArray(p.traits)?p.traits:[];
+  const i=p.traits.indexOf(id);
+  if(i>=0)p.traits.splice(i,1); else p.traits.push(id);
+  if(typeof _reRenderOpenPlayerEditor==='function')_reRenderOpenPlayerEditor();
+}
+
 function tgS(id,el){
   const all=[...document.querySelectorAll('#sg .chip')];
   const a=all.filter(b=>parseFloat(b.style.opacity)>=1).map(b=>b.dataset.id);
