@@ -6902,27 +6902,135 @@ function _renderDirectorOverview(){
 
 
 
+// Métadonnées d'affichage d'un joueur (drapeau/emoji nationalité, rôle, valeur).
+function _playerNatTag(p){
+  // Étranger : petit globe + code nat ; natif : emoji de race + code pays.
+  const raceE = (typeof raceMeta==='function' && p.race && p.race!=='human') ? raceMeta(p.race).emoji : '';
+  if(p.foreign){
+    const code = (p.nationality||'ETR').slice(0,3).toUpperCase();
+    return '🌍 '+code;
+  }
+  const natCode = (p.nationality||'').slice(0,3).toUpperCase() || '—';
+  const sexE = p.sex==='F'?'♀':p.sex==='M'?'♂':p.sex==='X'?'⚧':'';
+  return (raceE||sexE)+' '+natCode;
+}
+function _playerRole(p, squadTier){
+  const ovr=_pOvr(p); const age=p.age||24;
+  if(typeof _isPepite==='function' && _isPepite(p)) return {txt:'Grand espoir', col:'#f0c028'};
+  if(squadTier==='starter') return ovr>=82?{txt:'Titulaire clé',col:'#18c860'}:{txt:'Titulaire',col:'#18c860'};
+  if(squadTier==='bench') return {txt:'Remplaçante', col:'#8fa0b5'};
+  return {txt:'Réserviste', col:'#8fa0b5'};
+}
+function _playerValue(p){ return (typeof careerValue==='function')?careerValue(p):_pOvr(p)*100; }
+
 function _renderDirectorSquad(){
   const C = careerV2;
-  function mkRow(p){
-    const vals = Object.values(p.s||{});
-    const ovr = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length) : 50;
-    const ovrCol = ovr>=70?'#18c860':ovr>=55?'#f0c028':'#e06060';
-    return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--b1)">'
-      + '<div style="width:26px;font-size:9px;color:var(--muted);text-align:center">'+p.pos+'</div>'
-      + '<div style="flex:1;font-size:10px;font-weight:700">'+p.name+'</div>'
-      + '<div title="'+((typeof raceMeta==='function'?raceMeta(p.race).name:p.race)||'Humain')+'" style="font-size:9px;color:'+(p.race==='human'||!p.race?'#f0c028':'#00bcd4')+'">'+((typeof raceMeta==='function'?raceMeta(p.race).emoji:'👤')||'👤')+'</div>'
-      + '<div style="font-size:11px;font-weight:900;color:'+ovrCol+';width:28px;text-align:center">'+ovr+'</div>'
-      + (p._isGem?'<div style="font-size:9px;color:#9c27b0">💎</div>':'')
-      + '</div>';
+  // Quelle équipe afficher : 'main' (première) ou l'index d'une affiliée.
+  const view = window._squadView || 'main';
+  // Construire la liste des équipes navigables : première + réserves.
+  const teams = [{ key:'main', label:'Équipe première', players:C.players||[], bench:C.bench||[] }];
+  (C.affiliates||[]).forEach(function(aff,i){
+    teams.push({ key:'aff'+i, label:(aff.role==='U23 / académie'?'U23 · ':'Réserve · ')+aff.name, players:aff.players||[], bench:aff.bench||[], color:aff.color });
+  });
+  const cur = teams.find(t=>t.key===view) || teams[0];
+
+  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:10px;overflow:hidden">';
+  // ── Onglets de navigation entre équipes ────────────────────────────────
+  h += '<div style="display:flex;gap:4px;flex-wrap:wrap;padding:9px 10px 7px;border-bottom:1px solid var(--b1)">';
+  teams.forEach(function(t){
+    const on = t.key===cur.key;
+    h += '<button onclick="_squadSetView(\''+t.key+'\')" style="padding:5px 11px;border-radius:7px;font-size:10px;font-weight:800;cursor:pointer;border:1.5px solid '+(on?'var(--gold)':'var(--b1)')+';background:'+(on?'rgba(240,192,40,.14)':'transparent')+';color:'+(on?'var(--gold)':'var(--muted)')+'">'+t.label+'</button>';
+  });
+  h += '</div>';
+  // ── En-tête de colonnes ────────────────────────────────────────────────
+  const grid = 'grid-template-columns:24px 1fr 68px 56px 30px 92px 66px;';
+  h += '<div style="display:grid;'+grid+'gap:0;padding:7px 12px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--b1)">';
+  h += '<div>N°</div><div>Joueuse</div><div>Poste</div><div>Nat.</div><div style="text-align:center">Âge</div><div>Statut</div><div style="text-align:right">Valeur</div>';
+  h += '</div>';
+  // ── Lignes ─────────────────────────────────────────────────────────────
+  h += '<div style="padding:0 4px 6px">';
+  let num = 1;
+  function rows(list, tier){
+    list.forEach(function(p){
+      const ovr=_pOvr(p);
+      const ovrCol = ovr>=80?'#18c860':ovr>=68?'#f0c028':'#e06060';
+      const role=_playerRole(p,tier);
+      const pep = (typeof _isPepite==='function' && _isPepite(p));
+      const val=_playerValue(p);
+      const pid = p.id || (p.name+'_'+num);
+      h += '<div onclick="_openPlayerCard(\''+cur.key+'\',\''+String(pid).replace(/'/g,"")+'\')" style="display:grid;'+grid+'gap:0;align-items:center;padding:7px 8px;border-bottom:1px solid var(--panel);cursor:pointer;'+(pep?'background:rgba(240,192,40,.06);border:1px solid rgba(240,192,40,.25);border-radius:6px;':'')+'">';
+      h += '<div style="font-size:10px;color:var(--muted)">'+(num++)+'</div>';
+      h += '<div style="font-size:11px;font-weight:700;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(pep?'🌟 ':'')+p.name+'</div>';
+      h += '<div style="font-size:10px;color:var(--muted)">'+(p.pos||'?')+'</div>';
+      h += '<div style="font-size:9px;color:var(--muted)" title="'+(p.nationality||'')+'">'+_playerNatTag(p)+'</div>';
+      h += '<div style="font-size:10px;color:var(--muted);text-align:center">'+(p.age||'?')+'</div>';
+      h += '<div style="font-size:9px;color:'+role.col+'">'+role.txt+'</div>';
+      h += '<div style="font-size:11px;font-weight:900;color:'+ovrCol+';text-align:right">'+_fmtMoney(val)+'</div>';
+      h += '</div>';
+    });
   }
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">👥 Effectif ('+C.players.length+')</div>';
-  C.players.forEach(function(p){h+=mkRow(p);});
-  h += '<div style="font-size:10px;font-weight:700;color:var(--muted);margin:10px 0 6px">🪑 Banc ('+C.bench.length+')</div>';
-  C.bench.forEach(function(p){h+=mkRow(p);});
+  rows(cur.players, 'starter');
+  if(cur.bench && cur.bench.length){
+    h += '<div style="font-size:9px;font-weight:700;color:var(--muted);padding:8px 8px 4px">🪑 Banc</div>';
+    rows(cur.bench, 'bench');
+  }
+  h += '</div>';
+  h += '<div style="padding:7px 12px;font-size:8px;color:var(--muted);border-top:1px solid var(--b1)">Clique sur une joueuse pour ses stats détaillées · 🌟 pépite</div>';
   h += '</div>';
   return h;
+}
+function _squadSetView(key){
+  window._squadView = key;
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+// Fiche joueur détaillée (overlay in-flow).
+function _openPlayerCard(teamKey, pid){
+  const C=careerV2; if(!C) return;
+  let list=[];
+  if(teamKey==='main') list=[...(C.players||[]),...(C.bench||[])];
+  else { const aff=(C.affiliates||[])[parseInt(teamKey.replace('aff',''),10)]; if(aff) list=[...(aff.players||[]),...(aff.bench||[])]; }
+  const p = list.find(x=>String(x.id||'')===pid) || list.find(x=>(x.name)===pid) || list.find((x,i)=>String(x.name+'_'+(i+1))===pid);
+  if(!p){ return; }
+  window._playerCardData = { p, teamKey };
+  _renderPlayerCardOverlay(p);
+}
+function _renderPlayerCardOverlay(p){
+  const ovr=_pOvr(p);
+  const statNames={tec:'Technique',spd:'Vitesse',sht:'Tir',def:'Défense',stam:'Endurance',res:'Résistance'};
+  const s=p.s||{};
+  const bar=(k)=>{
+    const v=s[k]||0; const c=v>=80?'#18c860':v>=60?'#f0c028':'#e06060';
+    return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="color:var(--muted)">'+statNames[k]+'</span><span style="font-weight:800;color:'+c+'">'+v+'</span></div>'
+      +'<div style="height:6px;background:var(--b1);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,v)+'%;background:'+c+'"></div></div></div>';
+  };
+  const spells=(p.spells||[]);
+  let h='<div style="position:relative;background:var(--panel);border:2px solid var(--gold);border-radius:14px;padding:16px;margin-bottom:12px">';
+  h+='<button onclick="_closePlayerCard()" style="position:absolute;top:10px;right:10px;background:var(--dark);border:1px solid var(--b1);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer;padding:2px 8px">✕</button>';
+  // En-tête
+  h+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">';
+  h+='<div style="width:52px;height:52px;border-radius:50%;background:var(--gold)22;border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:var(--gold)">'+ovr+'</div>';
+  h+='<div><div style="font-size:16px;font-weight:900;color:var(--fg)">'+p.name+'</div>';
+  const sexLbl=p.sex==='F'?'♀ Féminin':p.sex==='M'?'♂ Masculin':'⚧ Autre';
+  h+='<div style="font-size:10px;color:var(--muted)">'+(p.pos||'?')+' · '+(p.age||'?')+' ans · '+sexLbl+'</div>';
+  h+='<div style="font-size:10px;color:var(--muted)">'+(p.foreign?'🌍 ':'')+(p.nationality||'—')+(p.foreign?' (étrangère)':'')+'</div>';
+  h+='</div></div>';
+  // Stats
+  h+='<div style="font-size:10px;font-weight:800;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Statistiques</div>';
+  ['tec','spd','sht','def','stam','res'].forEach(k=>h+=bar(k));
+  // Sorts
+  h+='<div style="font-size:10px;font-weight:800;color:var(--gold);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px">Sorts ('+spells.length+')</div>';
+  if(spells.length){ h+='<div style="display:flex;flex-wrap:wrap;gap:5px">'; spells.forEach(sp=>h+='<span style="font-size:10px;padding:3px 9px;border-radius:12px;background:rgba(160,128,224,.15);border:1px solid #a080e0;color:#c0a0e0">✦ '+sp+'</span>'); h+='</div>'; }
+  else h+='<div style="font-size:10px;color:var(--muted)">Aucun sort.</div>';
+  // Valeur
+  h+='<div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--b1);display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">Valeur estimée</span><span style="font-weight:900;color:#18c860">'+_fmtMoney(_playerValue(p))+'</span></div>';
+  h+='</div>';
+  // Injecter en tête du contenu
+  const el=document.getElementById('career-director-content');
+  if(el){ el.innerHTML = h + _renderDirectorSquad(); }
+}
+function _closePlayerCard(){
+  window._playerCardData=null;
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
 }
 
 function _renderDirectorMercato(){
