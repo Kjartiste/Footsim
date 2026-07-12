@@ -6520,7 +6520,8 @@ function renderCareerDirector(el){
   const C = careerV2;
   const club = C.club;
   const region = WORLDS.getRegion(C.nation||'panthalassa', club.region);
-  const pyramid = PANTHALASSA.pyramid.find(function(p){return p.id===club.level;});
+  const _nat = WORLDS.get(C.nation) || PANTHALASSA;
+  const pyramid = (_nat.pyramid||PANTHALASSA.pyramid).find(function(p){return p.id===club.level;});
   const ss = C.season_stats;
   const budget = club.budget;
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
@@ -6556,7 +6557,7 @@ function renderCareerDirector(el){
   html += '<div style="flex:1;min-width:0">';
   html += '<div style="font-size:22px;font-weight:900;color:var(--fg);letter-spacing:.5px">'+club.name+'</div>';
   html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">';
-  html += (region?region.name:'?')+' · '+(pyramid?pyramid.name:club.level)+' · Saison '+C.season;
+  html += (region?region.name:'?')+' · '+(club.divisionName || (pyramid?pyramid.name:club.level))+' · Saison '+C.season;
   html += ' · Semaine '+C.week;
   html += '</div></div>';
   // Budget
@@ -7036,6 +7037,42 @@ function _renderDirectorInfra(){
     h += '<div style="text-align:right;flex-shrink:0"><div style="font-size:9px;color:var(--gold)">'+stars+'</div>';
     h += '<div style="font-size:8px;color:'+state.col+';margin-top:2px">'+state.txt+'</div></div>';
     h += '</div>';
+    // ── Données concrètes par installation (déterministes + niveau) ──────
+    const cell=(label,val,vcol)=>'<div style="background:var(--dark);border-radius:6px;padding:6px 8px"><div style="font-size:8px;color:var(--muted)">'+label+'</div><div style="font-size:11px;font-weight:700;color:'+(vcol||'var(--text)')+'">'+val+'</div></div>';
+    let stats='';
+    if(key==='stadium'){
+      const cap = 500 + lvl*2500 + (club.stadium_capacity? 0 : 0);
+      const fill = Math.min(98, 40 + lvl*12 + (pct>50?8:0));
+      const matchRev = Math.round(cap*fill/100*0.8);
+      const pelouse = lvl>=4?'Excellente':lvl>=2?'Correcte':'Usée';
+      stats = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        + cell('Capacité', cap.toLocaleString('fr-FR')+' places')
+        + cell('Affluence moyenne', fill+'%', fill>=70?'#18c860':fill>=50?'#f0c028':'#e06060')
+        + cell('Revenus matchday', _fmtMoney(matchRev)+'/match')
+        + cell('État pelouse', pelouse, lvl>=4?'#18c860':lvl>=2?'#f0c028':'#e06060')
+        + '</div>';
+    } else if(key==='training'){
+      stats = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        + cell('Gain stats/séance', '+'+(lvl*4)+'%', lvl>=3?'#18c860':'#f0c028')
+        + cell('Terrains', String(Math.max(1,lvl)))
+        + '</div>';
+    } else if(key==='formation'){
+      stats = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        + cell('Jeunes/saison', String(lvl))
+        + cell('Qualité jeunes', (30+lvl*14)+'/100', lvl>=3?'#18c860':'#f0c028')
+        + '</div>';
+    } else if(key==='medical'){
+      stats = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        + cell('Blessures', '-'+(lvl*12)+'%', lvl>=3?'#18c860':'#f0c028')
+        + cell('Récupération', '+'+(lvl*10)+'%', lvl>=3?'#18c860':'#f0c028')
+        + '</div>';
+    } else if(key==='scout'){
+      stats = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        + cell('Portée réseau', (lvl*20)+'%', lvl>=3?'#18c860':'#f0c028')
+        + cell('Pépites détectées', String(lvl))
+        + '</div>';
+    }
+    h += stats;
     h += '<div style="font-size:8px;color:var(--muted);margin-bottom:8px">Effet : '+def.effect+'</div>';
 
     if(work){

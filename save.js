@@ -274,8 +274,25 @@ function startCareerDirector(regionId, clubId, nationId){
     const pt=PILIER_TEAMS.find(function(t){ return t.name===clubName; });
     if(pt && pt.badge) clubBadge = pt.badge;
   }
-  const startLevel = region.pyramid.district_groups > 0 ? 'dh' :
-                     region.pyramid.has_r3 ? 'r3' : 'r2';
+  // Niveau de départ : si on REPREND un club existant, on prend SON niveau
+  // réel (sa division), pas le plus bas de la région. Sinon (club créé), on
+  // démarre en bas de la pyramide régionale.
+  let startLevel = region.pyramid.district_groups > 0 ? 'dh' :
+                   region.pyramid.has_r3 ? 'r3' : 'r2';
+  let startDivName = null;
+  if(nationId==='pilier' && typeof PILIER_TEAMS!=='undefined'){
+    const pt=PILIER_TEAMS.find(function(t){ return t.name===clubName; });
+    if(pt){
+      if(pt.level) startLevel = pt.level;
+      if(typeof PILIER_DIVISIONS!=='undefined' && PILIER_DIVISIONS[pt.division]) startDivName = PILIER_DIVISIONS[pt.division].name;
+    }
+  } else if(nationId==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
+    const vt=VALORIA_TEAMS.find(function(t){ return t.name===clubName; });
+    if(vt && vt.tier){
+      // Mapper le tier Valoria vers un niveau moteur si dispo.
+      if(typeof valoriaNormalizeLevel==='function' && vt.division) startLevel = vt.division;
+    }
+  }
   const budget = WORLDS.startBudget(nationId, regionId);
 
   // Petit effectif de départ : 7 titulaires + 2-3 remplaçants max
@@ -301,6 +318,7 @@ function startCareerDirector(regionId, clubId, nationId){
       color: clubColor,
       badge: clubBadge,
       level: startLevel,
+      divisionName: startDivName || null,
       group: 0,
       budget: budget,
       transferBudget: Math.round(budget * 0.25),
