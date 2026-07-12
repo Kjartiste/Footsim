@@ -2716,7 +2716,7 @@ const TIER_LABELS = {
   national_team:'Sélection nationale',
 };
 // Quelles régions possèdent un étage District (structure du lore Valoria).
-const REGION_HAS_DISTRICT = { 'Valcourt': true, 'Brumefer': false };
+const REGION_HAS_DISTRICT = { 'Valcourt': true, 'Brumefer': false, 'Le Pilier': true };
 
 let _teamSel = { ti:0, step:'kind', kind:null, country:null, tier:null, region:null, division:null };
 
@@ -2751,6 +2751,8 @@ function renderTeamSelectPage(){
   if(_teamSel.country && _teamSel.kind==='club'){ parts.push(_teamSel.step==='tier'?'<b style="color:#fff">Niveau</b>':crumb(_teamSel.tier?(TIER_LABELS[_teamSel.tier]||_teamSel.tier):'Niveau','tier')); }
   if(_teamSel.tier==='regional' || _teamSel.tier==='district'){ parts.push(_teamSel.step==='region'?'<b style="color:#fff">Région</b>':crumb(_teamSel.region||'Région','region')); }
   if((_teamSel.tier==='regional'||_teamSel.tier==='district') && _teamSel.region){ const _ntdB=nationTeamsData(_teamSel.country); const _dmB=(_ntdB&&_ntdB.divisions)||{}; const dn=(_teamSel.division&&_dmB[_teamSel.division])?_dmB[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dn,'division')); }
+  // Cas pro multi-ligues (ex : Pilier) : étape Division sans passer par Région.
+  if(_teamSel.tier==='pro' && (_teamSel.step==='division' || _teamSel.division)){ const _ntdP=nationTeamsData(_teamSel.country); const _dmP=(_ntdP&&_ntdP.divisions)||{}; const dnP=(_teamSel.division&&_dmP[_teamSel.division])?_dmP[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dnP,'division')); }
   const breadcrumb = `<div style="font-size:10px;color:var(--muted);margin-bottom:12px">${parts.join(' <span style="color:#444">›</span> ')}</div>`;
 
   const title = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2820,12 +2822,18 @@ function renderTeamSelectPage(){
     });
   }
   else if(_teamSel.step==='division'){
-    // Sous-étape régional : choisir R1 ou R2 dans la région.
+    // Choix de la division dans le palier courant. Pour le pro (pas de région),
+    // on liste toutes les divisions pro ; pour regional/district, celles de la
+    // région choisie.
     const _ntdD=nationTeamsData(_teamSel.country);
     const _divMap=_ntdD?_ntdD.divisions:{};
     const _byDiv=_ntdD?_ntdD.byDivision:null;
     const divs=Object.entries(_divMap)
-      .filter(([id,d])=>d.region===_teamSel.region && d.tier===_teamSel.tier)
+      .filter(([id,d])=>{
+        if(d.tier!==_teamSel.tier) return false;
+        if(_teamSel.tier==='pro') return true;
+        return d.region===_teamSel.region;
+      })
       .sort((a,b)=>a[1].order-b[1].order);
     if(!divs.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune division.</div>';
     divs.forEach(([id,d])=>{
@@ -2904,7 +2912,16 @@ function teamSelPick(key,val){
   _teamSel[key]=val;
   if(key==='kind'){ _teamSel.step='country'; }
   else if(key==='country'){ _teamSel.step = _teamSel.kind==='nation' ? 'teams' : 'tier'; }
-  else if(key==='tier'){ _teamSel.step = (val==='regional'||val==='district') ? 'region' : 'teams'; }
+  else if(key==='tier'){
+    if(val==='regional'||val==='district'){ _teamSel.step='region'; }
+    else {
+      // Tier pro : s'il existe plusieurs ligues pro (ex : Pilier = GTD + Zénith),
+      // on insère une étape de choix de division ; sinon on va direct aux équipes.
+      const _ntd=nationTeamsData(_teamSel.country);
+      const proDivs=_ntd?Object.entries(_ntd.divisions).filter(([id,d])=>d.tier==='pro'):[];
+      _teamSel.step = proDivs.length>1 ? 'division' : 'teams';
+    }
+  }
   else if(key==='region'){ _teamSel.step = (_teamSel.tier==='regional'||_teamSel.tier==='district') ? 'division' : 'teams'; }
   else if(key==='division'){ _teamSel.step='teams'; }
   renderTeamSelectPage();
