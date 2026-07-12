@@ -435,6 +435,29 @@ function _getGlowSprite(col){
   _glowSpriteCache.set(col,oc);
   return oc;
 }
+
+// ── SPRITE DE CORPS PRÉ-RENDU (perf joueurs) ─────────────────────────────
+// bodyGrd était recréé pour chaque joueur à chaque frame (~22×60/s = ~1300
+// gradients/s) alors qu'il n'y a que 2 couleurs d'équipe et un dégradé radial
+// identique. On le rend une fois par couleur à résolution fixe (128px) et on
+// le drawImage scalé — le scaling d'un disque radial est invisible à l'œil.
+const _bodySpriteCache=new Map();
+function _getBodySprite(col){
+  let s=_bodySpriteCache.get(col);
+  if(s) return s;
+  const D=128, oc=document.createElement('canvas');
+  oc.width=D; oc.height=D;
+  const c=oc.getContext('2d');
+  const cx=D/2, cy=D/2, R=D/2;
+  // Reproduit l'ancien dégradé : reflet clair en haut-gauche, teinte pleine au bord.
+  const g=c.createRadialGradient(cx-R*.3,cy-R*.3,0,cx,cy,R);
+  g.addColorStop(0,lighten(col,.35));
+  g.addColorStop(1,col);
+  c.fillStyle=g;
+  c.beginPath();c.arc(cx,cy,R,0,Math.PI*2);c.fill();
+  _bodySpriteCache.set(col,oc);
+  return oc;
+}
 function resize(){
   const wrap=document.getElementById('canvas-wrap');
   cvs.width=wrap.offsetWidth;
@@ -634,14 +657,15 @@ function drawPlayer(T,p){
     ctx.restore();
   }
 
-  // Body
-  ctx.beginPath();ctx.arc(px,py+safeBob,r,0,Math.PI*2);
+  // Body — sprite pré-rendu (voir _getBodySprite) au lieu d'un gradient par frame.
   if(r>0){
-    const bodyGrd=ctx.createRadialGradient(px-r*.3,py+safeBob-r*.3,0,px,py+safeBob,r);
-    bodyGrd.addColorStop(0,lighten(T.color,.35));bodyGrd.addColorStop(1,T.color);
-    ctx.fillStyle=bodyGrd;
-  } else {ctx.fillStyle=T.color;}
-  ctx.fill();
+    const spr=_getBodySprite(T.color);
+    ctx.drawImage(spr,px-r,py+safeBob-r,r*2,r*2);
+  } else {
+    ctx.fillStyle=T.color;
+    ctx.beginPath();ctx.arc(px,py+safeBob,r,0,Math.PI*2);ctx.fill();
+  }
+  ctx.beginPath();ctx.arc(px,py+safeBob,r,0,Math.PI*2);
   ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=ws(.1);ctx.stroke();
 
   // Stun
@@ -938,6 +962,9 @@ function drawInitials(px,py,r,ini){
 }
 
 function lighten(hex,amt){
+  hex=String(hex||'#000');
+  // Étendre les hex courts (#fff → #ffffff) avant de découper les canaux.
+  if(/^#[0-9a-fA-F]{3}$/.test(hex)) hex='#'+hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3];
   const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
   return`rgb(${Math.min(255,r+255*amt)},${Math.min(255,g+255*amt)},${Math.min(255,b+255*amt)})`;
 }
@@ -1742,8 +1769,8 @@ function resetMatch(){
   });
   // Appliquer les postes selon la formation (après que players soient réinitialisés)
   applyFormationRoles(0); applyFormationRoles(1);
-  // Placer les joueurs sur le terrain (évite spawn coin 0,0 pour matchs coupe/carrière)
-  placeKickoff(Math.random()<.5?0:1);
+  // (Le placement des joueurs se fait une seule fois plus bas, juste avant
+  // updateStats — inutile d'appeler placeKickoff deux fois.)
   document.getElementById('hs0').textContent='0';document.getElementById('hs1').textContent='0';
   document.getElementById('hclock').textContent="0'";document.getElementById('hphase').textContent="COUP D'ENVOI";
   document.getElementById('mbtn').textContent='▶ Démarrer';
