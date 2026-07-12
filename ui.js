@@ -7493,19 +7493,33 @@ function playCareerMatchV2(){
                   :                  ['GB','MC','ATT'];
   const xiSize = XI_POS.length;
 
-  // ── Équipe du joueur (team 0) : on compose une XI de la bonne taille
-  // à partir des MEILLEURS joueurs de l'effectif complet de carrière (au
-  // lieu d'aligner l'effectif entier), le reste passant sur le banc. ──
+  // ── Équipe du joueur (team 0) : on compose une XI + un banc de la bonne
+  // taille (celle du format actif) à partir des MEILLEURS joueurs de
+  // l'effectif complet de carrière. AVANT : tout le reste de l'effectif
+  // (jusqu'à 18 joueurs) finissait sur le banc du match → banc énorme et
+  // déséquilibré face à l'adversaire IA (banc normal). Maintenant, le banc
+  // du match a la même taille que celui de l'IA (BENCH_POS) ; le surplus
+  // part en réservistes (pas utilisé ce match, mais toujours dans le club).
+  const benchSize = BENCH_POS.length;
   const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
     .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
   const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; })
     .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
   const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; })
     .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+
   const starters = [];
   if(gkPool[0]) starters.push(gkPool[0]);
   outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
-  const remaining = fullSquad.filter(function(p){ return starters.indexOf(p) < 0; });
+
+  const leftoverGk  = gkPool.slice(1); // gardiens non titulaires (remplaçant prioritaire)
+  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
+  const matchBench = [];
+  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
+  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
+
+  const usedIds = starters.concat(matchBench);
+  const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
 
   teams[0] = {
     name:    C.club.name,
@@ -7513,8 +7527,8 @@ function playCareerMatchV2(){
     img:     C.club.img   || '',
     strat:   C.club.strat || '321',
     players: starters,
-    bench:   remaining,
-    reserves:(C.reserves||[]).map(function(p){ return Object.assign({}, p); }),
+    bench:   matchBench,
+    reserves: surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
   };
 
   // ── Équipe adversaire IA (team 1) — générée au même format et niveau ─
