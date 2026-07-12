@@ -407,6 +407,34 @@ const INJ_COLORS=['','#f0c028','#ff7020','#e02030'];
 // Cache du terrain pré-rendu (voir _buildPitchCache plus bas). Déclaré ici,
 // avant resize(), pour éviter toute zone morte temporelle (TDZ).
 let _pitchCache=null, _pitchW=0, _pitchH=0;
+
+// ── SPRITE DE LUEUR PRÉ-RENDU (perf particules) ──────────────────────────
+// Reconstruire un createRadialGradient par étincelle par frame était le
+// principal responsable des chutes de FPS pendant les sorts. On rend le halo
+// UNE seule fois par couleur sur un petit canvas hors-écran (64×64) puis on
+// se contente d'un drawImage teinté — quasi gratuit et visuellement identique.
+const _glowSpriteCache=new Map();
+function _getGlowSprite(col){
+  let s=_glowSpriteCache.get(col);
+  if(s) return s;
+  // Étendre les hex courts (#fff → #ffffff) pour que l'ajout d'alpha (+'88')
+  // produise un #rrggbbaa valide plutôt qu'une valeur ignorée par le canvas.
+  let base=col||'#fff';
+  if(/^#[0-9a-fA-F]{3}$/.test(base)){
+    base='#'+base[1]+base[1]+base[2]+base[2]+base[3]+base[3];
+  }
+  const D=64, oc=document.createElement('canvas');
+  oc.width=D; oc.height=D;
+  const c=oc.getContext('2d');
+  const g=c.createRadialGradient(D/2,D/2,0,D/2,D/2,D/2);
+  g.addColorStop(0,base);
+  g.addColorStop(0.4,base+'88');
+  g.addColorStop(1,base+'00');
+  c.fillStyle=g;
+  c.fillRect(0,0,D,D);
+  _glowSpriteCache.set(col,oc);
+  return oc;
+}
 function resize(){
   const wrap=document.getElementById('canvas-wrap');
   cvs.width=wrap.offsetWidth;
@@ -964,17 +992,13 @@ function drawParticles(){
       const sz=ws((p.sz||0.3)*Math.sqrt(a));
       if(sz>0&&isFinite(wx(p.x))&&isFinite(wy(p.y))){
         const gx=wx(p.x), gy=wy(p.y);
-        // Lueur additive : un halo doux autour de l'étincelle donne un rendu
-        // « énergie » bien plus premium qu'un simple disque plein. Peu coûteux
-        // (un seul gradient radial par particule) et ça sublime tous les sorts.
+        // Lueur additive via sprite pré-rendu (voir _getGlowSprite) : rendu
+        // identique à l'ancien gradient mais sans le recréer à chaque frame.
         ctx.globalCompositeOperation='lighter';
-        const glow=ctx.createRadialGradient(gx,gy,0,gx,gy,sz*2.6);
-        glow.addColorStop(0,(p.col||'#fff'));
-        glow.addColorStop(0.4,(p.col||'#fff')+'88');
-        glow.addColorStop(1,(p.col||'#fff')+'00');
+        const glowR=sz*2.6;
+        const spr=_getGlowSprite(p.col||'#fff');
         ctx.globalAlpha=a*0.55;
-        ctx.fillStyle=glow;
-        ctx.beginPath();ctx.arc(gx,gy,sz*2.6,0,Math.PI*2);ctx.fill();
+        ctx.drawImage(spr,gx-glowR,gy-glowR,glowR*2,glowR*2);
         // Cœur brillant
         ctx.globalAlpha=a;
         ctx.fillStyle=p.col||'#fff';
@@ -1358,7 +1382,11 @@ function toggleGifRecord(){ _gifRec.active?stopGifRecord(true):startGifRecord();
 function startGifRecord(){
   if(G.phase==='END'){alert('Le match est terminé — lance une nouvelle mi-temps pour enregistrer.');return;}
   _gifEnsureOffscreen();
-  _gifRec.active=true;_gifRec.frames=[];_gifRec.lastCap=0;_gifRec.interval=90;_gifRec.maxFrames=260;
+  // Intervalle porté de 90 à 110 ms : chaque capture déclenche un getImageData
+  // synchrone (lecture GPU→CPU coûteuse) qui bloque le thread et provoque des
+  // à-coups. Un poil moins de captures = enregistrement nettement plus fluide,
+  // pour un GIF au rendu quasi identique (~9 fps au lieu de ~11).
+  _gifRec.active=true;_gifRec.frames=[];_gifRec.lastCap=0;_gifRec.interval=110;_gifRec.maxFrames=240;
   _gifRec.startHalf=G.half;
   const btn=document.getElementById('gifBtn');
   if(btn){btn.textContent='⏹ Arrêter & exporter';btn.style.background='rgba(224,32,48,.25)';btn.style.borderColor='var(--red)';}
@@ -1517,6 +1545,7 @@ function _hideAddedTimeBadge(){
   if(el){ el.style.opacity='0'; setTimeout(()=>{if(el)el.style.display='none';},350); }
 }
 
+let _resizeCheckT=0;
 function frame(ts){
   raf=requestAnimationFrame(frame);
   const rawDt=Math.min((ts-lastTs)/1000,.05);lastTs=ts;
@@ -1526,9 +1555,15 @@ function frame(ts){
   const rescueBtn=document.getElementById('resume-rescue');
   if(rescueBtn){const showR=(G.phase==='HALFTIME'&&!G.running);rescueBtn.style.display=showR?'inline-flex':'none';}
 
-  // Resize check
-  const wrap=document.getElementById('canvas-wrap');
-  if(cvs.width!==wrap.offsetWidth||cvs.height!==wrap.offsetHeight)resize();
+  // Resize check — lire offsetWidth/offsetHeight force un reflow de layout
+  // synchrone : le faire à chaque frame (60×/s) était un coût inutile. On ne
+  // vérifie que ~4×/s, ce qui reste largement assez réactif pour un resize.
+  _resizeCheckT=(_resizeCheckT||0)+rawDt;
+  if(_resizeCheckT>=0.25){
+    _resizeCheckT=0;
+    const wrap=document.getElementById('canvas-wrap');
+    if(wrap && (cvs.width!==wrap.offsetWidth||cvs.height!==wrap.offsetHeight))resize();
+  }
 
   if(G.running&&G.phase!=='HALFTIME'&&G.phase!=='END'){
     G.minTick+=rawDt*speedMult;
