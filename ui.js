@@ -459,6 +459,9 @@ function nav(p){
     } else {
       app.classList.remove('career-mode');
     }
+    // Sélection d'équipe en plein écran (masque le canvas, sidebar = 100%).
+    if(p === 'teamsel'){ app.classList.add('teamsel-mode'); }
+    else { app.classList.remove('teamsel-mode'); }
   }
   // Si aucun profil actif → afficher l'écran de sélection de profil
   if(!activeProfileId && p !== 'profiles'){
@@ -2964,26 +2967,38 @@ function renderTeamSelectPage(){
     }
     if(!pool.length && !vpool.length) body='<div class="fm-muted" style="font-size:12px;padding:20px;text-align:center">Aucune équipe ici.</div>';
     const crestOf=(t)=> (t.badge&&typeof BadgeCache!=='undefined')
-      ? `<div class="fm-crest"><img src="${BadgeCache.dataURI(t.badge,36)}" alt=""></div>`
-      : `<div class="fm-crest" style="color:${t.color}">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
-    const teamRow=(t,sub,onclick)=>`
-      <div class="fm-row" style="margin-bottom:var(--sp-2)">
-        ${crestOf(t)}
-        <div class="fm-row__grow"><div class="fm-row__title">${t.name}</div><div class="fm-row__sub">${sub}</div></div>
-        <button class="fm-btn fm-btn--sm fm-btn--primary" style="background:${t.color};color:#fff;flex-shrink:0" onclick="${onclick}">Choisir</button>
-      </div>`;
+      ? `<img src="${BadgeCache.dataURI(t.badge,60)}" alt="">`
+      : `<div class="fallback" style="color:${t.color};background:${t.color}18">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
+    // Carte façon FUT : OVR (haut-gauche), blason, nom, mini-stats att/mil/déf.
+    const teamCard=(t,sub,onclick)=>{
+      const st = (typeof teamCardStats==='function') ? teamCardStats(t) : null;
+      const ovr = st ? st.ovr : null;
+      const ovrCol = ovr!=null ? _ovrColor(ovr) : 'var(--fg-dim)';
+      const cell=(v,lbl)=>`<div class="ts-card__stat"><b>${v!=null?v:'—'}</b><span>${lbl}</span></div>`;
+      const statsRow = st
+        ? `<div class="ts-card__stats">${cell(st.att,'ATT')}${cell(st.mid,'MIL')}${cell(st.def,'DÉF')}</div>`
+        : `<div class="ts-card__sub" style="margin-top:auto;padding-top:var(--sp-2)">${sub}</div>`;
+      return `<div class="ts-card" style="--ovr:${ovrCol}" onclick="${onclick}">
+          ${ovr!=null?`<div class="ts-card__ovr" style="background:${ovrCol}"><b>${ovr}</b><span>OVR</span></div>`:''}
+          <div class="ts-card__crest">${crestOf(t)}</div>
+          <div class="ts-card__name">${t.name}</div>
+          ${statsRow}
+        </div>`;
+    };
+    let cards='';
     pool.forEach(t=>{
       const gm = window.gameMode || '7v7';
-      const fixedLbl = gm==='7v7' ? '⭐ Effectif fixe' : (gm==='5v5' ? '🔄 Effectif futsal dédié' : '🔄 Effectif 11v11 dédié');
-      const sub = t.kind==='nation' ? '🏳️ Sélection · '+t.nation : fixedLbl+' · '+(TIER_LABELS[t.tier]||t.league);
-      body += teamRow(t, sub, `teamSelLoad('${t.presetId}')`);
+      const fixedLbl = gm==='7v7' ? '⭐ Effectif fixe' : (gm==='5v5' ? '🔄 Futsal' : '🔄 11v11');
+      const sub = t.kind==='nation' ? '🏳️ '+t.nation : fixedLbl;
+      cards += teamCard(t, sub, `teamSelLoad('${t.presetId}')`);
     });
     vpool.forEach(t=>{
       const _dm=(_ntdT&&_ntdT.divisions)||{};
       const divName=(_dm[t.division])?_dm[t.division].name:'';
-      const subLbl = t.parentClub ? `🔗 Réserve de ${t.parentClub} · ${divName}` : `🏟️ ${divName}`;
-      body += teamRow(t, subLbl, `teamSelLoadValoria('${(t.name||'').replace(/'/g,"\\'")}')`);
+      const subLbl = t.parentClub ? `🔗 ${t.parentClub}` : `🏟️ ${divName}`;
+      cards += teamCard(t, subLbl, `teamSelLoadValoria('${(t.name||'').replace(/'/g,"\\'")}')`);
     });
+    if(cards) body += `<div class="ts-grid">${cards}</div>`;
   }
 
   let toast='';
@@ -2996,6 +3011,63 @@ function renderTeamSelectPage(){
   el.innerHTML=`<div style="max-width:560px;margin:0 auto">${title}${targetBar}${toast}${breadcrumb}${body}</div>`;
 }
 
+
+// ── OVR + mini-stats (att/mil/déf) par équipe, façon FIFA ────────────────
+// On calcule la moyenne globale (OVR) et par ligne à partir de l'effectif réel
+// stocké dans savedTeams (retrouvé par _presetId). Coûteux si répété, donc on
+// met en cache par presetId/nom. Le cache se vide si l'effectif change de taille.
+const _teamOvrCache = {};
+function _statAvg(p){
+  const s=p&&p.s||{};
+  return ((s.sht||50)+(s.spd||50)+(s.def||50)+(s.stam||50)+(s.tec||50)+(s.res||50))/6;
+}
+function _posLine(pos){
+  pos=(pos||'').toUpperCase();
+  if(pos==='GB') return 'gk';
+  if(pos[0]==='D') return 'def';
+  if(pos[0]==='M') return 'mid';
+  if(pos[0]==='A') return 'att';   // ATT, AD, AG
+  return 'mid';
+}
+// Renvoie {ovr, att, mid, def} pour une équipe (0-99), ou null si effectif inconnu.
+function teamCardStats(teamRef){
+  const key = (teamRef && (teamRef.presetId || teamRef._presetId || teamRef.name)) || null;
+  // Retrouver l'effectif complet.
+  let squad = null;
+  if(teamRef && Array.isArray(teamRef.players) && teamRef.players.length){
+    squad = teamRef;
+  } else if(key && typeof savedTeams!=='undefined'){
+    squad = savedTeams.find(t=>t && (t._presetId===key || t._presetId===teamRef.presetId || t.name===teamRef.name));
+  }
+  if(!squad || !Array.isArray(squad.players) || !squad.players.length) return null;
+
+  const all=[...squad.players, ...(squad.bench||[])];
+  const cacheKey = key + ':' + all.length;
+  if(_teamOvrCache[cacheKey]) return _teamOvrCache[cacheKey];
+
+  const lines={def:[],mid:[],att:[]};
+  let sum=0;
+  all.forEach(p=>{
+    const v=_statAvg(p); sum+=v;
+    const ln=_posLine(p.pos);
+    if(ln!=='gk') lines[ln].push(v);
+  });
+  const avg=arr=>arr.length?Math.round(arr.reduce((a,b)=>a+b,0)/arr.length):null;
+  const res={
+    ovr: Math.round(sum/all.length),
+    att: avg(lines.att), mid: avg(lines.mid), def: avg(lines.def),
+  };
+  _teamOvrCache[cacheKey]=res;
+  return res;
+}
+// Couleur d'un OVR (échelle FIFA : or / argent / bronze-ish adaptée au thème).
+function _ovrColor(ovr){
+  if(ovr>=82) return '#f0c028';   // or
+  if(ovr>=72) return '#25d366';   // vert
+  if(ovr>=60) return '#3aa0ff';   // bleu
+  if(ovr>=48) return '#c8c8d0';   // argent
+  return '#a87a4a';               // bronze
+}
 
 function teamSelTarget(ti){ _teamSel.ti=ti; renderTeamSelectPage(); }
 function teamSelGoto(step){
