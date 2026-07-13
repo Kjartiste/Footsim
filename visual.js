@@ -1898,7 +1898,7 @@ function endMatch(){
     G.leagueMode=false;
     // Enregistrer résultat carrière si match carrière
     if(window._careerFixPlaying){
-      recordCareerMatchResult();
+      _recordCareerV2MatchResult();
       showEndMatchRecap();
       return;
     }

@@ -1000,34 +1000,192 @@ function _generateSeasonFixtures(){
   _buildRoundRobinFixtures(allClubs);
 }
 
+// ═══════════════════════════════════════════════════════════
+// CALENDRIER JOUR PAR JOUR — utilitaires de dates
+// ───────────────────────────────────────────────────────────
+// Modèle simplifié : 12 mois de 30 jours (360 jours/an), pour éviter toute
+// gestion d'années bissextiles ou de mois à durée variable. { year, month
+// (1-12), day (1-30) }.
+// ═══════════════════════════════════════════════════════════
+function _dateKey(d){
+  if(!d) return '';
+  return d.year+'-'+String(d.month).padStart(2,'0')+'-'+String(d.day).padStart(2,'0');
+}
+function _dateToOrdinal(d){
+  return (d.year||1)*360 + ((d.month||1)-1)*30 + ((d.day||1)-1);
+}
+function _ordinalToDate(o){
+  const year = Math.floor(o/360);
+  let rem = o - year*360;
+  const month = Math.floor(rem/30)+1;
+  const day = (rem%30)+1;
+  return { year:year, month:month, day:day };
+}
+function _addDays(d, n){
+  return _ordinalToDate(_dateToOrdinal(d) + n);
+}
+function _daysBetween(d1, d2){
+  return _dateToOrdinal(d2) - _dateToOrdinal(d1);
+}
+// Date calendaire d'une semaine de championnat donnée, calculée à partir de
+// la date de début de saison (ancrée, ne dérive pas si C.date avance).
+function _weekDate(week){
+  const C = careerV2; if(!C) return {year:1,month:8,day:1};
+  const start = C.seasonStartDate || C.date || {year:1,month:8,day:1};
+  return _addDays(start, (Math.max(1,week)-1) * 7);
+}
+function _fmtDateFr(d){
+  const mois = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+  return d.day + ' ' + (mois[(d.month||1)-1]||'?') + ' An' + d.year;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PLANNING JOUR PAR JOUR — entraînements, repos, matchs amicaux
+// ───────────────────────────────────────────────────────────
+// C.dayPlans = { 'Y-MM-DD': { type:'training'|'rest'|'friendly',
+//                             focus:'physique'|'technique'|'tactique'|'recuperation' } }
+// ═══════════════════════════════════════════════════════════
+function _planDay(dateKey, type, focus){
+  const C = careerV2; if(!C) return false;
+  if(!C.dayPlans) C.dayPlans = {};
+  // Impossible de planifier sur un jour de match déjà fixé.
+  if(_matchOnDateKey(dateKey)) return false;
+  C.dayPlans[dateKey] = { type: type, focus: focus||null };
+  return true;
+}
+function _unplanDay(dateKey){
+  const C = careerV2; if(!C || !C.dayPlans) return;
+  delete C.dayPlans[dateKey];
+}
+// Renvoie la fixture du club joueur programmée à une date donnée (non jouée), s'il y en a une.
+function _matchOnDateKey(dateKey){
+  const C = careerV2; if(!C) return null;
+  const f = (C.fixtures||[]).find(function(f){
+    return !f.played && (f.homeIsPlayer||f.awayIsPlayer) && f.date && _dateKey(f.date)===dateKey;
+  });
+  if(f) return f;
+  // Coupe : un tour de coupe impliquant le joueur peut aussi tomber ce jour-là.
+  if(C.cup && !C.cup.winner && Array.isArray(C.cup.weeks)){
+    const roundIdx = C.cup.round;
+    if(roundIdx < C.cup.weeks.length){
+      const cupWeek = C.cup.weeks[roundIdx];
+      const cupDate = _weekDate(cupWeek);
+      if(_dateKey(cupDate)===dateKey){
+        const m = (C.cup.bracket||[]).find(function(m){ return !m.played && ((m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer)); });
+        if(m) return { cup:true, week:cupWeek };
+      }
+    }
+  }
+  return null;
+}
+// Applique les effets du plan du jour (ou repos passif par défaut) sur
+// l'effectif du joueur. Retourne un message pour le journal, ou null.
+function _resolveDayPlan(dateKey){
+  const C = careerV2; if(!C || C.type!=='director') return null;
+  const plan = (C.dayPlans && C.dayPlans[dateKey]) || { type:'rest', focus:null };
+  const squad = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]);
+  if(!squad.length) return null;
+
+  if(plan.type==='training'){
+    const focus = plan.focus || 'physique';
+    let msg = null;
+    squad.forEach(function(p){
+      if(!p) return;
+      // Gain de forme, plafonné à 10 (échelle -10 à +10 existante).
+      const gain = focus==='recuperation' ? 0.4 : 0.8;
+      p._fm = Math.min(10, (p._fm||0) + gain);
+      if(focus==='recuperation' && p.injLevel>0 && p.injT>0){
+        p.injT = Math.max(0, p.injT - 2); // récup accélérée
+        if(p.injT===0) p.injLevel=0;
+      }
+      if(focus==='technique' && p.age && p.age<23 && Math.random()<0.01){
+        // Petite chance de progression permanente pour les jeunes.
+        const keys=['tec','sht','pas','def','spd']; const k=keys[Math.floor(Math.random()*keys.length)];
+        if(p.s && typeof p.s[k]==='number'){ p.s[k]=Math.min(99,p.s[k]+1); msg=(msg?msg+' ':'')+'✨ '+p.name+' progresse ('+k+' +1) !'; }
+      }
+      if(focus==='physique' && Math.random()<0.015 && p.injLevel===0){
+        // Petit risque de surentraînement.
+        p.injLevel=1; p.injT=2+Math.floor(Math.random()*3);
+        msg=(msg?msg+' ':'')+'🤕 '+p.name+' se blesse à l\'entraînement !';
+      }
+    });
+    const focusLabel = {physique:'physique', technique:'technique', tactique:'tactique', recuperation:'récupération'}[focus]||focus;
+    return '🏃 Entraînement ('+focusLabel+') effectué.' + (msg?' '+msg:'');
+  }
+
+  if(plan.type==='friendly'){
+    // Petit match amical simulé rapidement (impact minime, moral au résultat).
+    const strength = 0.5 + Math.random()*0.3;
+    const oppStrength = 0.4 + Math.random()*0.4;
+    const gf = Math.max(0, Math.round(strength*3 + Math.random()*1.5 - 1));
+    const ga = Math.max(0, Math.round(oppStrength*3 + Math.random()*1.5 - 1));
+    const win = gf>ga, draw=gf===ga;
+    squad.forEach(function(p){
+      if(!p) return;
+      p._hm = Math.max(-10, Math.min(10, (p._hm||0) + (win?1.2:draw?0.3:-0.6)));
+      p._fm = Math.min(10, (p._fm||0) + 0.3);
+      if(Math.random()<0.01 && p.injLevel===0){ p.injLevel=1; p.injT=1+Math.floor(Math.random()*2); }
+    });
+    return '⚽ Match amical : '+(C.club.name)+' '+gf+'-'+ga+' (adversaire local) — '+(win?'victoire, moral en hausse !':draw?'match nul.':'défaite, léger coup au moral.');
+  }
+
+  // Repos par défaut : récupération de forme douce, soin des blessures.
+  squad.forEach(function(p){
+    if(!p) return;
+    p._fm = Math.min(10, (p._fm||0) + 0.3);
+    if(p.injLevel>0 && p.injT>0){
+      p.injT = Math.max(0, p.injT-1);
+      if(p.injT===0) p.injLevel=0;
+    }
+  });
+  return null; // pas de message pour ne pas polluer le journal chaque jour de repos
+}
+
 // Construit le calendrier aller-retour (round-robin) + le journal, à partir de
-// la liste de clubs (avec id/name/isPlayer). Partagé par les deux chemins de
-// génération (Valoria et générique).
+// la liste de clubs (avec id/name/isPlayer). Utilise la méthode du cercle pour
+// garantir un seul match par club et par semaine (donc une date calendaire
+// unique et régulière par match), au lieu d'un simple appariement séquentiel.
+// Partagé par les deux chemins de génération (Valoria et générique).
 function _buildRoundRobinFixtures(allClubs){
+  // Ancrer la date de début de saison AVANT de calculer les dates de journées.
+  if(careerV2 && !careerV2.seasonStartDate){
+    careerV2.seasonStartDate = Object.assign({}, careerV2.date || {year:1,month:8,day:1});
+  }
+  let clubs = allClubs.slice();
+  if(clubs.length % 2 !== 0){ clubs.push({id:'__bye__', name:'(exempt)', isPlayer:false}); }
+  const n = clubs.length;
+  const rounds = n - 1;
+  const half = n/2;
   const fixtures = [];
-  let week = 1;
-  for(let i = 0; i < allClubs.length; i++){
-    for(let j = i+1; j < allClubs.length; j++){
-      const h = allClubs[i];
-      const a = allClubs[j];
+  let rot = clubs.slice();
+  function pushLeg(week, swapHomeAway){
+    for(let i=0; i<half; i++){
+      const h = rot[i], a = rot[n-1-i];
+      if(h.id==='__bye__' || a.id==='__bye__') continue;
+      const home = swapHomeAway ? a : h;
+      const away = swapHomeAway ? h : a;
       fixtures.push({
         id: 'fix_'+Math.random().toString(36).slice(2),
-        week: week++,
-        home: h.id, homeName: h.name, homeIsPlayer: !!h.isPlayer,
-        away: a.id, awayName: a.name, awayIsPlayer: !!a.isPlayer,
+        week: week,
+        home: home.id, homeName: home.name, homeIsPlayer: !!home.isPlayer,
+        away: away.id, awayName: away.name, awayIsPlayer: !!away.isPlayer,
         played: false, sh: null, sa: null,
-      });
-      fixtures.push({
-        id: 'fix_'+Math.random().toString(36).slice(2),
-        week: week++,
-        home: a.id, homeName: a.name, homeIsPlayer: !!a.isPlayer,
-        away: h.id, awayName: h.name, awayIsPlayer: !!h.isPlayer,
-        played: false, sh: null, sa: null,
+        date: _weekDate(week),
       });
     }
   }
+  // Aller (semaines 1..rounds), alternance dom/ext pour équilibrer.
+  for(let r=0; r<rounds; r++){
+    pushLeg(r+1, r%2===1);
+    rot = [rot[0]].concat([rot[n-1]], rot.slice(1, n-1));
+  }
+  // Retour (semaines rounds+1..2*rounds) : mêmes paires, dom/ext inversés.
+  rot = clubs.slice();
+  for(let r=0; r<rounds; r++){
+    pushLeg(rounds + r + 1, r%2===0);
+    rot = [rot[0]].concat([rot[n-1]], rot.slice(1, n-1));
+  }
   fixtures.sort(function(a,b){ return a.week - b.week; });
-  fixtures.forEach(function(f, i){ f.week = Math.floor(i/2) + 1; });
   careerV2.fixtures = fixtures;
   logEvent('📅 Calendrier généré — '+fixtures.length+' matchs cette saison !','#18c860');
   // Générer la coupe nationale (Pilier) en parallèle du championnat.

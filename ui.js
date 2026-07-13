@@ -6558,7 +6558,7 @@ function renderCareerDirector(el){
   html += '<div style="font-size:22px;font-weight:900;color:var(--fg);letter-spacing:.5px">'+club.name+'</div>';
   html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">';
   html += (region?region.name:'?')+' · '+(club.divisionName || (pyramid?pyramid.name:club.level))+' · Saison '+C.season;
-  html += ' · Semaine '+C.week;
+  html += ' · Semaine '+C.week+' · '+_fmtDateFr(C.date);
   html += '</div></div>';
   // Budget
   html += '<div style="text-align:right;flex-shrink:0">';
@@ -6595,8 +6595,7 @@ function renderCareerDirector(el){
   // ── Footer ──────────────────────────────────────────────────────────
   html += '<div style="padding:12px 20px;border-top:1px solid var(--b1);background:var(--dark);display:flex;gap:8px;align-items:center">';
   html += '<button class="btn" onclick="nav(\'setup\')" style="font-size:11px;padding:6px 14px">← Jeu</button>';
-  html += '<button class="btn btng" onclick="advanceCareerWeek()" style="flex:1;font-size:13px;padding:10px;font-weight:900">⏩ Semaine suivante</button>';
-  html += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:6px 14px">⚡ Simuler match</button>';
+  html += '<button class="btn btng" onclick="_advanceOneDay()" style="flex:1;font-size:13px;padding:10px;font-weight:900">▶ Jour suivant</button>';
   html += '<button class="btn" onclick="abandonCareerV2()" style="font-size:11px;padding:6px 12px;color:#e06060;border-color:#e06060">✕</button>';
   html += '</div>';
   html += '</div>';
@@ -6788,6 +6787,30 @@ function _renderDirectorOverview(){
 
   let h = '';
 
+  // ── Bandeau match du jour en attente ─────────────────────────────────
+  if(C._pendingMatch){
+    if(C._pendingMatch.cup){
+      h += '<div style="background:linear-gradient(135deg,#f0c02822,var(--panel));border:2px solid #f0c028;border-radius:10px;padding:14px;margin-bottom:12px">';
+      h += '<div style="font-size:12px;font-weight:900;color:#f0c028;margin-bottom:6px">🏆 Tour de coupe aujourd\'hui !</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Le tirage inclut votre club. Le tour doit être simulé avant de continuer.</div>';
+      h += '<button class="btn btng" onclick="simCareerMatchDirector()" style="width:100%;font-size:12px;padding:10px;font-weight:900">⚡ Simuler le tour de coupe</button>';
+      h += '</div>';
+    } else {
+      const fix = (C.fixtures||[]).find(function(f){ return f.id===C._pendingMatch.fixtureId; });
+      if(fix){
+        const isHome = fix.homeIsPlayer;
+        const opp = isHome ? fix.awayName : fix.homeName;
+        h += '<div style="background:linear-gradient(135deg,'+accentCol+'22,var(--panel));border:2px solid '+accentCol+';border-radius:10px;padding:14px;margin-bottom:12px">';
+        h += '<div style="font-size:12px;font-weight:900;color:'+accentCol+';margin-bottom:6px">⚽ Match aujourd\'hui — J'+fix.week+'</div>';
+        h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:10px">'+(isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+' '+(isHome?'🏠':'✈️')+'</div>';
+        h += '<div style="display:flex;gap:8px">';
+        h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
+        h += '<button class="btn" onclick="simCareerMatchDirector()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
+        h += '</div></div>';
+      }
+    }
+  }
+
   // ── Rangée 1 : Objectif + Prochain match ────────────────────────────
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
 
@@ -6815,16 +6838,21 @@ function _renderDirectorOverview(){
   if(nextFix){
     const isHome = nextFix.homeIsPlayer;
     const opp = isHome ? nextFix.awayName : nextFix.homeName;
-    h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">J'+nextFix.week+'</div>';
+    const isPendingToday = C._pendingMatch && !C._pendingMatch.cup && C._pendingMatch.fixtureId===nextFix.id;
+    h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">J'+nextFix.week+' · '+(nextFix.date?_fmtDateFr(nextFix.date):'?')+'</div>';
     h += '<div style="font-size:15px;font-weight:900;margin-bottom:6px">';
     h += isHome ? '<span style="color:'+accentCol+'">'+club.name+'</span> vs '+opp
                : opp+' vs <span style="color:'+accentCol+'">'+club.name+'</span>';
     h += '</div>';
     h += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+(isHome?'🏠 Domicile':'✈️ Extérieur')+'</div>';
-    h += '<div style="display:flex;gap:6px">';
-    h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
-    h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:8px 12px">⚡ Simuler</button>';
-    h += '</div>';
+    if(isPendingToday){
+      h += '<div style="display:flex;gap:6px">';
+      h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
+      h += '<button class="btn" onclick="simCareerMatchDirector()" style="font-size:11px;padding:8px 12px">⚡ Simuler</button>';
+      h += '</div>';
+    } else {
+      h += '<div style="font-size:9px;color:var(--muted)">Avancez jour par jour jusqu\'au match (📅 onglet Calendrier).</div>';
+    }
     // Voir l'effectif complet du prochain adversaire.
     const oppId = isHome ? nextFix.away : nextFix.home;
     h += '<button onclick="_viewOpponentSquad(\''+oppId+'\')" style="width:100%;margin-top:8px;font-size:10px;padding:7px;border-radius:7px;cursor:pointer;border:1px solid var(--b1);background:var(--dark);color:var(--muted)">🔍 Voir l\'effectif de '+opp+'</button>';
@@ -7415,64 +7443,154 @@ function _renderDirectorStaff(){
   return h;
 }
 
+// ── Calendrier mensuel jour par jour ────────────────────────────────────
+const _MOIS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function _calMatchOnDate(C, dateKey){
+  return (C.fixtures||[]).find(function(f){
+    return f.date && _dateKey(f.date)===dateKey && (f.homeIsPlayer||f.awayIsPlayer);
+  }) || null;
+}
+function _calCupOnDate(C, dateKey){
+  if(!C.cup || !Array.isArray(C.cup.weeks)) return null;
+  for(let i=0;i<C.cup.weeks.length;i++){
+    if(_dateKey(_weekDate(C.cup.weeks[i]))===dateKey) return {round:i};
+  }
+  return null;
+}
+
 function _renderDirectorCalendar(){
   const C = careerV2;
   const club = C.club;
-  const fixtures = C.fixtures || [];
-  const played   = fixtures.filter(function(f){ return f.played; });
-  const upcoming = fixtures.filter(function(f){ return !f.played; });
+  // Mois affiché : celui de la date courante, sauf navigation manuelle.
+  const viewDate = window._calViewDate || Object.assign({}, C.date);
+  window._calViewDate = viewDate;
+  const todayKey = _dateKey(C.date);
 
   let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">📅 Calendrier — Saison '+C.season+' · Semaine '+C.week+'</div>';
 
-  if(upcoming.length === 0 && played.length === 0){
-    h += '<div style="color:var(--muted);font-size:9px">Aucun match programmé.</div>';
-  } else {
-    // Prochains matchs (5 max)
-    if(upcoming.length > 0){
-      h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin-bottom:4px">À venir</div>';
-      upcoming.slice(0, 5).forEach(function(f){
-        const isHome = f.homeIsPlayer;
-        const opp = isHome ? f.awayName : f.homeName;
-        const isMe = f.homeIsPlayer || f.awayIsPlayer;
-        h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)'+(isMe?';background:rgba(240,192,40,.05);border-radius:4px;padding:5px 4px':'')+'">';
-        h += '<div style="font-size:8px;color:var(--muted);width:20px">J'+f.week+'</div>';
-        if(isMe){
-          h += '<div style="flex:1;font-size:9px;font-weight:700">'+(isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+'</div>';
-          h += '<div style="font-size:8px;color:'+(isHome?'#18c860':'#f0c028')+'">'+(isHome?'🏠 Dom.':'✈️ Ext.')+'</div>';
-          h += '<button class="btn" onclick="playCareerMatchV2()" style="font-size:8px;padding:1px 6px">▶</button>';
-        } else {
-          h += '<div style="flex:1;font-size:9px;color:var(--muted)">'+f.homeName+' vs '+f.awayName+'</div>';
-        }
-        h += '</div>';
-      });
-    }
+  // ── En-tête + navigation mois ─────────────────────────────────────
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  h += '<button class="btn" onclick="_calNavMonth(-1)" style="font-size:10px;padding:3px 8px">◀</button>';
+  h += '<div style="font-size:11px;font-weight:900;color:var(--gold)">📅 '+_MOIS_FR[(viewDate.month-1)%12]+' — An '+viewDate.year+'</div>';
+  h += '<button class="btn" onclick="_calNavMonth(1)" style="font-size:10px;padding:3px 8px">▶</button>';
+  h += '</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:8px">Semaine '+C.week+' · Saison '+C.season+' · <span onclick="_calGoToday()" style="text-decoration:underline;cursor:pointer">revenir à aujourd\'hui</span></div>';
 
-    // Résultats récents (5 max)
-    if(played.length > 0){
-      h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin:10px 0 4px">Résultats récents</div>';
-      played.slice(-5).reverse().forEach(function(f){
-        const isHome = f.homeIsPlayer;
-        const isAway = f.awayIsPlayer;
-        if(!isHome && !isAway){
-          h += '<div style="padding:3px 0;border-bottom:1px solid var(--b1);font-size:9px;color:var(--muted)">'+f.homeName+' '+f.sh+'-'+f.sa+' '+f.awayName+'</div>';
-          return;
-        }
-        const myGoals = isHome ? f.sh : f.sa;
-        const opGoals = isHome ? f.sa : f.sh;
-        const opp     = isHome ? f.awayName : f.homeName;
-        const res     = myGoals > opGoals ? 'V' : myGoals === opGoals ? 'N' : 'D';
-        const col     = res==='V' ? '#18c860' : res==='N' ? '#f0c028' : '#e06060';
-        h += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--b1)">';
-        h += '<div style="font-size:8px;color:var(--muted);width:20px">J'+f.week+'</div>';
-        h += '<div style="width:16px;height:16px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:#050e1a">'+res+'</div>';
-        h += '<div style="flex:1;font-size:9px">'+club.name+' <b>'+myGoals+'-'+opGoals+'</b> '+opp+'</div>';
-        h += '</div>';
-      });
+  // ── Forme / moral moyens de l'effectif ──────────────────────────────
+  const _squadAll = (C.players||[]).concat(C.bench||[]);
+  if(_squadAll.length){
+    const avgFm = _squadAll.reduce(function(s,p){return s+(p._fm||0);},0)/_squadAll.length;
+    const avgHm = _squadAll.reduce(function(s,p){return s+(p._hm||0);},0)/_squadAll.length;
+    const fmCol = avgFm>=3?'#18c860':avgFm>=0?'#f0c028':'#e06060';
+    const hmCol = avgHm>=3?'#18c860':avgHm>=0?'#f0c028':'#e06060';
+    h += '<div style="display:flex;gap:14px;margin-bottom:8px;font-size:9px">';
+    h += '<div>💪 Forme moy. <b style="color:'+fmCol+'">'+avgFm.toFixed(1)+'</b>/10</div>';
+    h += '<div>🙂 Moral moy. <b style="color:'+hmCol+'">'+avgHm.toFixed(1)+'</b>/10</div>';
+    h += '</div>';
+  }
+
+  // ── Grille du mois (30 jours) ──────────────────────────────────────
+  h += '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">';
+  for(let day=1; day<=30; day++){
+    const d = {year:viewDate.year, month:viewDate.month, day:day};
+    const dk = _dateKey(d);
+    const isToday = dk===todayKey;
+    const isPast = _dateToOrdinal(d) < _dateToOrdinal(C.date);
+    const fix = _calMatchOnDate(C, dk);
+    const cup = _calCupOnDate(C, dk);
+    const plan = C.dayPlans && C.dayPlans[dk];
+
+    let bg = 'var(--panel)', border = 'var(--b1)', icon = '', label='';
+    if(fix){
+      const isHome = fix.homeIsPlayer;
+      const opp = (isHome ? fix.awayName : fix.homeName)||'?';
+      icon = '⚽'; label = opp.slice(0,8);
+      bg = fix.played ? 'rgba(24,200,96,.10)' : 'rgba(240,192,40,.12)';
+      border = fix.played ? '#18c860' : '#f0c028';
+    } else if(cup){
+      icon = '🏆'; label = 'Coupe';
+      bg = 'rgba(240,192,40,.12)'; border='#f0c028';
+    } else if(plan){
+      const planIcons = {training:'🏃', rest:'😴', friendly:'🤝'};
+      icon = planIcons[plan.type]||'📌';
+      label = plan.type==='training' ? (plan.focus||'entraîn.') : plan.type==='friendly' ? 'amical' : 'repos';
+      bg = 'rgba(0,188,212,.10)'; border = '#00bcd4';
     }
+    if(isToday){ border = club.color || '#e02030'; }
+
+    const clickable = !isPast && !fix && !cup;
+    const onclick = clickable ? ' onclick="_calOpenPlanner(\''+dk+'\')" style="cursor:pointer"' : '';
+    h += '<div'+onclick+' style="background:'+bg+';border:1.5px solid '+border+';border-radius:6px;padding:4px 2px;text-align:center;'+(isPast&&!fix?'opacity:.45;':'')+(clickable?'cursor:pointer;':'')+'min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center">';
+    h += '<div style="font-size:9px;font-weight:'+(isToday?'900':'700')+';color:'+(isToday?(club.color||'#e02030'):'var(--fg)')+'">'+day+'</div>';
+    if(icon) h += '<div style="font-size:11px;line-height:1">'+icon+'</div>';
+    if(label) h += '<div style="font-size:6.5px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+label+'</div>';
+    h += '</div>';
   }
   h += '</div>';
+
+  // ── Légende ──────────────────────────────────────────────────────
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:8px;color:var(--muted)">';
+  h += '<span>⚽ Match</span><span>🏆 Coupe</span><span>🏃 Entraînement</span><span>😴 Repos</span><span>🤝 Amical</span>';
+  h += '</div>';
+
+  // ── Panneau de planification (si un jour a été cliqué) ─────────────
+  const pk = window._calPlannerKey;
+  if(pk){
+    const existing = C.dayPlans && C.dayPlans[pk];
+    h += '<div style="margin-top:12px;background:var(--panel);border:1px solid #00bcd4;border-radius:8px;padding:10px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    h += '<div style="font-size:10px;font-weight:900;color:#00bcd4">📌 Planifier le '+pk.split('-').reverse().join('/')+'</div>';
+    h += '<span onclick="_calClosePlanner()" style="cursor:pointer;color:var(--muted);font-size:12px">✕</span>';
+    h += '</div>';
+    h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin-bottom:4px">Entraînement</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+    [['physique','💪 Physique'],['technique','🎯 Technique'],['tactique','🧠 Tactique'],['recuperation','🩹 Récup.']].forEach(function(f){
+      h += '<button class="btn'+(existing&&existing.type==='training'&&existing.focus===f[0]?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'training\',\''+f[0]+'\')" style="font-size:9px;padding:5px 8px">'+f[1]+'</button>';
+    });
+    h += '</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    h += '<button class="btn'+(existing&&existing.type==='friendly'?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'friendly\',null)" style="font-size:9px;padding:5px 8px">🤝 Match amical</button>';
+    h += '<button class="btn'+(existing&&existing.type==='rest'?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'rest\',null)" style="font-size:9px;padding:5px 8px">😴 Repos</button>';
+    if(existing) h += '<button class="btn" onclick="_calPlanDay(\''+pk+'\',null,null)" style="font-size:9px;padding:5px 8px;color:#e06060;border-color:#e06060">✕ Annuler</button>';
+    h += '</div></div>';
+  }
+
+  h += '</div>';
   return h;
+}
+
+function _calNavMonth(delta){
+  const v = window._calViewDate || Object.assign({}, careerV2.date);
+  let m = v.month + delta, y = v.year;
+  if(m<1){ m=12; y--; } else if(m>12){ m=1; y++; }
+  window._calViewDate = {year:y, month:m, day:1};
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+function _calGoToday(){
+  window._calViewDate = Object.assign({}, careerV2.date);
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+function _calOpenPlanner(dateKey){
+  window._calPlannerKey = dateKey;
+  renderCareerDirectorTab('calendar');
+}
+function _calClosePlanner(){
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+function _calPlanDay(dateKey, type, focus){
+  if(!careerV2) return;
+  if(type===null){ _unplanDay(dateKey); }
+  else {
+    const ok = _planDay(dateKey, type, focus);
+    if(!ok){ logEvent('❌ Un match est déjà prévu ce jour-là.','#e02030'); return; }
+  }
+  saveCareerV2();
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
 }
 
 
@@ -7518,47 +7636,93 @@ function renderCareerManager(el){
 
 
 // ── Actions carrière ──────────────────────────────────────────────────
-function advanceCareerWeek(){
+// Exécute tous les systèmes à cadence hebdomadaire (économie, infra, coupe,
+// mercato, événements...). Appelé soit par le saut rapide de semaine, soit
+// automatiquement par _advanceOneDay() dès qu'on franchit une frontière de
+// semaine calendaire.
+function _runWeeklySystems(){
   if(!careerV2) return;
   const C = careerV2;
 
-  // Générer les fixtures si manquantes
-  if(!C.fixtures || C.fixtures.length === 0){
-    _generateSeasonFixtures();
-  }
-  // Générer les joueurs libres si manquants
   if(!C.freeAgents || C.freeAgents.length === 0){
     _generateFreeAgents();
   }
 
-  C.week++;
-
-  // Économie hebdomadaire
   _applyWeeklyEconomy();
 
-  // Avancement des chantiers d'infrastructure (permis, construction, tranches)
   try{ if(typeof _advanceInfraWorks==='function') _advanceInfraWorks(); }catch(e){ console.error('works:',e); }
-
-  // Avancement de la coupe nationale (si semaine de coupe)
   try{ if(typeof _advanceNationalCup==='function') _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
 
-  // Toutes les 4 semaines : refresh des joueurs libres
   if(C.week % 4 === 0){
     _generateFreeAgents();
     logEvent('🔄 Nouveaux joueurs libres disponibles !','#00bcd4');
   }
 
-  // Gestion mercato (pro seulement)
-  const isPro = ['d1','d2','d3'].includes(C.club.level);
+  const isPro = C.club && ['d1','d2','d3'].includes(C.club.level);
   if(isPro){
     _checkMercatoWindow();
   }
 
-  // Événements région
   _triggerRegionEvent();
-
-  // Événements aléatoires hebdo
   _triggerWeeklyEvent();
+}
+
+// Saut rapide d'une semaine entière (conservé pour compatibilité / usage
+// ponctuel — ex. carrière manager sans effectif à entraîner). Fait avancer
+// C.date de 7 jours d'un coup sans résoudre les plans jour par jour.
+function advanceCareerWeek(){
+  if(!careerV2) return;
+  const C = careerV2;
+
+  if(!C.fixtures || C.fixtures.length === 0){
+    _generateSeasonFixtures();
+  }
+
+  C.week++;
+  C.date = _addDays(C.date, 7);
+  _runWeeklySystems();
+
+  saveCareerV2();
+  renderCareerV2();
+}
+
+// ── Avancement jour par jour ────────────────────────────────────────────
+// Cœur du nouveau calendrier : fait avancer la carrière d'UNE journée.
+// - Si un match du club joueur (championnat ou coupe) tombe aujourd'hui, on
+//   ne fait PAS avancer la date : on signale le match en attente et le
+//   joueur doit explicitement Jouer ou Simuler avant de pouvoir continuer.
+// - Sinon, on résout le plan du jour (entraînement / repos / amical), on
+//   avance la date d'un jour, on recalcule la semaine, et si on vient de
+//   franchir une nouvelle semaine on déclenche les systèmes hebdomadaires.
+function _advanceOneDay(){
+  if(!careerV2) return;
+  const C = careerV2;
+  if(!C.fixtures || C.fixtures.length === 0) _generateSeasonFixtures();
+  if(!C.seasonStartDate) C.seasonStartDate = Object.assign({}, C.date);
+
+  const todayKey = _dateKey(C.date);
+  const pending = _matchOnDateKey(todayKey);
+  if(pending){
+    C._pendingMatch = pending.cup ? {cup:true} : {fixtureId:pending.id};
+    saveCareerV2();
+    renderCareerV2();
+    return;
+  }
+
+  // Résoudre le plan du jour (entraînement/repos/amical) puis avancer.
+  if(C.type==='director'){
+    const msg = _resolveDayPlan(todayKey);
+    if(msg) careerLog(msg, '#00bcd4');
+  }
+  if(C.dayPlans) delete C.dayPlans[todayKey];
+
+  C.date = _addDays(C.date, 1);
+  const elapsedDays = _daysBetween(C.seasonStartDate, C.date);
+  const newWeek = Math.max(1, Math.floor(elapsedDays/7) + 1);
+  if(newWeek !== C.week){
+    C.week = newWeek;
+    _runWeeklySystems();
+  }
 
   saveCareerV2();
   renderCareerV2();
@@ -7725,7 +7889,9 @@ function rejectManagerJob(i){
 function playCareerMatchV2(){
   if(!careerV2) return;
   const C = careerV2;
-  const fix = (C.fixtures||[]).find(function(f){ return !f.played; });
+  const fix = C._pendingMatch && C._pendingMatch.fixtureId
+    ? (C.fixtures||[]).find(function(f){ return f.id===C._pendingMatch.fixtureId; })
+    : (C.fixtures||[]).find(function(f){ return !f.played; });
   if(!fix){ logEvent('Aucun match à jouer !','#e02030'); return; }
 
   const isHome = fix.homeIsPlayer;
@@ -7835,7 +8001,7 @@ function playCareerMatchV2(){
   nav('match');
 }
 
-function recordCareerMatchResult(){
+function _recordCareerV2MatchResult(){
   if(!careerV2 || !window._careerFixPlaying) return;
   const fix  = window._careerFixPlaying;
   const s0   = G.scores[0]; // notre score (team 0)
@@ -7867,13 +8033,24 @@ function recordCareerMatchResult(){
   _addFinanceLog('Recettes match vs '+opp, rev);
 
   window._careerFixPlaying = null;
+  // Le match du jour est réglé : on peut désormais avancer au jour suivant.
+  if(C._pendingMatch) C._pendingMatch = null;
   saveCareerV2();
 }
 
 function simCareerMatchDirector(){
   if(!careerV2) return;
   const C = careerV2;
-  const fix = (C.fixtures||[]).find(function(f){ return !f.played; });
+  if(C._pendingMatch && C._pendingMatch.cup){
+    try{ _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
+    C._pendingMatch = null;
+    saveCareerV2();
+    renderCareerV2();
+    return;
+  }
+  const fix = C._pendingMatch && C._pendingMatch.fixtureId
+    ? (C.fixtures||[]).find(function(f){ return f.id===C._pendingMatch.fixtureId; })
+    : (C.fixtures||[]).find(function(f){ return !f.played; });
   if(!fix){ logEvent('Aucun match a simuler !','#e02030'); return; }
 
   const myPlayers = C.players || [];
@@ -7909,6 +8086,7 @@ function simCareerMatchDirector(){
   C.club.budget += rev;
   _addFinanceLog('Recettes match vs '+opp, rev);
 
+  if(C._pendingMatch) C._pendingMatch = null;
   saveCareerV2();
   renderCareerV2();
 }
@@ -7999,6 +8177,8 @@ function endCareerSeasonDirector(){
   }
   C.season++; C.week = 1;
   C.date = {year:(C.date&&C.date.year||1)+1, month:8, day:1};
+  C.seasonStartDate = null; // ré-ancrée par _generateSeasonFixtures() ci-dessous
+  C.dayPlans = {}; // planning de la saison écoulée purgé
   C.season_stats = {wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0};
   logEvent('Saison '+C.season+' — Nouveau depart !', C.club.color||'#18c860');
   // IA de gestion : les clubs adverses vieillissent, progressent/déclinent et
