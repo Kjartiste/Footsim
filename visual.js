@@ -1902,6 +1902,11 @@ function endMatch(){
       showEndMatchRecap();
       return;
     }
+    if(window._careerCupPlaying){
+      _recordCareerV2CupMatchResult();
+      showEndMatchRecap();
+      return;
+    }
     // Figer le récap AVANT toute restauration/navigation (teams[] = équipes du match)
     const _recapSnap=_captureRecapSnapshot();
     // Tracker les stats joueurs avant tout (teams[] encore intacts)

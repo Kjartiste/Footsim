@@ -1479,6 +1479,13 @@ function _advanceNationalCup(force){
     }
   });
   cup.round++;
+  _finalizeCupRound(C, cup, survivors);
+}
+// Termine un tour de coupe une fois tous ses matchs résolus : couronne le
+// vainqueur si un seul survivant reste, sinon prépare l'appariement du tour
+// suivant. Partagé entre la résolution auto (_advanceNationalCup) et la
+// résolution interactive (match joué par l'utilisateur, cf. ui.js).
+function _finalizeCupRound(C, cup, survivors){
   if(survivors.length<=1){
     cup.winner = survivors[0] || null;
     if(cup.winner && cup.winner.isPlayer){
