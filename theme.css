@@ -1,0 +1,207 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   THEME.CSS — Design system FootSim (style manga / anime)
+   ───────────────────────────────────────────────────────────────────────
+   Objectif : une seule source de vérité pour l'apparence, façon FM/EA FC.
+   - Échelle d'espacement et de rayons cohérente (multiples de 4).
+   - Hiérarchie typographique nette (titre / section / label / valeur).
+   - Composants réutilisables préfixés .fm-  (card, btn, tab, table, row…).
+   - Langage manga : contours encrés marqués, aplats francs, contrastes forts.
+   - Thème sombre ET clair, via [data-theme]. Bascule sans réécrire l'UI.
+   - Classes "gacha" dormantes (rareté R/SR/SSR, carte perso) : coût zéro
+     aujourd'hui, prêtes pour le pivot gacha plus tard.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── TOKENS : espacement, rayons, typo, ombres ─────────────────────────── */
+:root{
+  /* Échelle d'espacement (base 4px) */
+  --sp-1:4px;  --sp-2:8px;  --sp-3:12px; --sp-4:16px;
+  --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px;
+
+  /* Rayons */
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:20px; --r-pill:999px;
+
+  /* Typo */
+  --font-display:'Barlow Condensed','Roboto Condensed','Arial Narrow',system-ui,sans-serif;
+  --font-body:'Barlow','Segoe UI',Roboto,system-ui,sans-serif;
+  --fs-hero:26px; --fs-title:20px; --fs-h2:15px; --fs-body:13px;
+  --fs-sm:11px; --fs-xs:9px;
+
+  /* Encrage manga : épaisseur du contour noir signature */
+  --ink:#12161c;
+  --ink-w:2.5px;
+  --ink-w-bold:3.5px;
+
+  /* Durées d'animation */
+  --t-fast:.12s; --t-med:.22s;
+}
+
+/* ── THÈME SOMBRE (défaut) ─────────────────────────────────────────────── */
+:root, [data-theme="dark"]{
+  --bg:#070d16;
+  --surface:#0d1826;
+  --surface-2:#132437;
+  --surface-3:#1b3049;
+  --line:rgba(255,255,255,0.10);
+  --line-strong:rgba(255,255,255,0.20);
+  --fg:#eaf2fb;
+  --fg-muted:#7d97b4;
+  --fg-dim:#4a6483;
+
+  --accent:#f0c028;          /* or */
+  --accent-ink:#0a0f16;      /* texte sur accent */
+  --pos:#25d366;             /* positif / victoire */
+  --neg:#ff4d5e;             /* négatif / défaite */
+  --neutral:#f0c028;         /* nul */
+  --info:#3aa0ff;
+
+  --shadow-sm:0 2px 0 rgba(0,0,0,.35);
+  --shadow-md:0 4px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --panel-grad:linear-gradient(180deg,var(--surface-2),var(--surface));
+}
+
+/* ── THÈME CLAIR (manga N&B à fort contraste) ──────────────────────────── */
+[data-theme="light"]{
+  --bg:#eef1f6;
+  --surface:#ffffff;
+  --surface-2:#f4f6fb;
+  --surface-3:#e7ecf4;
+  --line:rgba(18,22,28,0.12);
+  --line-strong:rgba(18,22,28,0.24);
+  --fg:#12161c;
+  --fg-muted:#5a6b80;
+  --fg-dim:#95a3b6;
+
+  --accent:#f0b400;
+  --accent-ink:#12161c;
+  --pos:#0fa958;
+  --neg:#e0243a;
+  --neutral:#d99500;
+  --info:#1f7fe0;
+
+  --shadow-sm:0 2px 0 rgba(18,22,28,.12);
+  --shadow-md:0 3px 0 rgba(18,22,28,.14), 0 8px 20px rgba(18,22,28,.12);
+  --panel-grad:linear-gradient(180deg,var(--surface),var(--surface-2));
+}
+
+/* ── TYPOGRAPHIE ───────────────────────────────────────────────────────── */
+.fm-hero{font-family:var(--font-display);font-size:var(--fs-hero);font-weight:900;
+  letter-spacing:.5px;color:var(--fg);text-transform:uppercase;line-height:1.05}
+.fm-title{font-family:var(--font-display);font-size:var(--fs-title);font-weight:900;
+  letter-spacing:1px;color:var(--accent);text-transform:uppercase;line-height:1.1}
+.fm-h2{font-family:var(--font-display);font-size:var(--fs-h2);font-weight:800;
+  letter-spacing:1.5px;color:var(--fg);text-transform:uppercase}
+.fm-label{font-family:var(--font-display);font-size:var(--fs-xs);font-weight:700;
+  letter-spacing:2px;color:var(--fg-muted);text-transform:uppercase}
+.fm-muted{color:var(--fg-muted)}
+.fm-dim{color:var(--fg-dim)}
+.fm-value{font-family:var(--font-display);font-weight:900;color:var(--fg)}
+.fm-pos{color:var(--pos)} .fm-neg{color:var(--neg)} .fm-neu{color:var(--neutral)}
+
+/* ── CARTE ─────────────────────────────────────────────────────────────── */
+.fm-card{background:var(--panel-grad);border:var(--ink-w) solid var(--ink);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:var(--sp-4);
+  position:relative}
+.fm-card--flat{box-shadow:var(--shadow-sm)}
+.fm-card--tight{padding:var(--sp-3)}
+/* Filet d'accent en haut de carte (touche manga) */
+.fm-card--accent::before{content:'';position:absolute;left:calc(var(--ink-w)*-1);right:calc(var(--ink-w)*-1);
+  top:calc(var(--ink-w)*-1);height:5px;background:var(--accent);
+  border-radius:var(--r-lg) var(--r-lg) 0 0}
+
+/* ── BOUTONS ───────────────────────────────────────────────────────────── */
+.fm-btn{font-family:var(--font-display);font-size:var(--fs-body);font-weight:800;
+  letter-spacing:.6px;text-transform:uppercase;cursor:pointer;
+  padding:var(--sp-2) var(--sp-4);border-radius:var(--r-md);
+  border:var(--ink-w) solid var(--ink);background:var(--surface-2);color:var(--fg);
+  box-shadow:var(--shadow-sm);transition:transform var(--t-fast),background var(--t-fast);
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);
+  -webkit-user-select:none;user-select:none}
+.fm-btn:hover{background:var(--surface-3)}
+.fm-btn:active{transform:translateY(2px);box-shadow:none}
+.fm-btn--primary{background:var(--accent);color:var(--accent-ink)}
+.fm-btn--primary:hover{filter:brightness(1.06)}
+.fm-btn--ghost{background:transparent;box-shadow:none}
+.fm-btn--block{width:100%}
+.fm-btn--sm{font-size:var(--fs-sm);padding:6px 12px}
+
+/* ── ONGLETS ───────────────────────────────────────────────────────────── */
+.fm-tabs{display:flex;gap:var(--sp-1);background:var(--surface);
+  border:var(--ink-w) solid var(--ink);border-radius:var(--r-md);padding:var(--sp-1)}
+.fm-tab{flex:1;font-family:var(--font-display);font-size:var(--fs-body);font-weight:800;
+  letter-spacing:.5px;text-transform:uppercase;cursor:pointer;text-align:center;
+  padding:var(--sp-2) var(--sp-3);border-radius:var(--r-sm);border:none;background:transparent;
+  color:var(--fg-muted);transition:background var(--t-fast),color var(--t-fast)}
+.fm-tab:hover{color:var(--fg)}
+.fm-tab.is-active{background:var(--accent);color:var(--accent-ink)}
+
+/* ── LIGNE / ROW (listes, tableaux légers) ─────────────────────────────── */
+.fm-row{display:flex;align-items:center;gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);
+  border:2px solid var(--line);background:var(--surface);
+  transition:border-color var(--t-fast),background var(--t-fast)}
+.fm-row:hover{border-color:var(--line-strong);background:var(--surface-2)}
+.fm-row + .fm-row{margin-top:var(--sp-2)}
+.fm-row__grow{flex:1;min-width:0}
+.fm-row__title{font-weight:800;font-size:var(--fs-body);color:var(--fg);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fm-row__sub{font-size:var(--fs-sm);color:var(--fg-muted)}
+
+/* ── BADGE / PASTILLE ──────────────────────────────────────────────────── */
+.fm-pill{display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--font-display);font-size:var(--fs-xs);font-weight:800;
+  letter-spacing:1px;text-transform:uppercase;padding:3px 9px;border-radius:var(--r-pill);
+  border:2px solid var(--ink);background:var(--surface-2);color:var(--fg)}
+.fm-pill--accent{background:var(--accent);color:var(--accent-ink);border-color:var(--ink)}
+
+/* ── FIL D'ARIANE (breadcrumb) ─────────────────────────────────────────── */
+.fm-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  font-size:var(--fs-sm);color:var(--fg-muted);margin-bottom:var(--sp-3)}
+.fm-crumbs a{color:var(--accent);cursor:pointer;text-decoration:none;font-weight:700}
+.fm-crumbs a:hover{text-decoration:underline}
+.fm-crumbs .is-here{color:var(--fg);font-weight:800}
+.fm-crumbs .sep{color:var(--fg-dim)}
+
+/* ── LOGO / VIGNETTE d'équipe ──────────────────────────────────────────── */
+.fm-crest{width:40px;height:40px;border-radius:var(--r-sm);flex-shrink:0;
+  border:var(--ink-w) solid var(--ink);background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  font-family:var(--font-display);font-weight:900;font-size:14px}
+.fm-crest img{width:100%;height:100%;object-fit:contain}
+
+/* ── TOAST ─────────────────────────────────────────────────────────────── */
+.fm-toast{display:flex;align-items:center;gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);
+  border:2px solid var(--pos);background:color-mix(in srgb,var(--pos) 15%,transparent);
+  color:var(--fg);font-size:var(--fs-body);margin-bottom:var(--sp-3)}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CLASSES GACHA (DORMANTES) — prêtes pour le pivot, inutilisées au lancement.
+   La carte perso réutilise .fm-card ; la rareté colore le cadre + un ruban.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  --rar-r:#8fa3b8;      /* Common  */
+  --rar-sr:#3aa0ff;     /* Super Rare */
+  --rar-ssr:#f0c028;    /* SSR */
+  --rar-ur:#c04cff;     /* Ultra (réserve) */
+}
+.fm-unit{position:relative;border-radius:var(--r-lg);overflow:hidden;
+  border:var(--ink-w-bold) solid var(--ink);background:var(--surface-2);
+  aspect-ratio:3/4;box-shadow:var(--shadow-md)}
+.fm-unit__art{position:absolute;inset:0;background-size:cover;background-position:center top}
+.fm-unit__frame{position:absolute;inset:0;box-shadow:inset 0 0 0 4px var(--rar,var(--rar-r));
+  border-radius:var(--r-lg);pointer-events:none}
+.fm-unit__name{position:absolute;left:0;right:0;bottom:0;padding:var(--sp-2) var(--sp-3);
+  font-family:var(--font-display);font-weight:900;color:#fff;font-size:var(--fs-body);
+  background:linear-gradient(0deg,rgba(0,0,0,.85),transparent)}
+.fm-unit__rar{position:absolute;top:var(--sp-2);left:var(--sp-2);
+  font-family:var(--font-display);font-weight:900;font-size:var(--fs-sm);letter-spacing:1px;
+  padding:2px 7px;border-radius:var(--r-sm);color:#12161c;background:var(--rar,var(--rar-r));
+  border:2px solid var(--ink)}
+.fm-unit[data-rar="r"]  {--rar:var(--rar-r)}
+.fm-unit[data-rar="sr"] {--rar:var(--rar-sr)}
+.fm-unit[data-rar="ssr"]{--rar:var(--rar-ssr)}
+.fm-unit[data-rar="ur"] {--rar:var(--rar-ur)}
+/* Halo animé réservé aux hautes raretés (utilisé plus tard sur les tirages) */
+.fm-unit[data-rar="ssr"] .fm-unit__frame,
+.fm-unit[data-rar="ur"]  .fm-unit__frame{
+  box-shadow:inset 0 0 0 4px var(--rar), 0 0 18px color-mix(in srgb,var(--rar) 60%,transparent)}

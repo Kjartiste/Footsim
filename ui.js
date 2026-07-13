@@ -610,13 +610,40 @@ function renderSettings(){
     </div>
     <input id="save-import-input" type="file" accept="application/json,.json" style="display:none" onchange="importSaveFile(this)">
   `);
+  const themeNow = document.documentElement.getAttribute('data-theme') || 'dark';
+  const themeCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Thème</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Ambiance manga sombre (par défaut) ou claire, façon planche noir & blanc à fort contraste.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="setTheme('dark')" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid ${themeNow==='dark'?'var(--gold)':'var(--b1)'};background:${themeNow==='dark'?'rgba(240,192,40,.14)':'var(--dark)'};color:${themeNow==='dark'?'var(--gold)':'var(--muted)'};font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">🌙 SOMBRE</button>
+      <button onclick="setTheme('light')" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid ${themeNow==='light'?'var(--gold)':'var(--b1)'};background:${themeNow==='light'?'rgba(240,192,40,.14)':'var(--dark)'};color:${themeNow==='light'?'var(--gold)':'var(--muted)'};font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">☀️ CLAIR</button>
+    </div>
+  `);
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
+    ${themeCard}
     ${modeCard}
     ${camCard}
     ${saveCard}
   `;
 }
+
+// Bascule le thème visuel (manga sombre / clair) et le mémorise.
+function setTheme(t){
+  t = (t==='light') ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  try{ localStorage.setItem('footsim_theme', t); }catch(e){}
+  if(typeof renderSettings==='function') renderSettings();
+}
+// Restaure le thème choisi au démarrage.
+(function _restoreTheme(){
+  try{
+    const t = localStorage.getItem('footsim_theme');
+    if(t==='light' || t==='dark') document.documentElement.setAttribute('data-theme', t);
+  }catch(e){}
+})();
 
 // ── Export / Import de sauvegarde (fichier) ─────────────────────────────
 // Sérialise toutes les clés critiques dans un fichier JSON téléchargeable.
@@ -2812,50 +2839,54 @@ function renderTeamSelectPage(){
   const el=document.getElementById('teamsel-out'); if(!el) return;
   const cat=(typeof presetCatalog==='function')?presetCatalog():[];
 
+  const tCol0 = teams[0]?.color||'#e53935';
+  const tCol1 = teams[1]?.color||'#2f7fe0';
   const targetBar = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <span style="font-size:10px;color:var(--muted);flex-shrink:0">Charger dans :</span>
-      <button onclick="teamSelTarget(0)" style="flex:1;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800;border:2px solid ${_teamSel.ti===0?(teams[0]?.color||'#e53935'):'var(--b1)'};background:${_teamSel.ti===0?(teams[0]?.color||'#e53935')+'22':'transparent'};color:${_teamSel.ti===0?(teams[0]?.color||'#ff8a80'):'var(--muted)'}">${teams[0]?.name||'Rouges'}</button>
-      <button onclick="teamSelTarget(1)" style="flex:1;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800;border:2px solid ${_teamSel.ti===1?(teams[1]?.color||'#2f7fe0'):'var(--b1)'};background:${_teamSel.ti===1?(teams[1]?.color||'#2f7fe0')+'22':'transparent'};color:${_teamSel.ti===1?(teams[1]?.color||'#82b1ff'):'var(--muted)'}">${teams[1]?.name||'Bleus'}</button>
+    <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3)">
+      <span class="fm-label" style="flex-shrink:0">Charger dans</span>
+      <button class="fm-btn${_teamSel.ti===0?' fm-btn--primary':''}" style="flex:1${_teamSel.ti===0?';background:'+tCol0+';border-color:var(--ink)':''}" onclick="teamSelTarget(0)">${teams[0]?.name||'Rouges'}</button>
+      <button class="fm-btn${_teamSel.ti===1?' fm-btn--primary':''}" style="flex:1${_teamSel.ti===1?';background:'+tCol1+';border-color:var(--ink)':''}" onclick="teamSelTarget(1)">${teams[1]?.name||'Bleus'}</button>
     </div>`;
 
-  const crumb = (label,step)=>`<span onclick="teamSelGoto('${step}')" style="cursor:pointer;color:var(--gold);text-decoration:underline">${label}</span>`;
+  const crumb = (label,step)=>`<a onclick="teamSelGoto('${step}')">${label}</a>`;
+  const here  = (label)=>`<span class="is-here">${label}</span>`;
   const parts=[];
-  parts.push(_teamSel.step==='kind'?'<b style="color:#fff">Type</b>':crumb('Type','kind'));
-  if(_teamSel.kind){ parts.push(_teamSel.step==='country'?'<b style="color:#fff">Pays</b>':crumb(_teamSel.country||'Pays','country')); }
-  if(_teamSel.country && _teamSel.kind==='club'){ parts.push(_teamSel.step==='tier'?'<b style="color:#fff">Niveau</b>':crumb(_teamSel.tier?(TIER_LABELS[_teamSel.tier]||_teamSel.tier):'Niveau','tier')); }
-  if(_teamSel.tier==='regional' || _teamSel.tier==='district'){ parts.push(_teamSel.step==='region'?'<b style="color:#fff">Région</b>':crumb(_teamSel.region||'Région','region')); }
-  if((_teamSel.tier==='regional'||_teamSel.tier==='district') && _teamSel.region){ const _ntdB=nationTeamsData(_teamSel.country); const _dmB=(_ntdB&&_ntdB.divisions)||{}; const dn=(_teamSel.division&&_dmB[_teamSel.division])?_dmB[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dn,'division')); }
-  // Cas pro multi-ligues (ex : Pilier) : étape Division sans passer par Région.
-  if(_teamSel.tier==='pro' && (_teamSel.step==='division' || _teamSel.division)){ const _ntdP=nationTeamsData(_teamSel.country); const _dmP=(_ntdP&&_ntdP.divisions)||{}; const dnP=(_teamSel.division&&_dmP[_teamSel.division])?_dmP[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?'<b style="color:#fff">Division</b>':crumb(dnP,'division')); }
-  const breadcrumb = `<div style="font-size:10px;color:var(--muted);margin-bottom:12px">${parts.join(' <span style="color:#444">›</span> ')}</div>`;
+  parts.push(_teamSel.step==='kind'?here('Type'):crumb('Type','kind'));
+  if(_teamSel.kind){ parts.push(_teamSel.step==='country'?here('Pays'):crumb(_teamSel.country||'Pays','country')); }
+  if(_teamSel.country && _teamSel.kind==='club'){ parts.push(_teamSel.step==='tier'?here('Niveau'):crumb(_teamSel.tier?(TIER_LABELS[_teamSel.tier]||_teamSel.tier):'Niveau','tier')); }
+  if(_teamSel.tier==='regional' || _teamSel.tier==='district'){ parts.push(_teamSel.step==='region'?here('Région'):crumb(_teamSel.region||'Région','region')); }
+  if((_teamSel.tier==='regional'||_teamSel.tier==='district') && _teamSel.region){ const _ntdB=nationTeamsData(_teamSel.country); const _dmB=(_ntdB&&_ntdB.divisions)||{}; const dn=(_teamSel.division&&_dmB[_teamSel.division])?_dmB[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?here('Division'):crumb(dn,'division')); }
+  if(_teamSel.tier==='pro' && (_teamSel.step==='division' || _teamSel.division)){ const _ntdP=nationTeamsData(_teamSel.country); const _dmP=(_ntdP&&_ntdP.divisions)||{}; const dnP=(_teamSel.division&&_dmP[_teamSel.division])?_dmP[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?here('Division'):crumb(dnP,'division')); }
+  const breadcrumb = `<div class="fm-crumbs">${parts.join('<span class="sep">›</span>')}</div>`;
 
-  const title = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:1px;color:var(--gold);text-transform:uppercase">📚 Sélection d'équipes</div>
-    </div>`;
+  const title = `<div style="margin-bottom:var(--sp-3)"><div class="fm-title">📚 Sélection d'équipes</div></div>`;
 
   const bigBtn=(label,sub,onclick,col)=>`
-    <button onclick="${onclick}" style="width:100%;text-align:left;padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid ${col||'var(--b1)'};background:var(--panel);color:var(--text);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-      <div><div style="font-size:15px;font-weight:900;color:${col||'#fff'}">${label}</div>${sub?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${sub}</div>`:''}</div>
-      <span style="font-size:18px;color:var(--muted)">›</span>
+    <button class="fm-row" style="width:100%;text-align:left;cursor:pointer;margin-bottom:var(--sp-2)${col?';border-color:'+col:''}" onclick="${onclick}">
+      <div class="fm-row__grow">
+        <div class="fm-row__title" style="${col?'color:'+col:''}">${label}</div>
+        ${sub?`<div class="fm-row__sub">${sub}</div>`:''}
+      </div>
+      <span style="font-size:18px;color:var(--fg-muted)">›</span>
     </button>`;
+
+  const soon=(label)=>`<div class="fm-row" style="border-style:dashed;opacity:.55;margin-bottom:var(--sp-2)">
+      <div class="fm-row__grow"><div class="fm-row__title">${label} <span class="fm-row__sub">— à venir</span></div></div></div>`;
 
   let body='';
 
   if(_teamSel.step==='kind'){
     body += bigBtn('⚽ Clubs','Équipes de club, par pays et par niveau',`teamSelPick('kind','club')`,'#2e8b8b');
-    body += bigBtn('🏳️ Sélections nationales','Équipes nationales',`teamSelPick('kind','nation')`,'#f0c028');
+    body += bigBtn('🏳️ Sélections nationales','Équipes nationales',`teamSelPick('kind','nation')`,'var(--accent)');
   }
   else if(_teamSel.step==='country'){
     const pool=cat.filter(t=> _teamSel.kind==='nation' ? t.kind==='nation' : t.kind==='club');
     let countries=[...new Set(pool.map(t=>t.nation))];
-    // Ajouter les nations qui n'ont pas de preset mais un pool d'équipes de
-    // division (ex : Le Pilier Céleste), pour qu'elles apparaissent aussi.
     if(_teamSel.kind!=='nation' && window.PILIER_TEAMS && window.PILIER_TEAMS.length){
       if(!countries.includes('Le Pilier Céleste')) countries.push('Le Pilier Céleste');
     }
     countries=countries.sort();
-    if(!countries.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucun pays disponible.</div>';
+    if(!countries.length) body='<div class="fm-muted" style="font-size:12px;padding:20px;text-align:center">Aucun pays disponible.</div>';
     countries.forEach(c=>{
       const _ntdC=nationTeamsData(c);
       const n=pool.filter(t=>t.nation===c).length + (_ntdC?_ntdC.teams.length:0);
@@ -2864,7 +2895,6 @@ function renderTeamSelectPage(){
   }
   else if(_teamSel.step==='tier'){
     const pool=cat.filter(t=>t.kind==='club' && t.nation===_teamSel.country);
-    // Compte des équipes de division (nation courante) par palier.
     const _ntd=nationTeamsData(_teamSel.country);
     const vteams=_ntd?_ntd.teams:[];
     const countTier=(tr)=> pool.filter(t=>t.tier===tr).length + vteams.filter(t=>t.tier===tr).length;
@@ -2873,7 +2903,7 @@ function renderTeamSelectPage(){
       const n=countTier(tr);
       if(n===0){
         if(tr==='district' && !Object.values(REGION_HAS_DISTRICT).some(Boolean)) return;
-        body += `<div style="width:100%;padding:12px 16px;border-radius:12px;border:2px dashed var(--b1);background:transparent;color:var(--muted);margin-bottom:8px;font-size:12px;opacity:.6">${TIER_LABELS[tr]} <span style="font-size:10px">— à venir</span></div>`;
+        body += soon(TIER_LABELS[tr]);
         return;
       }
       const sub = tr==='pro' ? 'Ligue nationale — toutes régions' : tr==='regional' ? 'Championnats régionaux, par région' : 'Divisions de district';
@@ -2888,8 +2918,8 @@ function renderTeamSelectPage(){
     if(_teamSel.tier==='district') regions=regions.filter(r=>REGION_HAS_DISTRICT[r]);
     if(!regions.length){
       const known=Object.keys(REGION_HAS_DISTRICT).filter(r=>_teamSel.tier!=='district'||REGION_HAS_DISTRICT[r]);
-      known.forEach(r=>{ body += `<div style="width:100%;padding:12px 16px;border-radius:12px;border:2px dashed var(--b1);color:var(--muted);margin-bottom:8px;font-size:12px;opacity:.6">${r} <span style="font-size:10px">— à venir</span></div>`; });
-      if(!known.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune région disponible.</div>';
+      known.forEach(r=>{ body += soon(r); });
+      if(!known.length) body='<div class="fm-muted" style="font-size:12px;padding:20px;text-align:center">Aucune région disponible.</div>';
     }
     regions.sort().forEach(r=>{
       const n=pool.filter(t=>t.region===r).length + vteams.filter(t=>t.region===r).length;
@@ -2897,9 +2927,6 @@ function renderTeamSelectPage(){
     });
   }
   else if(_teamSel.step==='division'){
-    // Choix de la division dans le palier courant. Pour le pro (pas de région),
-    // on liste toutes les divisions pro ; pour regional/district, celles de la
-    // région choisie.
     const _ntdD=nationTeamsData(_teamSel.country);
     const _divMap=_ntdD?_ntdD.divisions:{};
     const _byDiv=_ntdD?_ntdD.byDivision:null;
@@ -2910,14 +2937,13 @@ function renderTeamSelectPage(){
         return d.region===_teamSel.region;
       })
       .sort((a,b)=>a[1].order-b[1].order);
-    if(!divs.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune division.</div>';
+    if(!divs.length) body='<div class="fm-muted" style="font-size:12px;padding:20px;text-align:center">Aucune division.</div>';
     divs.forEach(([id,d])=>{
       const n=(_byDiv?_byDiv(id):[]).length;
       body += bigBtn(d.name, n+' équipe'+(n>1?'s':''), `teamSelPick('division','${id}')`);
     });
   }
   else if(_teamSel.step==='teams'){
-    // Presets à effectif fixe correspondant aux filtres.
     let pool=cat.filter(t=>{
       if(_teamSel.kind==='nation') return t.kind==='nation' && t.nation===_teamSel.country;
       if(t.kind!=='club' || t.nation!==_teamSel.country) return false;
@@ -2925,7 +2951,6 @@ function renderTeamSelectPage(){
       if((_teamSel.tier==='regional'||_teamSel.tier==='district') && _teamSel.region && t.region!==_teamSel.region) return false;
       return true;
     });
-    // Équipes de division (nation courante, générées à la volée) selon filtres.
     let vpool=[];
     const _ntdT=nationTeamsData(_teamSel.country);
     if(_teamSel.kind!=='nation' && _ntdT){
@@ -2937,41 +2962,40 @@ function renderTeamSelectPage(){
         return false;
       });
     }
-    if(!pool.length && !vpool.length) body='<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">Aucune équipe ici.</div>';
-    // D'abord les presets (effectif fixe), puis les équipes de division.
+    if(!pool.length && !vpool.length) body='<div class="fm-muted" style="font-size:12px;padding:20px;text-align:center">Aucune équipe ici.</div>';
+    const crestOf=(t)=> (t.badge&&typeof BadgeCache!=='undefined')
+      ? `<div class="fm-crest"><img src="${BadgeCache.dataURI(t.badge,36)}" alt=""></div>`
+      : `<div class="fm-crest" style="color:${t.color}">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
+    const teamRow=(t,sub,onclick)=>`
+      <div class="fm-row" style="margin-bottom:var(--sp-2)">
+        ${crestOf(t)}
+        <div class="fm-row__grow"><div class="fm-row__title">${t.name}</div><div class="fm-row__sub">${sub}</div></div>
+        <button class="fm-btn fm-btn--sm fm-btn--primary" style="background:${t.color};color:#fff;flex-shrink:0" onclick="${onclick}">Choisir</button>
+      </div>`;
     pool.forEach(t=>{
       const gm = window.gameMode || '7v7';
       const fixedLbl = gm==='7v7' ? '⭐ Effectif fixe' : (gm==='5v5' ? '🔄 Effectif futsal dédié' : '🔄 Effectif 11v11 dédié');
       const sub = t.kind==='nation' ? '🏳️ Sélection · '+t.nation : fixedLbl+' · '+(TIER_LABELS[t.tier]||t.league);
-      const badgeHTML=(t.badge&&typeof BadgeCache!=='undefined')?`<img src="${BadgeCache.dataURI(t.badge,36)}" width="36" height="36" style="object-fit:contain">`:`<div style="width:36px;height:36px;border-radius:50%;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
-      body += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:11px;background:var(--panel);margin-bottom:8px">
-          ${badgeHTML}
-          <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px;color:var(--text)">${t.name}</div><div style="font-size:10px;color:var(--muted)">${sub}</div></div>
-          <button onclick="teamSelLoad('${t.presetId}')" style="padding:7px 15px;border-radius:8px;cursor:pointer;font-weight:800;font-size:12px;border:none;background:${t.color};color:#fff;flex-shrink:0">Choisir</button>
-        </div>`;
+      body += teamRow(t, sub, `teamSelLoad('${t.presetId}')`);
     });
     vpool.forEach(t=>{
       const _dm=(_ntdT&&_ntdT.divisions)||{};
       const divName=(_dm[t.division])?_dm[t.division].name:'';
       const subLbl = t.parentClub ? `🔗 Réserve de ${t.parentClub} · ${divName}` : `🏟️ ${divName}`;
-      const badgeHTML=(t.badge&&typeof BadgeCache!=='undefined')?`<img src="${BadgeCache.dataURI(t.badge,36)}" width="36" height="36" style="object-fit:contain">`:`<div style="width:36px;height:36px;border-radius:50%;background:${t.color}22;border:2px solid ${t.color}77;display:flex;align-items:center;justify-content:center;font-weight:900;color:${t.color};font-size:13px">${(t.name||'?').slice(0,2).toUpperCase()}</div>`;
-      body += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:11px;background:var(--panel);margin-bottom:8px">
-          ${badgeHTML}
-          <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px;color:var(--text)">${t.name}</div><div style="font-size:10px;color:var(--muted)">${subLbl}</div></div>
-          <button onclick="teamSelLoadValoria('${(t.name||'').replace(/'/g,"\\'")}')" style="padding:7px 15px;border-radius:8px;cursor:pointer;font-weight:800;font-size:12px;border:none;background:${t.color};color:#fff;flex-shrink:0">Choisir</button>
-        </div>`;
+      body += teamRow(t, subLbl, `teamSelLoadValoria('${(t.name||'').replace(/'/g,"\\'")}')`);
     });
   }
 
   let toast='';
   if(_presetToast && Date.now()-_presetToast.t < 4000){
     const slot=_presetToast.into===0?(teams[0]?.name||'Rouges'):(teams[1]?.name||'Bleus');
-    toast=`<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;background:${_presetToast.col}22;border:1px solid ${_presetToast.col}66;margin-bottom:12px;font-size:12px;color:var(--text)">
+    toast=`<div class="fm-toast" style="border-color:${_presetToast.col};background:color-mix(in srgb,${_presetToast.col} 15%,transparent)">
       <span style="font-size:15px">✅</span><span><b style="color:${_presetToast.col}">${_presetToast.name}</b> chargée dans <b>${slot}</b>.</span></div>`;
   }
 
   el.innerHTML=`<div style="max-width:560px;margin:0 auto">${title}${targetBar}${toast}${breadcrumb}${body}</div>`;
 }
+
 
 function teamSelTarget(ti){ _teamSel.ti=ti; renderTeamSelectPage(); }
 function teamSelGoto(step){

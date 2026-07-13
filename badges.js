@@ -71,13 +71,13 @@ const SvgLibrary = {
 
 // ── PatternLibrary : motifs de fond (clippés à la forme via clipPath) ─────
 const PatternLibrary = {
-  order: ['solid','vstripes','hstripes','diagonal','cross','chevron','checker','stripes','lozenge','half_l','half_r','quarters','gradient','circles','stars_bg','triangles','textile','sunburst','scales','wave'],
+  order: ['solid','vstripes','hstripes','diagonal','cross','chevron','checker','stripes','lozenge','half_l','half_r','quarters','gradient','circles','stars_bg','triangles','textile','sunburst','scales','wave','rays_duo'],
   labels: {
     solid:'Uni', vstripes:'Bandes verticales', hstripes:'Bandes horizontales', diagonal:'Diagonales',
     cross:'Croix', chevron:'Chevron', checker:'Échiquier', stripes:'Rayures', lozenge:'Losanges',
     half_l:'Moitié gauche', half_r:'Moitié droite', quarters:'Quartiers', gradient:'Dégradé',
     circles:'Cercles', stars_bg:'Étoiles', triangles:'Triangles', textile:'Motif textile',
-    sunburst:'Soleil levant', scales:'Écailles', wave:'Vagues',
+    sunburst:'Soleil levant', scales:'Écailles', wave:'Vagues', rays_duo:'Rayons bicolores',
   },
   // Renvoie le contenu SVG du motif (sera clippé à la forme par le renderer).
   render(id, c1, c2, opacity){
@@ -105,6 +105,15 @@ const PatternLibrary = {
         for(let i=0;i<rays;i++){
           const a1=(360/rays)*i*Math.PI/180, a2=((360/rays)*i+(360/rays)/2)*Math.PI/180;
           s+=`<polygon points="50,58 ${(50+80*Math.cos(a1)).toFixed(1)},${(58+80*Math.sin(a1)).toFixed(1)} ${(50+80*Math.cos(a2)).toFixed(1)},${(58+80*Math.sin(a2)).toFixed(1)}" fill="${c2}"/>`;
+        }
+        return g(s);
+      }
+      case 'rays_duo': {
+        let s=''; const rays=16;
+        for(let i=0;i<rays;i++){
+          const a1=(360/rays)*i*Math.PI/180, a2=((360/rays)*i+(360/rays)/2)*Math.PI/180;
+          const col = i%2? c2 : _shade(c2,-0.25);
+          s+=`<polygon points="50,58 ${(50+85*Math.cos(a1)).toFixed(1)},${(58+85*Math.sin(a1)).toFixed(1)} ${(50+85*Math.cos(a2)).toFixed(1)},${(58+85*Math.sin(a2)).toFixed(1)}" fill="${col}"/>`;
         }
         return g(s);
       }
@@ -170,14 +179,14 @@ function _laurelRing(color){
 // ── IconLibrary : icônes vectorielles (dessinées dans une boîte ~40×40) ───
 // Chaque icône est stylisée/silhouette pour rester lisible en petit.
 const IconLibrary = {
-  order: ['lion','eagle','wolf','bear','fox','dragon','phoenix','deer','bull','raven','horse','panther',
-          'griffin','falcon','boar','ball','cup','crown','sword','shield','star','mountain','forest','castle','tower',
+  order: ['lion','lionhead','eagle','wolf','bear','fox','dragon','phoenix','deer','bull','raven','horse','panther',
+          'griffin','falcon','boar','ball','cup','crown','sword','shield','star','sun','mountain','forest','castle','tower',
           'anchor','bolt','flame','leaf','laurel'],
   labels: {
-    lion:'Lion', eagle:'Aigle', wolf:'Loup', bear:'Ours', fox:'Renard', dragon:'Dragon', phoenix:'Phénix',
+    lion:'Lion (face)', lionhead:'Lion (profil)', eagle:'Aigle', wolf:'Loup', bear:'Ours', fox:'Renard', dragon:'Dragon', phoenix:'Phénix',
     deer:'Cerf', bull:'Taureau', raven:'Corbeau', horse:'Cheval', panther:'Panthère', griffin:'Griffon',
     falcon:'Faucon', boar:'Sanglier',
-    ball:'Ballon', cup:'Coupe', crown:'Couronne', sword:'Épée', shield:'Bouclier', star:'Étoile',
+    ball:'Ballon', cup:'Coupe', crown:'Couronne', sword:'Épée', shield:'Bouclier', star:'Étoile', sun:'Soleil',
     mountain:'Montagne', forest:'Forêt', castle:'Château', tower:'Tour', anchor:'Ancre', bolt:'Éclair',
     flame:'Flamme', leaf:'Feuille', laurel:'Laurier',
   },
@@ -190,6 +199,22 @@ const IconLibrary = {
         `<circle cx="0" cy="0" r="16" fill="none" stroke="#00000033" stroke-width="1"/>`; },
     star:    (c)=>{ const h=_shade(c,0.45);
       return _starPath(0,0,17,c)+`<polygon points="0,-17 5.1,-2.1 0,0" fill="${h}" opacity="0.5"/>`; },
+    sun:     (c)=>{ const d=_shade(c,-0.3), h=_shade(c,0.45);
+      let rays='';
+      for(let i=0;i<12;i++){
+        const a=i*30*Math.PI/180;
+        const x1=Math.cos(a)*10.5, y1=Math.sin(a)*10.5;
+        if(i%2===0){
+          const perp=a+Math.PI/2, wx=Math.cos(perp)*2.2, wy=Math.sin(perp)*2.2;
+          const x2=Math.cos(a)*19, y2=Math.sin(a)*19;
+          rays+=`<polygon points="${(x1+wx).toFixed(1)},${(y1+wy).toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${(x1-wx).toFixed(1)},${(y1-wy).toFixed(1)}" fill="${c}"/>`;
+        } else {
+          const x2=Math.cos(a)*16, y2=Math.sin(a)*16;
+          rays+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${c}" stroke-width="2.6" stroke-linecap="round"/>`;
+        }
+      }
+      return `${rays}<circle cx="0" cy="0" r="10.5" fill="${c}"/><circle cx="-2.5" cy="-3" r="6" fill="${h}" opacity="0.4"/><circle cx="0" cy="0" r="10.5" fill="none" stroke="${d}" stroke-width="1"/>`;
+    },
     crown:   (c)=>{ const d=_shade(c,-0.35), h=_shade(c,0.4);
       return `<path d="M-16,8 L-16,-6 L-8,2 L0,-10 L8,2 L16,-6 L16,8 Z" fill="${c}"/>`+
         `<path d="M-16,8 L-16,-6 L-8,2 L-2,-8 L-2,8 Z" fill="${h}" opacity="0.35"/>`+
@@ -242,12 +267,22 @@ const IconLibrary = {
         `<polygon points="10,16 2,16 6,4 4,4 10,-14 16,4 14,4 18,16" fill="${d}"/>`+
         `<polygon points="-10,16 -14,4 -12,4 -10,-8" fill="${h}" opacity="0.4"/>`; },
     // Animaux (ombres/reflets pour donner du volume, quelques traits de détail)
-    lion:    (c)=>{ const d=_shade(c,-0.35), h=_shade(c,0.35);
-      return `<path d="M0,-16 L6,-11 L14,-14 L11,-6 L17,0 L11,6 L14,14 L6,11 L0,16 L-6,11 L-14,14 L-11,6 L-17,0 L-11,-6 L-14,-14 L-6,-11 Z" fill="${d}"/>`+
-        `<path d="M0,-16 L6,-11 L14,-14 L11,-6 L17,0 L11,-3 L4,-9 Z" fill="${_shade(c,-0.1)}" opacity="0.5"/>`+
-        `<circle cx="0" cy="0" r="10" fill="${c}"/><circle cx="-2" cy="-3" r="7" fill="${h}" opacity="0.3"/>`+
-        `<path d="M-4,3 Q0,6 4,3" stroke="#00000077" stroke-width="1" fill="none"/>`+
-        `<circle cx="-3.2" cy="-2" r="1.4" fill="#000000aa"/><circle cx="3.2" cy="-2" r="1.4" fill="#000000aa"/><path d="M0,0 L0,2.5" stroke="#00000077" stroke-width="1"/>`; },
+    // Tête de lion de face — style héraldique silhouette (crinière en pointes,
+    // museau et yeux en négatif). Lisible jusqu'à ~32px. Le "clair" du museau
+    // s'adapte à la couleur de l'icône via _shade(c, 0.9).
+    lion:    (c)=>{ const lite=_shade(c,0.9), d=_shade(c,-0.32);
+      return `<path d="M0,-19 L4.5,-13 L9,-16 L8,-9 L14,-11 L11,-4 L18,-3 L13,2.5 L18,7 L11,8 Q10,13 4,16 L6.5,10.5 L2,15 L0,10.5 L-2,15 L-6.5,10.5 L-4,16 Q-10,13 -11,8 L-18,7 L-13,2.5 L-18,-3 L-11,-4 L-14,-11 L-8,-9 L-9,-16 L-4.5,-13 Z" fill="${c}"/>`+
+        `<path d="M0,-6 Q3.4,-6 4,-2 Q4.4,1 2.6,2.4 Q4,4 2.4,5.6 Q1.2,7 0,6.2 Q-1.2,7 -2.4,5.6 Q-4,4 -2.6,2.4 Q-4.4,1 -4,-2 Q-3.4,-6 0,-6 Z" fill="${lite}"/>`+
+        `<path d="M-6,-3 Q-4,-5 -2.4,-3 Q-4,-1.6 -6,-3 Z" fill="${lite}"/>`+
+        `<path d="M6,-3 Q4,-5 2.4,-3 Q4,-1.6 6,-3 Z" fill="${lite}"/>`+
+        `<path d="M0,0 L1.6,2.2 Q0,3.4 -1.6,2.2 Z" fill="${d}"/>`; },
+    // Tête de lion de profil (regardant vers la gauche) — crinière fluide,
+    // face claire en négatif. Complément héraldique de la version de face.
+    lionhead:(c)=>{ const lite=_shade(c,0.85), d=_shade(c,-0.35);
+      return `<path d="M-2,-16 Q6,-16 8,-8 Q11,-12 14,-10 Q12,-6 13,-3 Q17,-6 19,-2 Q15,-1 15,3 Q19,3 18,8 Q13,6 12,10 Q14,13 10,15 Q9,11 5,12 Q6,15 1,16 Q-6,17 -10,12 Q-15,14 -16,8 Q-11,8 -12,3 Q-17,4 -16,-2 Q-11,-1 -13,-6 Q-8,-6 -9,-11 Q-8,-16 -2,-16 Z" fill="${c}"/>`+
+        `<path d="M-13,-1 Q-16,0 -16,3 Q-13,4 -13,1 Z" fill="${lite}"/>`+
+        `<path d="M-2,-8 Q-9,-7 -12,0 Q-13,4 -10,7 Q-11,3 -8,1 L-11,0 L-7,-2 Q-6,-6 -2,-8 Z" fill="${lite}"/>`+
+        `<circle cx="-6" cy="-3" r="1.2" fill="${d}"/>`; },
     eagle:   (c)=>{ const d=_shade(c,-0.3);
       return `<path d="M0,-6 Q-4,-14 -2,-16 Q2,-14 4,-16 Q6,-14 2,-6 Z" fill="#e8c547"/>`+
         `<path d="M0,-4 Q-18,-10 -20,0 Q-10,-2 0,4 Q10,-2 20,0 Q18,-10 0,-4 Z" fill="${c}"/>`+
@@ -307,7 +342,27 @@ const IconLibrary = {
         `<polygon points="8,4 16,0 14,8 6,8" fill="#f0f0f0"/><polygon points="8,-2 16,-6 13,2 6,2" fill="#e8e8e8"/>`+
         `<circle cx="-6" cy="-2" r="1.3" fill="#000"/><path d="M-10,-8 L-6,-10 M-8,-9 L-4,-11" stroke="${d}" stroke-width="1.4"/>`; },
   },
-  render(id,color){ return (this.paths[id]||this.paths.shield)(color); },
+  // ink (optionnel) : ajoute un contour d'encrage noir façon manga, mais
+  // UNIQUEMENT sur les formes principales de la silhouette. On ignore
+  // volontairement : les éléments qui ont déjà leur propre stroke (traits de
+  // détail), les surcouches d'ombrage/reflet (qui ont un opacity — sinon on
+  // dessinerait un contour AU MILIEU d'une forme, ce qui crée un effet sale),
+  // et les tout petits points (pupilles) qui n'ont pas besoin de contour.
+  render(id,color,ink){
+    let frag = (this.paths[id]||this.paths.shield)(color);
+    if(ink){
+      frag = frag.replace(/<(path|circle|ellipse|polygon|rect)([^>]*?)\/>/g, (m,tag,attrs)=>{
+        if(/stroke=/.test(attrs)) return m;
+        if(/opacity=/.test(attrs)) return m;
+        if(tag==='circle'){
+          const rm=attrs.match(/r="([\d.]+)"/);
+          if(rm && parseFloat(rm[1])<2.2) return m;
+        }
+        return `<${tag}${attrs} stroke="${ink}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+      });
+    }
+    return frag;
+  },
 };
 
 // ── BadgeSerializer : normalise / valide un blason JSON ──────────────────
@@ -318,7 +373,8 @@ const BadgeSerializer = {
       iconScale:1, iconRot:0, iconX:0, iconY:-6,
       icon2:'none', icon2Color:'#ffffff', icon2Scale:0.5, icon2X:0, icon2Y:22,
       text:'', textColor:'#ffffff', textArc:false, motto:'',
-      year:'', stars:0, starColor:'#ffd700', bgOpacity:1 };
+      year:'', stars:0, starColor:'#ffd700', bgOpacity:1,
+      style:'classic', inkColor:'#141414' };
   },
   normalize(b){
     const d=this.defaults();
@@ -340,10 +396,10 @@ const BadgeRenderer = {
     thin:{w:1,col:null}, cut:{w:2.5,col:null,dash:'6 4'}, modern:{w:2,col:'#ffffff'}, vintage:{w:2.5,col:'#7a5c3a',dash:'2 3'},
     beaded:{w:3.2,col:null,dash:'0.1 5.8',cap:'round'}, chain:{w:4.2,col:null,dash:'5 3',cap:'round'},
     embossed:{w:2,col:null,emboss:true}, ornate:{w:1.8,col:null,double:true,twoTone:true},
-    laurel_ring:{w:1.4,col:null,laurel:true},
+    laurel_ring:{w:1.4,col:null,laurel:true}, manga_ink:{w:4.5,col:'#141414',innerAccent:true},
   },
   borderLabels:{simple:'Simple',double:'Double',triple:'Triple',gold:'Dorée',silver:'Argentée',thick:'Épaisse',thin:'Fine',cut:'Découpée',modern:'Moderne',vintage:'Vintage',
-    beaded:'Perlée',chain:'Chaînée',embossed:'Gravée',ornate:'Ornementée',laurel_ring:'Couronne de laurier'},
+    beaded:'Perlée',chain:'Chaînée',embossed:'Gravée',ornate:'Ornementée',laurel_ring:'Couronne de laurier',manga_ink:'Encrage manga'},
 
   render(badge, opts){
     const b = BadgeSerializer.normalize(badge);
@@ -385,17 +441,27 @@ const BadgeRenderer = {
       border += `<g transform="translate(0.7,0.7)">${dark}</g><g transform="translate(-0.7,-0.7)">${light}</g>`;
     }
     if(bd.laurel) border += _laurelRing(c3);
+    if(bd.innerAccent){
+      const acc = SvgLibrary.render(b.shape,'none').replace(/fill="[^"]*"/,`fill="none" stroke="${c3}" stroke-width="1.4"`);
+      border += `<g transform="translate(50 58) scale(0.955) translate(-50 -58)">${acc}</g>`;
+    }
+    // Mode "manga" : encrage noir épais façon comics sur le contour extérieur
+    // du blason (en plus de la bordure choisie), pour l'effet "ink outline".
+    const manga = b.style==='manga';
+    if(manga){
+      border += SvgLibrary.render(b.shape,'none').replace(/fill="[^"]*"/,`fill="none" stroke="${b.inkColor||'#141414'}" stroke-width="2.6" stroke-linejoin="round"`);
+    }
     // 4) Icône principale
     let icon='';
     if(b.icon && b.icon!=='none'){
       const ix=BCX+(b.iconX||0), iy=BCY+(b.iconY||0), sc=b.iconScale||1, rot=b.iconRot||0;
-      icon=`<g transform="translate(${ix},${iy}) rotate(${rot}) scale(${sc})">${IconLibrary.render(b.icon,b.iconColor||c3)}</g>`;
+      icon=`<g transform="translate(${ix},${iy}) rotate(${rot}) scale(${sc})">${IconLibrary.render(b.icon,b.iconColor||c3, manga?(b.inkColor||'#141414'):null)}</g>`;
     }
     // 4b) Icône secondaire (couche indépendante)
     let icon2='';
     if(b.icon2 && b.icon2!=='none'){
       const ix=BCX+(b.icon2X||0), iy=BCY+(b.icon2Y!=null?b.icon2Y:22), sc=b.icon2Scale||0.5;
-      icon2=`<g transform="translate(${ix},${iy}) scale(${sc})">${IconLibrary.render(b.icon2,b.icon2Color||c2)}</g>`;
+      icon2=`<g transform="translate(${ix},${iy}) scale(${sc})">${IconLibrary.render(b.icon2,b.icon2Color||c2, manga?(b.inkColor||'#141414'):null)}</g>`;
     }
     // 5) Texte principal (abréviation/sigle) — droit ou en arc
     let text='';
@@ -496,6 +562,8 @@ const BADGE_PRESETS = {
   moderne:{shape:'shield_mod',border:'modern',background:'gradient',icon:'bolt'},
   minimaliste:{shape:'minimal',border:'thin',background:'solid',icon:'star'},
   fantasy:{shape:'diamond',border:'gold',background:'stars_bg',icon:'dragon'},
+  manga_sport:{shape:'shield_mod',border:'manga_ink',background:'rays_duo',icon:'bolt',style:'manga'},
+  manga_kabuto:{shape:'round',border:'manga_ink',background:'rays_duo',icon:'shield',style:'manga'},
 };
 
 // ── BadgeCache : évite de régénérer le SVG à chaque frame ─────────────────
