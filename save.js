@@ -1190,6 +1190,102 @@ function _buildRoundRobinFixtures(allClubs){
   logEvent('📅 Calendrier généré — '+fixtures.length+' matchs cette saison !','#18c860');
   // Générer la coupe nationale (Pilier) en parallèle du championnat.
   try{ _generateNationalCup(); }catch(e){ console.error('cup:',e); }
+  // Générer la coupe de la ligue (4 poules de 5 → play-offs) pour le Pilier.
+  try{ _generateLeagueCup(); }catch(e){ console.error('league cup:',e); }
+}
+
+// ── COUPE DE LA LIGUE (Pilier) : 4 poules de 5 → play-offs ────────────────
+// Chaque ligue a sa propre coupe : les 20 clubs de la division sont répartis en
+// 4 poules de 5 ; les 2 meilleurs de chaque poule (8 clubs) filent en play-offs
+// à élimination directe (quarts → demies → finale).
+function _generateLeagueCup(){
+  const C = careerV2;
+  if(!C || C.nation!=='pilier' || typeof PILIER_TEAMS==='undefined') return;
+  const myDivId = C.club.pilierDivId || (typeof _pilierDivOfLevel==='function' ? _pilierDivOfLevel(C.club.level) : null);
+  if(!myDivId || typeof pilierTeamsByDivision!=='function') return;
+  const divName = (PILIER_DIVISIONS[myDivId] ? PILIER_DIVISIONS[myDivId].name : myDivId);
+  // 20 clubs de la division (dont le joueur).
+  let clubs = pilierTeamsByDivision(myDivId).map(t=>({
+    name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh',
+    isPlayer:(t.name===C.club.name), pts:0, gf:0, ga:0,
+  }));
+  if(clubs.length<8) return; // pas assez pour le format
+  // Mélange puis répartition en 4 poules de 5.
+  for(let i=clubs.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [clubs[i],clubs[j]]=[clubs[j],clubs[i]]; }
+  const pools = [[],[],[],[]];
+  clubs.slice(0,20).forEach(function(c,i){ pools[i%4].push(c); });
+  C.leagueCup = {
+    name: 'Coupe de '+divName, icon:'🏵️',
+    phase: 'pools', pools, playoffWeeks:[8,11,14],
+    bracket: null, round:0, roundNames:['Quarts','Demies','Finale'],
+    winner:null, playerOut:false, poolsPlayed:false,
+  };
+  logEvent('🏵️ Coupe de la ligue : 4 poules de 5, les 2 premiers en play-offs !', C.club.color||'#f0c028');
+}
+// Joue toute la phase de poules d'un coup (simulation) et qualifie les 2 premiers.
+function _playLeagueCupPools(){
+  const C=careerV2; const lc=C.leagueCup; if(!lc || lc.poolsPlayed) return;
+  const qualified=[];
+  lc.pools.forEach(function(pool){
+    // Round-robin simple dans la poule.
+    pool.forEach(c=>{ c.pts=0; c.gf=0; c.ga=0; });
+    for(let i=0;i<pool.length;i++){ for(let j=i+1;j<pool.length;j++){
+      const res=_cupSimMatch(pool[i], pool[j]);
+      // _cupSimMatch renvoie {winner,ga,gb} ou une équipe (bye)
+      if(res && res.winner){
+        const w=res.winner, l=(w===pool[i]?pool[j]:pool[i]);
+        w.pts+=3; w.gf+=Math.max(res.ga,res.gb); w.ga+=Math.min(res.ga,res.gb);
+        l.gf+=Math.min(res.ga,res.gb); l.ga+=Math.max(res.ga,res.gb);
+      }
+    }}
+    pool.sort((a,b)=> b.pts-a.pts || (b.gf-b.ga)-(a.gf-a.ga));
+    qualified.push(pool[0], pool[1]); // 2 premiers
+    // Notifier si le joueur est qualifié/éliminé.
+    const me=pool.find(c=>c.isPlayer);
+    if(me){
+      const q=(pool[0]===me||pool[1]===me);
+      careerLog('🏵️ '+lc.name+' — phase de poules : '+(q?'QUALIFIÉ pour les play-offs !':'éliminé en poules.'), q?'#18c860':'#e06060');
+      if(!q) lc.playerOut=true;
+    }
+  });
+  lc.poolsPlayed=true;
+  lc.phase='playoffs';
+  // Mélange les 8 qualifiés pour le bracket.
+  for(let i=qualified.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [qualified[i],qualified[j]]=[qualified[j],qualified[i]]; }
+  lc.bracket=_cupPairUp(qualified);
+}
+// Fait avancer la coupe de ligue selon la semaine.
+function _advanceLeagueCup(){
+  const C=careerV2; const lc=C.leagueCup; if(!lc || lc.winner) return;
+  // Phase de poules : jouée en une fois à la 1re semaine de play-off -1.
+  if(lc.phase==='pools'){
+    if(C.week >= (lc.playoffWeeks[0]-1)){ _playLeagueCupPools(); }
+    return;
+  }
+  // Play-offs : un tour par semaine dédiée.
+  const roundIdx=lc.round;
+  if(roundIdx>=lc.playoffWeeks.length) return;
+  if(C.week < lc.playoffWeeks[roundIdx]) return;
+  const survivors=[];
+  (lc.bracket||[]).forEach(function(m){
+    if(m.played){ if(m.winner) survivors.push(m.winner); return; }
+    const res=_cupSimMatch(m.a,m.b);
+    if(res && res.winner){ m.winner=res.winner; m.played=true; survivors.push(res.winner);
+      if((m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer)){
+        const win=res.winner.isPlayer;
+        careerLog('🏵️ '+lc.name+' ('+lc.roundNames[roundIdx]+') — '+(win?'VICTOIRE !':'élimination.'), win?'#18c860':'#e06060');
+        if(!win) lc.playerOut=true;
+      }
+    }
+  });
+  lc.round++;
+  if(survivors.length<=1){
+    lc.winner=survivors[0]||null;
+    if(lc.winner&&lc.winner.isPlayer){ C.club.budget+=15000; C.club.reputation=Math.min(100,(C.club.reputation||0)+5); careerLog('🏵️ VOUS REMPORTEZ LA '+lc.name.toUpperCase()+' ! Prime 🪙15K, réputation +5 !','#f0c028'); }
+    else if(lc.winner){ careerLog('🏵️ '+lc.name+' remportée par '+lc.winner.name+'.','#f0c028'); }
+  } else {
+    lc.bracket=_cupPairUp(survivors);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1208,25 +1304,38 @@ function _cupTeamStrength(divLevel){
 function _generateNationalCup(){
   const C = careerV2;
   if(!C || C.nation!=='pilier' || typeof PILIER_TEAMS==='undefined') return;
-  // Rassembler un plateau de coupe : le club joueur + un échantillon d'autres
-  // clubs du Pilier (toutes divisions), taille en puissance de 2 (16).
-  const others = PILIER_TEAMS.filter(t=>t.name!==C.club.name);
-  // Mélange déterministe léger.
-  for(let i=others.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [others[i],others[j]]=[others[j],others[i]]; }
-  const SIZE = 16;
+
+  // La coupe dépend du BLOC du club joueur :
+  //   Pro (gtd,zenith)        → Coupe des Étoiles (40 clubs pro)
+  //   Célestes (cel1..cel4)   → Coupe de la Ligue Céleste (80 clubs régionaux)
+  //   Fondations (fond1..4)   → Coupe des Fondations (80 clubs amateurs)
+  const myDivId = C.club.pilierDivId || (typeof _pilierDivOfLevel==='function' ? _pilierDivOfLevel(C.club.level) : null);
+  const block = (typeof _pilierBlockOf==='function' && myDivId) ? _pilierBlockOf(myDivId) : 'fondation';
+  const blockDivs = (typeof PILIER_BLOCKS!=='undefined' && PILIER_BLOCKS[block]) ? PILIER_BLOCKS[block] : [];
+  const cupInfo = {
+    pro:       { name:'Coupe des Étoiles',        icon:'⭐' },
+    celeste:   { name:'Coupe de la Ligue Céleste', icon:'✨' },
+    fondation: { name:'Coupe des Fondations',      icon:'⚒️' },
+  }[block] || { name:'Coupe des Fondations', icon:'⚒️' };
+
+  // Participants : tous les clubs des divisions du bloc.
+  let pool = PILIER_TEAMS.filter(t=>blockDivs.includes(t.division) && t.name!==C.club.name);
+  // Mélange.
+  for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
+  // Taille en puissance de 2 : 32 pour un grand bloc (80 clubs), 32 pour pro (40).
+  const SIZE = pool.length >= 31 ? 32 : 16;
   const field = [{ name:C.club.name, color:C.club.color, badge:C.club.badge||null, level:C.club.level, isPlayer:true }]
-    .concat(others.slice(0, SIZE-1).map(t=>({ name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh', isPlayer:false })));
-  // Tableau de tours (16 → 8 → 4 → 2 → 1). Semaines de coupe espacées.
+    .concat(pool.slice(0, SIZE-1).map(t=>({ name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh', isPlayer:false })));
+  // Noms de tours selon la taille.
+  const roundNames = SIZE===32 ? ['32es','16es','8es','Quarts','Demies','Finale'] : ['16es','8es','Quarts','Demies','Finale'];
+  const weeks = SIZE===32 ? [2,4,7,10,13,16] : [3,6,9,12,15];
   C.cup = {
-    name: 'Coupe du Pilier',
-    field, round: 0,
-    roundNames: ['16es','8es','Quarts','Demies','Finale'],
-    // Les matchs de coupe tombent toutes les ~3 journées de championnat.
-    weeks: [3,6,9,12,15],
+    name: cupInfo.name, icon: cupInfo.icon, block,
+    field, round: 0, roundNames, weeks,
     bracket: _cupPairUp(field),
     eliminated: false, winner: null, playerOut: false,
   };
-  logEvent('🏆 '+C.cup.name+' : ton club entre en lice ('+field.length+' équipes) !', C.club.color||'#f0c028');
+  logEvent(cupInfo.icon+' '+C.cup.name+' : ton club entre en lice ('+field.length+' équipes) !', C.club.color||'#f0c028');
 }
 function _cupPairUp(teams){
   // Apparie la liste en paires successives pour le tour courant.
@@ -1268,10 +1377,10 @@ function _advanceNationalCup(){
       if(win){
         const prime = 4000 + roundIdx*3000;
         C.club.budget += prime;
-        careerLog('🏆 Coupe du Pilier ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+' ! Prime '+fmtG(prime), '#18c860');
+        careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+' ! Prime '+fmtG(prime), '#18c860');
       } else {
         cup.playerOut=true;
-        careerLog('🏆 Coupe du Pilier ('+cup.roundNames[roundIdx]+') — élimination '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+'.', '#e06060');
+        careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — élimination '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+'.', '#e06060');
       }
     }
   });

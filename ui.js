@@ -6888,6 +6888,34 @@ function _renderDirectorOverview(){
     h += '</div>';
   }
 
+  // ── Coupe de la ligue (4 poules → play-offs) ──────────────────────────
+  if(C.leagueCup){
+    const lc=C.leagueCup;
+    h += '<div style="background:var(--panel);border:1px solid var(--b1);border-left:4px solid #c060e0;border-radius:10px;padding:14px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#c060e0;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏵️ '+lc.name+'</div>';
+    if(lc.winner){
+      h += '<div style="font-size:13px;font-weight:800;color:'+(lc.winner.isPlayer?'#c060e0':'var(--muted)')+'">'+(lc.winner.isPlayer?'🏆 Vous avez remporté la coupe de la ligue !':('Remportée par '+lc.winner.name))+'</div>';
+    } else if(lc.playerOut){
+      h += '<div style="font-size:12px;color:#e06060">Éliminé. La coupe se poursuit sans vous.</div>';
+    } else if(lc.phase==='pools'){
+      // Afficher la poule du joueur.
+      const myPool = (lc.pools||[]).find(pool=>pool.some(c=>c.isPlayer));
+      h += '<div style="font-size:12px;font-weight:700;color:var(--fg);margin-bottom:6px">Phase de poules</div>';
+      if(myPool){
+        h += '<div style="font-size:9px;color:var(--muted);margin-bottom:4px">Votre poule :</div>';
+        myPool.forEach(function(c){
+          h += '<div style="font-size:11px;color:'+(c.isPlayer?'#c060e0':'var(--muted)')+';padding:1px 0">'+(c.isPlayer?'▸ ':'  ')+c.name+'</div>';
+        });
+      }
+      h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">Les 2 premiers se qualifient pour les play-offs.</div>';
+    } else {
+      const rn = lc.roundNames[lc.round] || 'Play-offs';
+      h += '<div style="font-size:13px;font-weight:700;color:var(--fg)">Play-offs : '+rn+'</div>';
+      h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">Qualifié pour les play-offs — matchs à élimination directe.</div>';
+    }
+    h += '</div>';
+  }
+
   if(standings.length > 0){
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px;margin-bottom:12px">';
     h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏆 Classement</div>';
@@ -7652,6 +7680,7 @@ function _runWeeklySystems(){
 
   try{ if(typeof _advanceInfraWorks==='function') _advanceInfraWorks(); }catch(e){ console.error('works:',e); }
   try{ if(typeof _advanceNationalCup==='function') _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
+  try{ if(typeof _advanceLeagueCup==='function') _advanceLeagueCup(); }catch(e){ console.error('leaguecup:',e); }
 
   if(C.week % 4 === 0){
     _generateFreeAgents();
