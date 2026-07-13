@@ -253,6 +253,7 @@ function _buildAffiliates(clubName, nationId){
     if(careerV2.affiliates.length){
       careerV2.house = me.house;
       logEvent('🏛 Maison '+me.house+' : '+careerV2.affiliates.length+' équipes réserves rattachées.', careerV2.club.color);
+      try{ if(typeof _setupHouseCup==='function') _setupHouseCup(); }catch(e){ console.error('housecup setup:',e); }
     }
   }
 }
@@ -642,9 +643,11 @@ function _weeklyCareerCosts(){
     total += lvl * Math.round(costs.weeklyBase * 0.08);
   });
 
-  // Frais de match si match joué cette semaine
+  // Frais de match si un match du club tombe dans les 6 jours autour
+  // d'aujourd'hui (basé sur la date réelle, pas le numéro de journée — les
+  // trêves internationales font diverger les deux au fil de la saison).
   const nextFix = (C.fixtures||[]).find(function(f){
-    return !f.played && f.week === C.week;
+    return !f.played && f.date && Math.abs(_daysBetween(C.date, f.date)) <= 6;
   });
   if(nextFix) total += costs.matchCost || 0;
 
@@ -1027,16 +1030,76 @@ function _addDays(d, n){
 function _daysBetween(d1, d2){
   return _dateToOrdinal(d2) - _dateToOrdinal(d1);
 }
-// Date calendaire d'une semaine de championnat donnée, calculée à partir de
-// la date de début de saison (ancrée, ne dérive pas si C.date avance).
+// ── Jours de semaine ─────────────────────────────────────────────────────
+// Ancrage fixe : ordinal 0 (An1, 1 Jan) tombe un Lundi. Comme le modèle de
+// dates est simplifié (semaines de 7 jours continues, sans exception), cet
+// ancrage suffit à donner un jour de semaine cohérent et stable à toute date.
+const _WEEKDAY_NAMES = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+function _dayOfWeek(d){
+  const o = _dateToOrdinal(d);
+  return ((o % 7) + 7) % 7; // 0=Lundi … 5=Samedi, 6=Dimanche
+}
+function _dayName(d){ return _WEEKDAY_NAMES[_dayOfWeek(d)]; }
+// Avance (ou reste sur place) jusqu'au prochain jour ayant le jour de semaine visé.
+function _nextWeekday(d, targetDow){
+  const diff = (targetDow - _dayOfWeek(d) + 7) % 7;
+  return _addDays(d, diff);
+}
+
+// ── Trêves internationales / hivernale ──────────────────────────────────
+// Chaque entrée { after, weeks } insère `weeks` semaines de pause AVANT la
+// journée `after+1` (donc directement après la journée `after`). Calé sur un
+// rythme réaliste : trêves internationales de sept/oct/nov, coupure hivernale
+// des fêtes, puis trêve internationale de mars.
+const INTL_BREAKS = [
+  { after: 5,  weeks: 1 }, // trêve internationale (septembre)
+  { after: 9,  weeks: 1 }, // trêve internationale (octobre)
+  { after: 13, weeks: 1 }, // trêve internationale (novembre)
+  { after: 17, weeks: 2 }, // trêve hivernale (fêtes de fin d'année)
+  { after: 30, weeks: 1 }, // trêve internationale (mars)
+];
+function _breakWeeksBefore(matchday){
+  let extra = 0;
+  INTL_BREAKS.forEach(function(b){ if(matchday > b.after) extra += b.weeks; });
+  return extra;
+}
+// Vrai si une trêve démarre juste après cette journée (utile pour l'affichage).
+function _isBreakAfter(matchday){
+  return INTL_BREAKS.some(function(b){ return b.after === matchday; });
+}
+
+// Date calendaire d'une journée de championnat donnée, calculée à partir de
+// la date de début de saison (ancrée, ne dérive pas si C.date avance). Les
+// journées tombent toujours un SAMEDI, et les trêves internationales/hivernale
+// décalent le calendrier d'autant de semaines pleines (l'ancrage Samedi est
+// donc toujours préservé).
 function _weekDate(week){
   const C = careerV2; if(!C) return {year:1,month:8,day:1};
   const start = C.seasonStartDate || C.date || {year:1,month:8,day:1};
-  return _addDays(start, (Math.max(1,week)-1) * 7);
+  const wk = Math.max(1, week);
+  const extraWeeks = _breakWeeksBefore(wk);
+  return _addDays(start, (wk - 1 + extraWeeks) * 7);
+}
+// Date d'un tour de coupe associé à la même semaine de championnat : les
+// coupes se jouent en semaine, le MERCREDI (3 jours avant le samedi de ligue).
+function _cupWeekDate(week){
+  return _addDays(_weekDate(week), -3);
 }
 function _fmtDateFr(d){
   const mois = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
   return d.day + ' ' + (mois[(d.month||1)-1]||'?') + ' An' + d.year;
+}
+// Variante longue avec le jour de semaine — utilisée pour les échéances
+// (prochain match, prochain tour de coupe...).
+function _fmtDateFrLong(d){
+  if(!d) return '?';
+  return _dayName(d) + ' ' + _fmtDateFr(d);
+}
+// Vrai si deux dates tombent dans la même semaine calendaire (fenêtre de 6
+// jours) — sert à détecter les semaines à double match (ligue + coupe).
+function _sameCalendarWeek(d1, d2){
+  if(!d1 || !d2) return false;
+  return Math.abs(_daysBetween(d1, d2)) <= 6;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1069,7 +1132,7 @@ function _matchOnDateKey(dateKey){
     const roundIdx = C.cup.round;
     if(roundIdx < C.cup.weeks.length){
       const cupWeek = C.cup.weeks[roundIdx];
-      const cupDate = _weekDate(cupWeek);
+      const cupDate = _cupWeekDate(cupWeek);
       if(_dateKey(cupDate)===dateKey){
         const m = (C.cup.bracket||[]).find(function(m){ return !m.played && ((m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer)); });
         if(m) return { cup:true, week:cupWeek };
@@ -1148,8 +1211,11 @@ function _resolveDayPlan(dateKey){
 // Partagé par les deux chemins de génération (Valoria et générique).
 function _buildRoundRobinFixtures(allClubs){
   // Ancrer la date de début de saison AVANT de calculer les dates de journées.
+  // On la cale sur le prochain SAMEDI (jour traditionnel des matchs de ligue),
+  // pour que toutes les journées tombent un samedi tout au long de la saison.
   if(careerV2 && !careerV2.seasonStartDate){
-    careerV2.seasonStartDate = Object.assign({}, careerV2.date || {year:1,month:8,day:1});
+    const base = Object.assign({}, careerV2.date || {year:1,month:8,day:1});
+    careerV2.seasonStartDate = _nextWeekday(base, 5); // 5 = Samedi
   }
   let clubs = allClubs.slice();
   if(clubs.length % 2 !== 0){ clubs.push({id:'__bye__', name:'(exempt)', isPlayer:false}); }
@@ -1401,6 +1467,223 @@ function _advanceNationalCup(){
   }
 }
 
+
+// Vrai si un tour de coupe (nationale ou de ligue) impliquant le club joueur
+// tombe dans la même semaine calendaire que sa prochaine journée de
+// championnat — utile pour prévenir le joueur d'un enchaînement à deux matchs.
+
+// ═══════════════════════════════════════════════════════════
+// COUPE DE MAISON (Pilier) — petite compétition interne entre les clubs
+// d'une même Maison (le club joueur + ses filiales/réserves affiliées).
+// Le joueur choisit le FORMAT avant que la coupe démarre :
+//   - 'roundrobin' : championnat interne (tous contre tous, une seule manche)
+//   - 'knockout'   : coupe à élimination directe
+// Se joue en semaine (mercredi, comme les autres coupes), sur des créneaux
+// qui évitent les semaines déjà prises par la coupe nationale / de ligue.
+// Les matchs sont simulés automatiquement (compétition annexe, low-stakes).
+// ═══════════════════════════════════════════════════════════
+
+// Force approximative d'une équipe de la coupe de Maison, basée sur l'OVR
+// moyen de son effectif (club joueur ou filiale affiliée) plutôt que sur le
+// niveau de division (ce sont souvent des réserves/académies).
+function _houseCupOvr(p){
+  if(typeof _pOvr==='function') return _pOvr(p);
+  if(typeof careerOvr==='function') return careerOvr(p);
+  const s=p.s||{};
+  return Math.round(((s.sht||50)+(s.spd||50)+(s.def||50)+(s.stam||50)+(s.tec||50)+(s.res||50))/6);
+}
+function _houseCupTeamStrength(team){
+  const C = careerV2;
+  let squad;
+  if(team.isPlayer){ squad = [...(C.players||[]), ...(C.bench||[])]; }
+  else { const aff = (C.affiliates||[])[team.affIdx]; squad = aff ? [...(aff.players||[]), ...(aff.bench||[])] : []; }
+  if(!squad.length) return 0.35;
+  const avg = squad.reduce(function(s,p){ return s+_houseCupOvr(p); },0) / squad.length;
+  return Math.min(0.95, Math.max(0.15, avg/100));
+}
+// Simule un match de coupe de Maison entre deux équipes (objets {isPlayer,affIdx,...}).
+function _houseCupSimMatch(a,b){
+  if(!b) return { winner:a, ga:0, gb:0, bye:true }; // exempt
+  const sa=_houseCupTeamStrength(a), sb=_houseCupTeamStrength(b);
+  const gA=Math.max(0, Math.round((sa*2.4 + Math.random()*2.2) - sb*1.1));
+  const gB=Math.max(0, Math.round((sb*2.4 + Math.random()*2.2) - sa*1.1));
+  return { winner: gA>=gB?a:b, ga:gA, gb:gB };
+}
+
+// Choisit des semaines de coupe pour la Coupe de Maison, en évitant les
+// semaines déjà occupées par la coupe nationale / la coupe de ligue.
+function _pickHouseCupWeeks(nbRounds){
+  const C = careerV2;
+  const used = new Set(
+    (((C.cup||{}).weeks)||[]).concat(((C.leagueCup||{}).playoffWeeks)||[])
+  );
+  const weeks = [];
+  let w = 3;
+  while(weeks.length < nbRounds && w <= 36){
+    if(!used.has(w)) weeks.push(w);
+    w += 2;
+  }
+  w = 3;
+  while(weeks.length < nbRounds && w <= 37){
+    if(!weeks.includes(w) && !used.has(w)) weeks.push(w);
+    w++;
+  }
+  return weeks.sort(function(a,b){ return a-b; }).slice(0, nbRounds);
+}
+
+// Prépare la Coupe de Maison : identifie les équipes (club joueur + filiales
+// de la même Maison) mais NE démarre PAS tant que le joueur n'a pas choisi
+// le format. Appelée juste après _buildAffiliates.
+function _setupHouseCup(){
+  const C = careerV2; if(!C || !C.house || !(C.affiliates||[]).length) return;
+  const teams = [{ ref:{isPlayer:true}, name:C.club.name, color:C.club.color, badge:C.club.badge||null, isPlayer:true }]
+    .concat(C.affiliates.map(function(aff,i){
+      return { ref:{affIdx:i}, name:aff.name, color:aff.color, badge:aff.badge||null, isPlayer:false };
+    }));
+  if(teams.length < 2) return;
+  C.houseCup = {
+    house: C.house, teams: teams,
+    format: null, started: false,
+    // Round-robin :
+    rrFixtures: [], rrStandings: null,
+    // Knockout :
+    bracket: null, round: 0, roundNames: [],
+    weeks: [], winner: null, playerOut: false,
+  };
+  logEvent('🏛 Coupe de la Maison '+C.house+' : '+teams.length+' équipes — choisissez le format dans l\'onglet Maison.', C.club.color||'#c060e0');
+}
+
+// Démarre la Coupe de Maison avec le format choisi par le joueur.
+function _startHouseCup(format){
+  const C = careerV2; const hc = C.houseCup; if(!hc || hc.started) return;
+  hc.format = format;
+  hc.started = true;
+  const n = hc.teams.length;
+  if(format === 'roundrobin'){
+    // Championnat interne : une seule manche (tous contre tous une fois),
+    // méthode du cercle pour garantir un seul match par équipe et par semaine.
+    let clubs = hc.teams.map(function(t,i){ return Object.assign({idx:i}, t); });
+    if(clubs.length % 2 !== 0) clubs.push({ idx:-1, bye:true });
+    const nn = clubs.length, rounds = nn-1, half = nn/2;
+    const weeks = _pickHouseCupWeeks(rounds);
+    hc.weeks = weeks;
+    let rot = clubs.slice();
+    const fixtures = [];
+    for(let r=0; r<rounds; r++){
+      for(let i=0;i<half;i++){
+        const h = rot[i], a = rot[nn-1-i];
+        if(h.bye || a.bye) continue;
+        fixtures.push({ round:r, week: weeks[r]||weeks[weeks.length-1], home:h.idx, away:a.idx, played:false, sh:null, sa:null });
+      }
+      rot = [rot[0]].concat([rot[nn-1]], rot.slice(1, nn-1));
+    }
+    hc.rrFixtures = fixtures;
+    hc.rrStandings = hc.teams.map(function(t,i){ return { idx:i, name:t.name, isPlayer:t.isPlayer, P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0 }; });
+    careerLog('🏛 Championnat de la Maison '+hc.house+' lancé — '+fixtures.length+' matchs internes !', C.club.color||'#c060e0');
+  } else {
+    // Élimination directe : mélange puis appariement, byes si nécessaire.
+    let shuffled = hc.teams.map(function(t,i){ return Object.assign({idx:i}, t); });
+    for(let i=shuffled.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]]; }
+    hc.bracket = _cupPairUp(shuffled);
+    const rounds = Math.ceil(Math.log2(Math.max(2,shuffled.length)));
+    const names = ['Finale'];
+    if(rounds>=2) names.unshift('Demi-finale');
+    if(rounds>=3) names.unshift('Quarts de finale');
+    while(names.length < rounds) names.unshift('Tour '+(rounds-names.length));
+    hc.roundNames = names;
+    hc.weeks = _pickHouseCupWeeks(rounds);
+    careerLog('🏛 Coupe à élimination directe de la Maison '+hc.house+' lancée — '+shuffled.length+' équipes !', C.club.color||'#c060e0');
+  }
+  try{ saveCareerV2(); }catch(e){}
+}
+
+// Fait avancer la Coupe de Maison si la semaine courante correspond à un tour.
+function _advanceHouseCup(){
+  const C = careerV2; const hc = C.houseCup; if(!hc || !hc.started || hc.winner) return;
+  if(hc.format === 'roundrobin'){
+    const due = (hc.rrFixtures||[]).filter(function(f){ return !f.played && f.week===C.week; });
+    if(!due.length) return;
+    due.forEach(function(f){
+      const a = hc.teams[f.home], b = hc.teams[f.away];
+      const res = _houseCupSimMatch(a,b);
+      f.played = true; f.sh = res.ga; f.sa = res.gb;
+      const sa = hc.rrStandings[f.home], sb = hc.rrStandings[f.away];
+      sa.P++; sb.P++; sa.GF+=res.ga; sa.GA+=res.gb; sb.GF+=res.gb; sb.GA+=res.ga;
+      if(res.ga>res.gb){ sa.W++; sa.Pts+=3; sb.L++; } else if(res.ga<res.gb){ sb.W++; sb.Pts+=3; sa.L++; } else { sa.D++; sb.D++; sa.Pts++; sb.Pts++; }
+      if(a.isPlayer||b.isPlayer){
+        const me=a.isPlayer?a:b, opp=a.isPlayer?b:a, myG=a.isPlayer?res.ga:res.gb, opG=a.isPlayer?res.gb:res.ga;
+        careerLog('🏛 Maison ('+hc.house+') — '+(myG>opG?'Victoire':myG===opG?'Match nul':'Défaite')+' '+myG+'-'+opG+' vs '+opp.name+'.', myG>opG?'#18c860':myG===opG?'#f0c028':'#e06060');
+      }
+    });
+    if((hc.rrFixtures||[]).every(function(f){ return f.played; })){
+      const sorted = hc.rrStandings.slice().sort(function(x,y){ return y.Pts-x.Pts || (y.GF-y.GA)-(x.GF-x.GA); });
+      hc.winner = hc.teams[sorted[0].idx];
+      if(hc.winner.isPlayer){ C.club.budget+=3000; careerLog('🏛 VOUS REMPORTEZ LE CHAMPIONNAT DE LA MAISON '+hc.house.toUpperCase()+' ! Prime 🪙3K.', '#f0c028'); }
+      else careerLog('🏛 Championnat de la Maison '+hc.house+' remporté par '+hc.winner.name+'.', '#c060e0');
+    }
+    return;
+  }
+  // Knockout
+  const roundIdx = hc.round;
+  if(roundIdx >= hc.weeks.length) return;
+  if(C.week < hc.weeks[roundIdx]) return;
+  const survivors = [];
+  (hc.bracket||[]).forEach(function(m){
+    if(m.played){ if(m.winner) survivors.push(m.winner); return; }
+    const res = _houseCupSimMatch(m.a, m.b);
+    m.winner = res.winner; m.ga=res.ga; m.gb=res.gb; m.played=true;
+    survivors.push(res.winner);
+    if(!res.bye && ((m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer))){
+      const win = res.winner.isPlayer;
+      const opp = (m.a&&m.a.isPlayer)?m.b:m.a;
+      careerLog('🏛 Coupe de Maison ('+(hc.roundNames[roundIdx]||'Tour')+') — '+(win?'VICTOIRE':'élimination')+' vs '+(opp?opp.name:'?')+'.', win?'#18c860':'#e06060');
+      if(!win) hc.playerOut = true;
+    }
+  });
+  hc.round++;
+  if(survivors.length <= 1){
+    hc.winner = survivors[0] || null;
+    if(hc.winner && hc.winner.isPlayer){ C.club.budget+=3000; careerLog('🏛 VOUS REMPORTEZ LA COUPE DE LA MAISON '+hc.house.toUpperCase()+' ! Prime 🪙3K.', '#f0c028'); }
+    else if(hc.winner) careerLog('🏛 Coupe de la Maison '+hc.house+' remportée par '+hc.winner.name+'.', '#c060e0');
+  } else {
+    hc.bracket = _cupPairUp(survivors);
+  }
+  try{ saveCareerV2(); }catch(e){}
+}
+
+function _hasCupClashThisWeek(leagueWeek){
+  const C = careerV2; if(!C || !leagueWeek) return false;
+  if(C.cup && !C.cup.winner && !C.cup.playerOut){
+    const idx = C.cup.round;
+    if(idx < (C.cup.weeks||[]).length && C.cup.weeks[idx]===leagueWeek){
+      const inBracket = (C.cup.bracket||[]).some(function(m){ return (m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer); });
+      if(inBracket) return true;
+    }
+  }
+  if(C.leagueCup && !C.leagueCup.winner && !C.leagueCup.playerOut && C.leagueCup.phase==='playoffs'){
+    const idx = C.leagueCup.round;
+    if(idx < (C.leagueCup.playoffWeeks||[]).length && C.leagueCup.playoffWeeks[idx]===leagueWeek){
+      const inBracket = (C.leagueCup.bracket||[]).some(function(m){ return (m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer); });
+      if(inBracket) return true;
+    }
+  }
+  if(C.houseCup && C.houseCup.started && !C.houseCup.winner){
+    const hc = C.houseCup;
+    if(hc.format==='roundrobin'){
+      const due = (hc.rrFixtures||[]).some(function(f){
+        return !f.played && f.week===leagueWeek && (hc.teams[f.home].isPlayer || hc.teams[f.away].isPlayer);
+      });
+      if(due) return true;
+    } else if(hc.format==='knockout' && !hc.playerOut){
+      const idx = hc.round;
+      if(idx < (hc.weeks||[]).length && hc.weeks[idx]===leagueWeek){
+        const inBracket = (hc.bracket||[]).some(function(m){ return (m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer); });
+        if(inBracket) return true;
+      }
+    }
+  }
+  return false;
+}
 
 function _generateInitialJobOffers(regionId, nationId){
   nationId = nationId || 'panthalassa';

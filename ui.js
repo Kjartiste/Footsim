@@ -6558,7 +6558,7 @@ function renderCareerDirector(el){
   html += '<div style="font-size:22px;font-weight:900;color:var(--fg);letter-spacing:.5px">'+club.name+'</div>';
   html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">';
   html += (region?region.name:'?')+' · '+(club.divisionName || (pyramid?pyramid.name:club.level))+' · Saison '+C.season;
-  html += ' · Semaine '+C.week+' · '+_fmtDateFr(C.date);
+  html += ' · Semaine '+C.week+' · '+_fmtDateFrLong(C.date);
   html += '</div></div>';
   // Budget
   html += '<div style="text-align:right;flex-shrink:0">';
@@ -6656,12 +6656,72 @@ function _affOvr(aff){
   all.forEach(function(p){ const v=Object.values(p.s||{}); if(v.length){ sum+=v.reduce((a,b)=>a+b,0)/v.length; n++; } });
   return n?Math.round(sum/n):null;
 }
+// ── Coupe de Maison — carte de statut (choix du format, classement/bracket) ─
+function _houseCupHTML(hc, club){
+  const accent = '#c060e0';
+  let h = '<div style="background:var(--panel);border:1px solid '+accent+'55;border-left:4px solid '+accent+';border-radius:10px;padding:14px;margin-bottom:14px">';
+  h += '<div style="font-size:12px;font-weight:900;color:'+accent+';margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🏵️ Coupe de la Maison '+hc.house+'</div>';
+
+  if(!hc.started){
+    h += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Choisissez le format de la petite compétition interne entre les '+hc.teams.length+' équipes de votre Maison :</div>';
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    h += '<button class="btn btng" onclick="_pickHouseCupFormat(\'roundrobin\')" style="flex:1;min-width:140px;font-size:11px;padding:9px;font-weight:800">🏆 Championnat interne<div style="font-size:8px;font-weight:500;opacity:.8;margin-top:2px">Tous contre tous, une manche</div></button>';
+    h += '<button class="btn btng" onclick="_pickHouseCupFormat(\'knockout\')" style="flex:1;min-width:140px;font-size:11px;padding:9px;font-weight:800">⚔️ Élimination directe<div style="font-size:8px;font-weight:500;opacity:.8;margin-top:2px">Tirage au sort, tours secs</div></button>';
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Liste des équipes participantes.
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:8px">'+hc.teams.length+' équipes · Format : '+(hc.format==='roundrobin'?'Championnat interne':'Élimination directe')+'</div>';
+
+  if(hc.winner){
+    h += '<div style="font-size:13px;font-weight:800;color:'+(hc.winner.isPlayer?'#f0c028':'var(--muted)')+'">'+(hc.winner.isPlayer?'👑 Vous avez remporté la coupe de Maison !':('Remportée par '+hc.winner.name))+'</div>';
+  } else if(hc.playerOut){
+    h += '<div style="font-size:12px;color:#e06060">Éliminé. La coupe se poursuit sans vous.</div>';
+  }
+
+  if(hc.format==='roundrobin' && hc.rrStandings){
+    const sorted = hc.rrStandings.slice().sort(function(a,b){ return b.Pts-a.Pts || (b.GF-b.GA)-(a.GF-a.GA); });
+    h += '<div style="margin-top:6px">';
+    sorted.forEach(function(s,i){
+      const isMe = hc.teams[s.idx].isPlayer;
+      h += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;padding:3px 0;color:'+(isMe?accent:'var(--fg)')+';font-weight:'+(isMe?800:500)+'">';
+      h += '<span style="width:14px;color:var(--muted)">'+(i+1)+'</span><span style="flex:1">'+(isMe?'▸ ':'')+s.name+'</span>';
+      h += '<span style="color:var(--muted)">'+s.P+'j</span><span style="width:26px;text-align:right">'+s.Pts+'pts</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  } else if(hc.format==='knockout' && hc.bracket){
+    const rn = hc.roundNames[hc.round] || (hc.winner?'Terminée':'Tour');
+    if(!hc.winner) h += '<div style="font-size:11px;font-weight:700;color:var(--fg);margin-top:4px">Tour actuel : '+rn+'</div>';
+    let oppName=null;
+    (hc.bracket||[]).forEach(function(m){
+      if(m.a&&m.a.isPlayer) oppName = m.b?m.b.name:'(exempt)';
+      else if(m.b&&m.b.isPlayer) oppName = m.a?m.a.name:'(exempt)';
+    });
+    if(oppName && !hc.winner && !hc.playerOut) h += '<div style="font-size:10px;color:var(--muted);margin-top:2px">Prochain adversaire : <b style="color:var(--fg)">'+oppName+'</b></div>';
+  }
+  h += '</div>';
+  return h;
+}
+function _pickHouseCupFormat(format){
+  const C = careerV2; if(!C || !C.houseCup) return;
+  _startHouseCup(format);
+  try{ saveCareerV2(); }catch(e){}
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
+}
+
 function _renderDirectorAffiliates(){
   const C = careerV2;
   const affs = C.affiliates || [];
+  if(C.house && affs.length && !C.houseCup && typeof _setupHouseCup==='function'){
+    try{ _setupHouseCup(); saveCareerV2(); }catch(e){ console.error('housecup lazy setup:',e); }
+  }
   let h = '<div style="padding:14px">';
   h += '<div style="font-size:15px;font-weight:900;color:var(--gold);margin-bottom:4px">🏛 '+(C.house?('Maison '+C.house):'Équipes réserves')+'</div>';
   h += '<div style="font-size:10px;color:var(--muted);margin-bottom:14px">Vos équipes réserves jouent leur propre championnat. Vous pouvez les gérer vous-même ou déléguer.</div>';
+  if(C.houseCup) h += _houseCupHTML(C.houseCup, C.club);
   if(!affs.length){
     h += '<div style="font-size:11px;color:var(--muted);text-align:center;padding:24px">Aucune équipe réserve pour le moment.</div>';
     h += '</div>'; return h;
@@ -6839,12 +6899,16 @@ function _renderDirectorOverview(){
     const isHome = nextFix.homeIsPlayer;
     const opp = isHome ? nextFix.awayName : nextFix.homeName;
     const isPendingToday = C._pendingMatch && !C._pendingMatch.cup && C._pendingMatch.fixtureId===nextFix.id;
-    h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">J'+nextFix.week+' · '+(nextFix.date?_fmtDateFr(nextFix.date):'?')+'</div>';
+    const doubleWeek = typeof _hasCupClashThisWeek==='function' && _hasCupClashThisWeek(nextFix.week);
+    h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">J'+nextFix.week+' · '+(nextFix.date?_fmtDateFrLong(nextFix.date):'?')+'</div>';
     h += '<div style="font-size:15px;font-weight:900;margin-bottom:6px">';
     h += isHome ? '<span style="color:'+accentCol+'">'+club.name+'</span> vs '+opp
                : opp+' vs <span style="color:'+accentCol+'">'+club.name+'</span>';
     h += '</div>';
     h += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+(isHome?'🏠 Domicile':'✈️ Extérieur')+'</div>';
+    if(doubleWeek){
+      h += '<div style="margin-bottom:10px;padding:6px 8px;border-radius:6px;background:#f0c02822;border:1px solid #f0c028;font-size:10px;color:#f0c028;font-weight:700">⚠️ Double match cette semaine — un tour de coupe tombe aussi cette semaine.</div>';
+    }
     if(isPendingToday){
       h += '<div style="display:flex;gap:6px">';
       h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:8px;font-weight:900">▶ Jouer</button>';
@@ -6881,9 +6945,10 @@ function _renderDirectorOverview(){
         if(m.a&&m.a.isPlayer) oppName=m.b?m.b.name:'(exempt)';
         else if(m.b&&m.b.isPlayer) oppName=m.a?m.a.name:'(exempt)';
       });
+      const cupDateStr = typeof _cupWeekDate==='function' ? _fmtDateFrLong(_cupWeekDate(nextWk)) : ('semaine '+nextWk);
       h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">Tour : '+rn+'</div>';
-      if(oppName) h += '<div style="font-size:12px;color:var(--muted)">Prochain adversaire : <b style="color:var(--fg)">'+oppName+'</b> (semaine '+nextWk+')</div>';
-      h += '<div style="font-size:10px;color:var(--muted);margin-top:6px">Le match de coupe se joue automatiquement à la semaine indiquée.</div>';
+      if(oppName) h += '<div style="font-size:12px;color:var(--muted)">Prochain adversaire : <b style="color:var(--fg)">'+oppName+'</b></div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-top:6px">🗓️ '+cupDateStr+' — le match se joue automatiquement à cette date.</div>';
     }
     h += '</div>';
   }
@@ -6910,8 +6975,10 @@ function _renderDirectorOverview(){
       h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">Les 2 premiers se qualifient pour les play-offs.</div>';
     } else {
       const rn = lc.roundNames[lc.round] || 'Play-offs';
+      const lcWk = lc.playoffWeeks && lc.playoffWeeks[lc.round];
+      const lcDateStr = (lcWk!=null && typeof _cupWeekDate==='function') ? _fmtDateFrLong(_cupWeekDate(lcWk)) : null;
       h += '<div style="font-size:13px;font-weight:700;color:var(--fg)">Play-offs : '+rn+'</div>';
-      h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">Qualifié pour les play-offs — matchs à élimination directe.</div>';
+      h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">'+(lcDateStr?'🗓️ '+lcDateStr+' — ':'')+'Qualifié pour les play-offs — matchs à élimination directe.</div>';
     }
     h += '</div>';
   }
@@ -7480,9 +7547,15 @@ function _calMatchOnDate(C, dateKey){
   }) || null;
 }
 function _calCupOnDate(C, dateKey){
-  if(!C.cup || !Array.isArray(C.cup.weeks)) return null;
-  for(let i=0;i<C.cup.weeks.length;i++){
-    if(_dateKey(_weekDate(C.cup.weeks[i]))===dateKey) return {round:i};
+  if(C.cup && Array.isArray(C.cup.weeks)){
+    for(let i=0;i<C.cup.weeks.length;i++){
+      if(_dateKey(_cupWeekDate(C.cup.weeks[i]))===dateKey) return {round:i, name:C.cup.name};
+    }
+  }
+  if(C.leagueCup && Array.isArray(C.leagueCup.playoffWeeks)){
+    for(let i=0;i<C.leagueCup.playoffWeeks.length;i++){
+      if(_dateKey(_cupWeekDate(C.leagueCup.playoffWeeks[i]))===dateKey) return {round:i, name:C.leagueCup.name};
+    }
   }
   return null;
 }
@@ -7518,8 +7591,19 @@ function _renderDirectorCalendar(){
     h += '</div>';
   }
 
-  // ── Grille du mois (30 jours) ──────────────────────────────────────
-  h += '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">';
+  // ── Grille du mois (30 jours), alignée sur de vrais jours de semaine ────
+  // En-tête Lun→Dim, puis cases vides avant le 1er du mois pour que les
+  // samedis (matchs de ligue) et mercredis (coupe) tombent bien dans leurs
+  // colonnes respectives, comme un vrai calendrier.
+  const _WD_ABBR = ['L','M','M','J','V','S','D'];
+  h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:3px">';
+  _WD_ABBR.forEach(function(w,i){
+    h += '<div style="text-align:center;font-size:8px;font-weight:900;color:'+(i===5?'#f0c028':i===2?'#00bcd4':'var(--muted)')+'">'+w+'</div>';
+  });
+  h += '</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+  const leadBlanks = _dayOfWeek({year:viewDate.year, month:viewDate.month, day:1});
+  for(let i=0;i<leadBlanks;i++){ h += '<div></div>'; }
   for(let day=1; day<=30; day++){
     const d = {year:viewDate.year, month:viewDate.month, day:day};
     const dk = _dateKey(d);
@@ -7681,6 +7765,7 @@ function _runWeeklySystems(){
   try{ if(typeof _advanceInfraWorks==='function') _advanceInfraWorks(); }catch(e){ console.error('works:',e); }
   try{ if(typeof _advanceNationalCup==='function') _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
   try{ if(typeof _advanceLeagueCup==='function') _advanceLeagueCup(); }catch(e){ console.error('leaguecup:',e); }
+  try{ if(typeof _advanceHouseCup==='function') _advanceHouseCup(); }catch(e){ console.error('housecup:',e); }
 
   if(C.week % 4 === 0){
     _generateFreeAgents();
