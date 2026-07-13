@@ -8001,6 +8001,9 @@ function endCareerSeasonDirector(){
   C.date = {year:(C.date&&C.date.year||1)+1, month:8, day:1};
   C.season_stats = {wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0};
   logEvent('Saison '+C.season+' — Nouveau depart !', C.club.color||'#18c860');
+  // IA de gestion : les clubs adverses vieillissent, progressent/déclinent et
+  // font quelques mouvements de mercato avant que la nouvelle saison démarre.
+  try{ _evolveOpponentSquads(); }catch(e){ console.error('evolve opponents:',e); }
   _generateSeasonFixtures();
   _generateFreeAgents();
   _generateYouthIntake();

@@ -144,6 +144,58 @@ function ensureTeamRaces(team){
   });
 }
 
+// ── ESPÉRANCE DE CARRIÈRE PAR RACE ──────────────────────────────────────
+// Purement physiologique (cf. principe anti-essentialisme en tête de
+// fichier). Deux cas particuliers de lore à respecter :
+//   • RACES IMMORTELLES (démon, vampire, ange, fée) : le corps ne se
+//     dégrade pas avec l'âge — pas de déclin de stats, pas de retraite
+//     forcée liée à l'âge (peakEnd/declineEnd = Infinity, retire = []).
+//     Une carrière peut prendre fin pour d'autres raisons (transfert,
+//     choix personnel…) mais jamais "l'âge" en tant que tel.
+//   • GOBELIN : maturité quasi immédiate (dès ~8 ans) — pas de vraie phase
+//     de progression "jeune pousse" dans la tranche d'âge jouée (16-34) ;
+//     un gobelin de 16 ans est déjà un adulte fait.
+// Seuils en "âge de joueur" (mêmes unités que p.age) :
+//   youthEnd    : fin de la forte progression (jeunes pousses)
+//   earlyEnd    : fin de la progression modérée
+//   peakEnd     : fin du pic de forme (stats stables)
+//   declineEnd  : fin du déclin léger (au-delà : déclin marqué)
+//   retire      : paliers [{age, chance}] de retraite en fin de saison
+const RACE_AGE_PROFILES = {
+  human:       { youthEnd:20, earlyEnd:23, peakEnd:28, declineEnd:31, retire:[{age:32,chance:0.12},{age:34,chance:0.45},{age:36,chance:0.90}] },
+  // Immortelles : jamais de déclin physique ni de retraite liée à l'âge.
+  demon:       { youthEnd:19, earlyEnd:21, peakEnd:Infinity, declineEnd:Infinity, retire:[] },
+  angel:       { youthEnd:21, earlyEnd:24, peakEnd:Infinity, declineEnd:Infinity, retire:[] },
+  vampire:     { youthEnd:23, earlyEnd:26, peakEnd:Infinity, declineEnd:Infinity, retire:[] },
+  fairy:       { youthEnd:18, earlyEnd:20, peakEnd:Infinity, declineEnd:Infinity, retire:[] },
+  half_dragon: { youthEnd:21, earlyEnd:24, peakEnd:30, declineEnd:33, retire:[{age:34,chance:0.10},{age:37,chance:0.40},{age:40,chance:0.85}] },
+  elf:         { youthEnd:22, earlyEnd:25, peakEnd:33, declineEnd:36, retire:[{age:37,chance:0.10},{age:40,chance:0.40},{age:44,chance:0.85}] },
+  siren:       { youthEnd:21, earlyEnd:24, peakEnd:29, declineEnd:32, retire:[{age:33,chance:0.12},{age:36,chance:0.42},{age:39,chance:0.85}] },
+  leyak:       { youthEnd:19, earlyEnd:21, peakEnd:24, declineEnd:27, retire:[{age:27,chance:0.15},{age:30,chance:0.50},{age:33,chance:0.90}] },
+  // Maturité quasi immédiate (~8 ans) : déjà adulte fait à l'entrée en jeu.
+  goblin:      { youthEnd:8,  earlyEnd:10, peakEnd:23, declineEnd:26, retire:[{age:26,chance:0.15},{age:29,chance:0.50},{age:32,chance:0.90}] },
+  hobgoblin:   { youthEnd:20, earlyEnd:23, peakEnd:28, declineEnd:31, retire:[{age:32,chance:0.12},{age:34,chance:0.45},{age:36,chance:0.90}] },
+  orc:         { youthEnd:19, earlyEnd:21, peakEnd:25, declineEnd:28, retire:[{age:28,chance:0.15},{age:31,chance:0.50},{age:34,chance:0.90}] },
+  dwarf:       { youthEnd:21, earlyEnd:24, peakEnd:31, declineEnd:34, retire:[{age:35,chance:0.10},{age:38,chance:0.40},{age:42,chance:0.85}] },
+  lycan:       { youthEnd:20, earlyEnd:23, peakEnd:27, declineEnd:30, retire:[{age:30,chance:0.14},{age:33,chance:0.48},{age:36,chance:0.90}] },
+  giant:       { youthEnd:20, earlyEnd:22, peakEnd:25, declineEnd:28, retire:[{age:28,chance:0.16},{age:31,chance:0.52},{age:34,chance:0.90}] },
+};
+
+// Profil d'âge d'une race (repli humain si race inconnue/absente — sûr pour
+// les sauvegardes antérieures au système de races).
+function raceAgeProfile(race){
+  return RACE_AGE_PROFILES[race] || RACE_AGE_PROFILES.human;
+}
+
+// Chance de retraite en fin de saison pour un âge donné, selon le profil de
+// la race (le palier le plus élevé encore atteint par l'âge s'applique).
+function raceRetireChance(race, age){
+  const profile = raceAgeProfile(race);
+  let chance = 0;
+  (profile.retire||[]).forEach(function(step){ if(age >= step.age) chance = step.chance; });
+  return chance;
+}
+
 if(typeof window!=='undefined'){
   window.RACE_MODIFIERS = RACE_MODIFIERS;
   window.RACE_IDS = RACE_IDS;
@@ -155,4 +207,7 @@ if(typeof window!=='undefined'){
   window.pickRaceForPilier = pickRaceForPilier;
   window.ensurePlayerRace = ensurePlayerRace;
   window.ensureTeamRaces = ensureTeamRaces;
+  window.RACE_AGE_PROFILES = RACE_AGE_PROFILES;
+  window.raceAgeProfile = raceAgeProfile;
+  window.raceRetireChance = raceRetireChance;
 }

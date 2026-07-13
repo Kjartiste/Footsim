@@ -766,16 +766,135 @@ function _applyWeeklyEconomy(){
 // Génère un effectif complet (titulaires + banc + réserves) pour un club NPC,
 // dimensionné selon son niveau. Sert à consulter l'adversaire et de base à
 // l'IA de gestion. Compact pour ne pas alourdir la sauvegarde à l'excès.
+// Résout un identifiant de région tolérant : certains clubs stockent le NOM
+// affiché de la région (ex: 'Le Pilier') plutôt que son id interne (ex:
+// 'le_pilier'), ce qui faisait échouer WORLDS.getRegion silencieusement (→
+// effectif vide). On retombe sur la correspondance par nom, puis sur l'unique
+// région de la nation si elle n'en a qu'une.
+function _resolveRegionId(nationId, regionIdOrName){
+  const nation = WORLDS.get(nationId);
+  if(!nation) return regionIdOrName;
+  const regions = nation.regions || [];
+  if(regions.some(r=>r.id===regionIdOrName)) return regionIdOrName;
+  const byName = regions.find(r=>r.name===regionIdOrName);
+  if(byName) return byName.id;
+  if(regions.length===1) return regions[0].id;
+  return regionIdOrName;
+}
+
 function _buildOpponentSquad(nationId, regionId, level, clubName){
   const sizeByLevel = { d1:{s:14,b:5}, d2:{s:14,b:4}, d3:{s:13,b:4}, r1:{s:12,b:4}, r2:{s:12,b:3}, r3:{s:11,b:3}, dh:{s:11,b:3} };
   const sz = sizeByLevel[level] || sizeByLevel.dh;
   const mkPos = (n)=>{ const base=['GB','DC','DC','DD','DG','MDC','MC','MC','MOG','MOD','ATT']; const extra=['DC','MC','ATT','DD','GB','MDC','MOG']; const out=base.slice(); for(let i=0;out.length<n;i++) out.push(extra[i%extra.length]); return out.slice(0,n); };
   try{
-    const sq = WORLDS.generateSquad(nationId, regionId, {
+    const resolvedRegion = _resolveRegionId(nationId, regionId);
+    const sq = WORLDS.generateSquad(nationId, resolvedRegion, {
       positions: mkPos(sz.s), bench: mkPos(sz.b), reserves: mkPos(3), level: level,
     });
     return { players: sq.players||[], bench: sq.bench||[], reserves: sq.reserves||[] };
   }catch(e){ console.error('opponent squad:',e); return { players:[], bench:[], reserves:[] }; }
+}
+
+// ── IA DE GESTION DES CLUBS ADVERSES (vie entre saisons) ───────────────────
+// Stockage persistant des effectifs adverses, indépendant des standings (qui
+// sont régénérés avec de nouveaux ids chaque saison). Clé = nom du club, ce
+// qui permet de retrouver et faire évoluer le même effectif saison après
+// saison au lieu de le régénérer à neuf à chaque fois.
+function _getOrBuildOpponentSquad(nationId, regionId, level, clubName){
+  if(!careerV2.opponentSquads) careerV2.opponentSquads = {};
+  let entry = careerV2.opponentSquads[clubName];
+  if(!entry || !entry.squad){
+    entry = { region: regionId, level: level, squad: _buildOpponentSquad(nationId, regionId, level, clubName) };
+    careerV2.opponentSquads[clubName] = entry;
+  } else {
+    // Garder les infos à jour (au cas où région/niveau changeraient dans les données).
+    entry.region = regionId; entry.level = level;
+  }
+  return entry.squad;
+}
+
+// Ajuste les stats d'un joueur adverse selon son âge ET sa race : chaque
+// race mûrit, culmine et décline à un rythme différent (ex : un vampire
+// quasi-immortel décline très tard, un gobelin ou une fée bien plus tôt) —
+// cf. RACE_AGE_PROFILES dans races.js. Purement physiologique, comme le
+// reste du système de races.
+function _agePlayerStats(p){
+  if(!p || !p.s) return;
+  const age = p.age || 20;
+  const profile = (typeof raceAgeProfile==='function') ? raceAgeProfile(p.race) : null;
+  let delta;
+  if(!profile){
+    // Repli si races.js n'est pas chargé : ancienne courbe humaine unique.
+    if(age <= 20)      delta = 2 + Math.random()*3;
+    else if(age <= 23) delta = 1 + Math.random()*2;
+    else if(age <= 28) delta = (Math.random()-0.4) * 1.5;
+    else if(age <= 31) delta = -(0.5 + Math.random()*1.5);
+    else               delta = -(1.5 + Math.random()*2.5);
+  } else if(age <= profile.youthEnd)      delta = 2 + Math.random()*3;
+  else if(age <= profile.earlyEnd)        delta = 1 + Math.random()*2;
+  else if(age <= profile.peakEnd)         delta = (Math.random()-0.4) * 1.5;
+  else if(age <= profile.declineEnd)      delta = -(0.5 + Math.random()*1.5);
+  else                                    delta = -(1.5 + Math.random()*2.5);
+  Object.keys(p.s).forEach(function(k){
+    p.s[k] = Math.max(1, Math.min(99, Math.round(p.s[k] + delta + (Math.random()-0.5)*2)));
+  });
+}
+
+// Génère un joueur de remplacement (retraite ou petit mouvement de mercato)
+// pour occuper la place laissée par un joueur sortant.
+function _buildReplacementPlayer(nationId, regionId, level, pos, grp){
+  try{
+    const tier = grp==='players' ? 'starter' : grp==='bench' ? 'bench' : 'reserve';
+    const resolvedRegion = _resolveRegionId(nationId, regionId);
+    const region = WORLDS.getRegion(nationId, resolvedRegion);
+    const names = (region && region.names) || [];
+    const name = names.length ? names[Math.floor(Math.random()*names.length)] : 'Recrue';
+    const p = WORLDS.generatePlayer(nationId, resolvedRegion, pos || 'MC', name, level, tier);
+    if(p && tier !== 'starter') p.onBench = true;
+    return p || { age:18, pos:pos||'MC', name:'Recrue', s:{tec:30,spd:30,sht:30,def:30,stam:30,res:30} };
+  }catch(e){
+    console.error('replacement player:', e);
+    return { age:18, pos:pos||'MC', name:'Recrue', s:{tec:30,spd:30,sht:30,def:30,stam:30,res:30} };
+  }
+}
+
+// Fait vivre TOUS les effectifs adverses stockés d'une saison à l'autre :
+// vieillissement, progression/déclin selon l'âge, retraites en fin de
+// carrière, et un peu de mouvement de mercato (quelques joueurs remplacés
+// même hors retraite, pour simuler des transferts). Appelée en fin de saison,
+// avant que _generateSeasonFixtures() ne régénère le calendrier.
+function _evolveOpponentSquads(){
+  const C = careerV2;
+  if(!C || !C.opponentSquads) return;
+  const nation = C.nation || 'panthalassa';
+  Object.keys(C.opponentSquads).forEach(function(name){
+    const entry = C.opponentSquads[name];
+    if(!entry || !entry.squad) return;
+    const level = entry.level, region = entry.region;
+    ['players','bench','reserves'].forEach(function(grp){
+      const list = entry.squad[grp];
+      if(!Array.isArray(list)) return;
+      for(let i = 0; i < list.length; i++){
+        const p = list[i];
+        if(!p) continue;
+        p.age = (p.age || 20) + 1;
+        // Retraite : seuils propres à la race (un vampire ou un elfe joue
+        // bien plus longtemps qu'un gobelin ou une fée).
+        const retireChance = (typeof raceRetireChance==='function') ? raceRetireChance(p.race, p.age)
+          : (p.age>=36 ? 0.9 : p.age>=34 ? 0.45 : p.age>=32 ? 0.12 : 0);
+        if(Math.random() < retireChance){
+          list[i] = _buildReplacementPlayer(nation, region, level, p.pos, grp);
+          continue;
+        }
+        _agePlayerStats(p);
+        // Petit mouvement de mercato : quelques joueurs partent même sans
+        // prendre leur retraite (transfert vers un autre club du monde).
+        if(Math.random() < 0.06){
+          list[i] = _buildReplacementPlayer(nation, region, level, p.pos, grp);
+        }
+      }
+    });
+  });
 }
 
 function _generateSeasonFixtures(){
@@ -826,8 +945,9 @@ function _generateSeasonFixtures(){
         const opp = { id:'pil_'+pt.name.replace(/[^a-z0-9]/gi,'').slice(0,12)+'_'+Math.random().toString(36).slice(2,6),
           name:pt.name, color:pt.color, badge:pt.badge||null,
           level:pt.level, region:pt.region, valoriaName:pt.name, tier:pt.tier };
-        // Effectif complet généré et stocké (consultable + base pour l'IA).
-        opp.squad = _buildOpponentSquad(nation, pt.region, pt.level, pt.name);
+        // Effectif complet généré une fois puis conservé/évolué saison après
+        // saison (consultable + base pour l'IA de gestion adverse).
+        opp.squad = _getOrBuildOpponentSquad(nation, pt.region, pt.level, pt.name);
         return opp;
       });
       const allClubs=[{id:'player_club', name:club.name, color:club.color, badge:club.badge||null, isPlayer:true}].concat(opponents);
