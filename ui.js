@@ -484,6 +484,31 @@ function nav(p){
   if(p==='league')renderLeague();
   if(p==='cup')renderCup();
   if(p==='career'){ renderCareerV2(); }
+  try{ _updateSeasonFooter(); }catch(e){}
+}
+
+// ── Pied de sidebar : progression de la saison de carrière ──────────────
+// Affiche « SAISON · J<courante>/<total> » + barre de progression. Se base sur
+// le nombre de journées de championnat du club joueur dans careerV2.
+function _updateSeasonFooter(){
+  const foot = document.getElementById('nav-season-footer');
+  if(!foot) return;
+  const txt  = document.getElementById('nav-season-txt');
+  const fill = document.getElementById('nav-season-fill');
+  const C = (typeof careerV2!=='undefined') ? careerV2 : null;
+  if(!C || !Array.isArray(C.fixtures) || !C.fixtures.length){
+    foot.style.display = 'none';
+    return;
+  }
+  // Journées du joueur (championnat) = matchs impliquant le club joueur.
+  const mine = C.fixtures.filter(function(f){ return f.homeIsPlayer || f.awayIsPlayer; });
+  const total = mine.length || C.fixtures.length;
+  const played = mine.filter(function(f){ return f.played; }).length;
+  const current = Math.min(total, played + 1);
+  const pct = total ? Math.round((played / total) * 100) : 0;
+  if(txt)  txt.textContent = 'Saison · J' + current + '/' + total;
+  if(fill) fill.style.width = pct + '%';
+  foot.style.display = 'block';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -574,11 +599,61 @@ function renderSettings(){
       </button>
     </div>
   `);
+  const saveCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Sauvegarde</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Exportez vos profils et carrières dans un fichier de secours, ou restaurez une sauvegarde. Utile pour changer d'appareil ou en cas de problème.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="exportSaveFile()" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--gold);background:rgba(240,192,40,.14);color:var(--gold);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">⬇ EXPORTER</button>
+      <button onclick="document.getElementById('save-import-input').click()" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--b2);background:var(--dark);color:var(--text);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">⬆ IMPORTER</button>
+    </div>
+    <input id="save-import-input" type="file" accept="application/json,.json" style="display:none" onchange="importSaveFile(this)">
+  `);
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
     ${modeCard}
     ${camCard}
+    ${saveCard}
   `;
+}
+
+// ── Export / Import de sauvegarde (fichier) ─────────────────────────────
+// Sérialise toutes les clés critiques dans un fichier JSON téléchargeable.
+function exportSaveFile(){
+  if(typeof SaveCore === 'undefined'){ if(typeof logEvent==='function') logEvent('Export indisponible.','#e02030'); return; }
+  const keys = ['footsim_profiles','footsim_activeProfile'];
+  const bundle = SaveCore.exportKeys(keys);
+  const blob = new Blob([bundle], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = 'footsim_save_' + stamp + '.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 100);
+  if(typeof logEvent==='function') logEvent('💾 Sauvegarde exportée.','#18c860');
+}
+
+function importSaveFile(input){
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const ok = (typeof SaveCore !== 'undefined') && SaveCore.importBundle(String(e.target.result));
+      if(ok){
+        if(typeof loadProfiles==='function') loadProfiles();
+        if(typeof logEvent==='function') logEvent('✅ Sauvegarde importée. Rechargement…','#18c860');
+        setTimeout(function(){ location.reload(); }, 800);
+      } else {
+        if(typeof logEvent==='function') logEvent('❌ Fichier de sauvegarde invalide.','#e02030');
+      }
+    }catch(err){
+      if(typeof logEvent==='function') logEvent('❌ Import échoué.','#e02030');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
 }
 
 // Ré-affiche la fiche joueur actuellement ouverte (si l'éditeur est visible),
@@ -6050,10 +6125,19 @@ function renderCareerV2(){
     if(!careerV2.fixtures || careerV2.fixtures.length === 0){ _generateSeasonFixtures(); needSave=true; }
     if(!careerV2.freeAgents || careerV2.freeAgents.length === 0){ _generateFreeAgents(); needSave=true; }
     if(!careerV2.youthPool){ careerV2.youthPool = []; _generateYouthIntake(); needSave=true; }
+    // Rattrapage : simuler en fond tous les matchs PNJ dont la date est déjà
+    // passée (migration d'anciennes carrières, ou fixtures fraîchement générées
+    // pour une saison en cours). Garantit un classement à jour à l'ouverture.
+    try{
+      if(typeof _simulateBackgroundNpcFixtures==='function'){
+        if(_simulateBackgroundNpcFixtures(careerV2.date) > 0) needSave = true;
+      }
+    }catch(e){ console.error('npc bg sim:',e); }
     if(needSave) saveCareerV2();
   }
   if(careerV2.type === 'director') renderCareerDirector(el);
   else renderCareerManager(el);
+  try{ _updateSeasonFooter(); }catch(e){}
 }
 
 // ── Écran de choix : Manager ou Dirigeant ────────────────────────────
@@ -6084,9 +6168,10 @@ function renderCareerV2Choice(){
   h += '</div>';
   h += '</div>';
   if(hasOldCareer){
-    h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:12px">';
-    h += '<div style="font-size:10px;color:var(--muted);margin-bottom:6px">📂 Ancienne carriere detectee</div>';
-    h += '<button class="btn btng" onclick="renderCareer()" style="font-size:10px;width:100%">Continuer l\'ancienne carriere (mode classique)</button>';
+    h += '<div style="background:var(--panel);border:1px solid rgba(240,192,40,0.25);border-radius:10px;padding:12px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:var(--gold);letter-spacing:.5px;margin-bottom:4px">📂 Ancienne carriere detectee</div>';
+    h += '<div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:8px">Ce mode classique n\'est plus mis a jour. Vous pouvez terminer votre partie en cours, mais les nouvelles carrieres utilisent le moteur ameliore ci-dessus (calendrier jour par jour, matchs PNJ simules en fond, coupes).</div>';
+    h += '<button class="btn btng" onclick="renderCareer()" style="font-size:10px;width:100%">Reprendre l\'ancienne carriere</button>';
     h += '</div>';
   }
   h += '</div>';
@@ -6538,8 +6623,8 @@ function renderCareerDirector(el){
   let tabBtns = '';
   tabs.forEach(function(tab){
     tabBtns += '<button id="cdtab-'+tab+'" onclick="renderCareerDirectorTab(\''+tab+'\')"'
-      + ' style="flex:1;padding:10px 4px;background:var(--dark);border:none;border-bottom:3px solid transparent;'
-      + 'color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap">'
+      + ' style="flex:1;padding:11px 4px 10px;background:var(--dark);border:none;border-bottom:2px solid transparent;'
+      + 'color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.3px;cursor:pointer;transition:color .15s,background .15s,border-color .15s;white-space:nowrap">'
       + tabLabels[tab]+'</button>';
   });
 
@@ -6607,16 +6692,19 @@ function renderCareerDirector(el){
 
   // Style onglet actif (après injection DOM)
   function setActiveTab(tab){
+    const accent = (region && region.color) ? region.color : 'var(--gold)';
     document.querySelectorAll('[id^="cdtab-"]').forEach(function(b){
       b.style.borderBottomColor='transparent';
       b.style.color='var(--muted)';
       b.style.background='var(--dark)';
+      b.style.boxShadow='none';
     });
     const active = document.getElementById('cdtab-'+tab);
-    if(active && region){
-      active.style.borderBottomColor=region.color;
-      active.style.color='var(--fg)';
-      active.style.background='var(--panel)';
+    if(active){
+      active.style.borderBottomColor=accent;
+      active.style.color='#fff';
+      active.style.background='linear-gradient(180deg,rgba(255,255,255,0.04),transparent)';
+      active.style.boxShadow='inset 0 -6px 10px -8px '+accent;
     }
   }
 
@@ -7762,6 +7850,10 @@ function _runWeeklySystems(){
 
   _applyWeeklyEconomy();
 
+  // ── Simulation automatique en fond de TOUS les matchs PNJ échus ──────────
+  // Le classement reste vivant journée après journée sans action du joueur.
+  try{ if(typeof _runBackgroundNpcSim==='function') _runBackgroundNpcSim(); }catch(e){ console.error('npc bg sim:',e); }
+
   try{ if(typeof _advanceInfraWorks==='function') _advanceInfraWorks(); }catch(e){ console.error('works:',e); }
   try{ if(typeof _advanceNationalCup==='function') _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
   try{ if(typeof _advanceLeagueCup==='function') _advanceLeagueCup(); }catch(e){ console.error('leaguecup:',e); }
@@ -7813,6 +7905,10 @@ function _advanceOneDay(){
   const C = careerV2;
   if(!C.fixtures || C.fixtures.length === 0) _generateSeasonFixtures();
   if(!C.seasonStartDate) C.seasonStartDate = Object.assign({}, C.date);
+
+  // Résoudre en fond tous les matchs PNJ échus jusqu'à aujourd'hui, pour que
+  // le classement reflète les résultats du jour même avant tout affichage.
+  try{ if(typeof _simulateBackgroundNpcFixtures==='function') _simulateBackgroundNpcFixtures(C.date); }catch(e){ console.error('npc bg sim:',e); }
 
   const todayKey = _dateKey(C.date);
   const pending = _matchOnDateKey(todayKey);
@@ -8224,16 +8320,14 @@ function _updateCareerStandings(fix){
   }
   upd(fix.home, fix.sh, fix.sa);
   upd(fix.away, fix.sa, fix.sh);
-  var week = fix.week;
-  (careerV2.fixtures||[]).forEach(function(f){
-    if(f.week === week && !f.played && !f.homeIsPlayer && !f.awayIsPlayer){
-      f.sh = _poissonGoals(0.8 + Math.random()*0.8);
-      f.sa = _poissonGoals(0.8 + Math.random()*0.8);
-      f.played = true;
-      upd(f.home, f.sh, f.sa);
-      upd(f.away, f.sa, f.sh);
+  // Les autres matchs PNJ de la journée (et tous ceux en retard) sont résolus
+  // par la simulation de fond, basée sur la force réelle des équipes.
+  try{
+    if(typeof _simulateBackgroundNpcFixtures==='function'){
+      const upTo = fix.date || careerV2.date;
+      _simulateBackgroundNpcFixtures(upTo);
     }
-  });
+  }catch(e){ console.error('npc bg sim:',e); }
 }
 
 function endCareerSeasonDirector(){

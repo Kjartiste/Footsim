@@ -21,20 +21,36 @@ let activeProfileId = null; // profil actif
 const _genId = (prefix) => prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 
 // ── Persistance profils ───────────────────────────────────────────────
+// Passe par SaveCore (versioning + backup + récupération) quand disponible,
+// avec repli sur _safeLSSet pour compatibilité.
 function saveProfiles(){
-  _safeLSSet('footsim_profiles', profiles);
-  _safeLSSet('footsim_activeProfile', {id: activeProfileId});
+  if(typeof SaveCore !== 'undefined'){
+    SaveCore.store('footsim_profiles', profiles);
+    SaveCore.store('footsim_activeProfile', {id: activeProfileId});
+  } else {
+    _safeLSSet('footsim_profiles', profiles);
+    _safeLSSet('footsim_activeProfile', {id: activeProfileId});
+  }
 }
 
 function loadProfiles(){
+  // 1) Nouveau format versionné via SaveCore (inclut la récupération backup).
+  if(typeof SaveCore !== 'undefined'){
+    const p = SaveCore.load('footsim_profiles', null);
+    if(p && typeof p === 'object'){ profiles = p; }
+    const a = SaveCore.load('footsim_activeProfile', null);
+    if(a && a.id){ activeProfileId = a.id; }
+    if(profiles && Object.keys(profiles).length) return;
+  }
+  // 2) Repli : ancien format brut (migration transparente d'une save existante).
   try {
     const d = localStorage.getItem('footsim_profiles');
     if(d) profiles = JSON.parse(d) || {};
-  } catch(e){ profiles = {}; }
+  } catch(e){ profiles = profiles || {}; }
   try {
     const a = localStorage.getItem('footsim_activeProfile');
-    if(a){ const p = JSON.parse(a); activeProfileId = p?.id || null; }
-  } catch(e){ activeProfileId = null; }
+    if(a){ const p = JSON.parse(a); activeProfileId = p?.id || activeProfileId || null; }
+  } catch(e){ activeProfileId = activeProfileId || null; }
 }
 
 // ── Profil actif ──────────────────────────────────────────────────────
