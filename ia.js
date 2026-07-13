@@ -472,12 +472,16 @@ function aiDecide(dt=0.016){
     });
   }
 
-  // ── Substitutions IA en 11v11 ────────────────────────────────────────
-  // L'IA gère ses 3 changements intelligemment : sort les joueurs épuisés
-  // ou blessés si elle a encore des changements disponibles
-  if(window.gameMode==='11v11' && G.phase !== 'KICKOFF' && G.half >= 1 && G.minute > 20){
+  // ── Substitutions automatiques ───────────────────────────────────────
+  // En 11v11 : les DEUX équipes se géraient déjà automatiquement (règle des
+  // 3 changements) — comportement conservé tel quel pour ne rien casser.
+  // Hors 11v11 (5v5/7v7) : seule l'équipe ADVERSE (ti=1) se gère seule, et
+  // uniquement si le mode « IA adversaire » (G.aiOpponent) est activé —
+  // c'est ce qui permet de jouer un vrai match Humain vs IA sans avoir à
+  // piloter soi-même les changements du camp adverse.
+  if(G.phase !== 'KICKOFF' && G.half >= 1 && G.minute > 20){
     [0,1].forEach(function(ti){
-      // IA seulement (pas l'équipe du joueur humain en mode carrière)
+      if(window.gameMode!=='11v11' && !(ti===1 && G.aiOpponent)) return;
       if(!canSub11v11(ti)) return;
       // Chercher un joueur très fatigué ou légèrement blessé
       const outIdx = teams[ti].players.findIndex(function(p, i){
@@ -496,6 +500,18 @@ function aiDecide(dt=0.016){
         doSub(ti, outIdx, freshBi, 'bench');
       }
     });
+  }
+
+  // ── Tactique automatique de l'adversaire IA ──────────────────────────
+  // Quand G.aiOpponent est actif, l'équipe 1 (adversaire) réévalue et
+  // adapte sa formation/son style toutes les ~25 secondes de jeu, selon
+  // l'écart au score et le moment du match (voir _aiAdjustTactics).
+  if(G.aiOpponent && G.phase !== 'KICKOFF'){
+    G._aiTacCool = (G._aiTacCool!=null ? G._aiTacCool : 0) - dt;
+    if(G._aiTacCool <= 0){
+      G._aiTacCool = 25;
+      if(typeof _aiAdjustTactics==='function') _aiAdjustTactics(1);
+    }
   }
 
   // DD/DG — montées latérales (1x par frame max via dt pour éviter le spam)

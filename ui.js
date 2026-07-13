@@ -7036,11 +7036,8 @@ function _renderDirectorOverview(){
     if(C._pendingMatch.cup){
       h += '<div style="background:linear-gradient(135deg,#f0c02822,var(--panel));border:2px solid #f0c028;border-radius:10px;padding:14px;margin-bottom:12px">';
       h += '<div style="font-size:12px;font-weight:900;color:#f0c028;margin-bottom:6px">🏆 Tour de coupe aujourd\'hui !</div>';
-      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Le tirage inclut votre club.</div>';
-      h += '<div style="display:flex;gap:8px">';
-      h += '<button class="btn btng" onclick="playCareerCupMatchV2()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer</button>';
-      h += '<button class="btn" onclick="simCareerMatchDirector()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
-      h += '</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Le tirage inclut votre club. Le tour doit être simulé avant de continuer.</div>';
+      h += '<button class="btn btng" onclick="simCareerMatchDirector()" style="width:100%;font-size:12px;padding:10px;font-weight:900">⚡ Simuler le tour de coupe</button>';
       h += '</div>';
     } else {
       const fix = (C.fixtures||[]).find(function(f){ return f.id===C._pendingMatch.fixtureId; });
@@ -8195,46 +8192,6 @@ function rejectManagerJob(i){
 
 
 // ── Match en carrière Dirigeant ───────────────────────────────────────
-// ── Composition de la XI + banc du joueur pour un match interactif ────────
-// Partagé entre le match de championnat (playCareerMatchV2) et le match de
-// coupe (playCareerCupMatchV2) : sélectionne les meilleurs joueurs de
-// l'effectif complet de carrière selon le format actif (5v5/7v7/11v11).
-function _buildCareerMatchXI(C){
-  const mode = window.gameMode || '7v7';
-  const XI_POS = mode==='11v11' ? ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT']
-               : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
-               :                  ['GB','DC','DD','DG','MC','MC','ATT'];
-  const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
-                  : mode==='5v5'   ? ['GB','DC','MC','ATT','DC']
-                  :                  ['GB','MC','ATT','DC','MC'];
-  const xiSize = XI_POS.length;
-  const benchSize = BENCH_POS.length;
-  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
-    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
-  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; })
-    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
-  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; })
-    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
-
-  const starters = [];
-  if(gkPool[0]) starters.push(gkPool[0]);
-  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
-
-  const leftoverGk  = gkPool.slice(1);
-  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
-  const matchBench = [];
-  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
-  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
-
-  const usedIds = starters.concat(matchBench);
-  const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
-
-  starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
-  matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
-
-  return { mode: mode, XI_POS: XI_POS, BENCH_POS: BENCH_POS, starters: starters, matchBench: matchBench, surplus: surplus };
-}
-
 function playCareerMatchV2(){
   if(!careerV2) return;
   const C = careerV2;
@@ -8255,6 +8212,15 @@ function playCareerMatchV2(){
   // toujours généré en 7v7 fixe (7 titulaires) → un joueur en mode 11v11
   // se retrouvait à jouer 18 (ou 11) contre 7. On aligne maintenant les
   // deux équipes sur le format réellement actif (window.gameMode).
+  const mode = window.gameMode || '7v7';
+  const XI_POS = mode==='11v11' ? ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT']
+               : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
+               :                  ['GB','DC','DD','DG','MC','MC','ATT'];
+  const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
+                  : mode==='5v5'   ? ['GB','DC','MC','ATT','DC']
+                  :                  ['GB','MC','ATT','DC','MC'];
+  const xiSize = XI_POS.length;
+
   // ── Équipe du joueur (team 0) : on compose une XI + un banc de la bonne
   // taille (celle du format actif) à partir des MEILLEURS joueurs de
   // l'effectif complet de carrière. AVANT : tout le reste de l'effectif
@@ -8262,22 +8228,49 @@ function playCareerMatchV2(){
   // déséquilibré face à l'adversaire IA (banc normal). Maintenant, le banc
   // du match a la même taille que celui de l'IA (BENCH_POS) ; le surplus
   // part en réservistes (pas utilisé ce match, mais toujours dans le club).
-  const xi = _buildCareerMatchXI(C);
+  const benchSize = BENCH_POS.length;
+  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
+    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
+  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; })
+    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; })
+    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+
+  const starters = [];
+  if(gkPool[0]) starters.push(gkPool[0]);
+  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
+
+  const leftoverGk  = gkPool.slice(1); // gardiens non titulaires (remplaçant prioritaire)
+  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
+  const matchBench = [];
+  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
+  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
+
+  const usedIds = starters.concat(matchBench);
+  const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
+
+  // IMPORTANT : (ré)initialiser onBench/subbedOut sur les joueurs qu'on vient
+  // de répartir. Sans ça, un joueur venant du pool "titulaires" (C.players,
+  // jamais marqué onBench) qui atterrit sur le banc du match gardait
+  // onBench=false → l'écran d'avant-match l'affichait "Indispo" et
+  // empêchait tout changement manuel avec lui.
+  starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
+  matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
 
   teams[0] = {
     name:    C.club.name,
     color:   C.club.color || '#e02030',
     img:     C.club.img   || '',
     strat:   C.club.strat || '321',
-    players: xi.starters,
-    bench:   xi.matchBench,
-    reserves: xi.surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
+    players: starters,
+    bench:   matchBench,
+    reserves: surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
   };
 
   // ── Équipe adversaire IA (team 1) — générée au même format et niveau ─
   const aiSquad = WORLDS.generateSquad(nation, region, {
-    positions: xi.XI_POS,
-    bench: xi.BENCH_POS,
+    positions: XI_POS,
+    bench: BENCH_POS,
     reserves: [],
     level: level,
   });
@@ -8312,150 +8305,6 @@ function playCareerMatchV2(){
   // Lancer le pré-match normal
   showPreMatch(null);
   nav('match');
-}
-
-// ── Jouer interactivement un match de la Coupe nationale (carrière) ──────
-// Jusqu'ici, un tour de coupe impliquant le club joueur ne pouvait qu'être
-// SIMULÉ (bouton "⚡ Simuler le tour de coupe") : impossible de le jouer
-// comme un match de championnat normal. Cette fonction aligne le
-// comportement de la coupe sur celui du championnat : elle compose la XI du
-// joueur, génère l'adversaire IA (au niveau du club de coupe tiré au sort),
-// simule en fond les AUTRES confrontations du tour (celles qui ne
-// concernent pas le joueur), puis lance le match interactif. Le résultat
-// est ensuite enregistré par _recordCareerV2CupMatchResult() à la fin du
-// match, qui termine le tour (primes, élimination, tour suivant...).
-function playCareerCupMatchV2(){
-  if(!careerV2 || !careerV2.cup) return;
-  const C = careerV2;
-  const cup = C.cup;
-  if(cup.winner){ logEvent('La coupe est déjà terminée !','#e02030'); return; }
-  const roundIdx = cup.round;
-  if(roundIdx>=cup.weeks.length) return;
-
-  const m = (cup.bracket||[]).find(function(bm){
-    return !bm.played && ((bm.a&&bm.a.isPlayer)||(bm.b&&bm.b.isPlayer));
-  });
-  if(!m){ logEvent('Pas de match de coupe à jouer pour le moment.','#e02030'); return; }
-
-  const meIsA = !!(m.a && m.a.isPlayer);
-  const oppEntry = meIsA ? m.b : m.a;
-
-  if(!oppEntry){
-    // Tour exempt (bye) : rien à jouer, on qualifie directement le club.
-    try{ _advanceNationalCup(true); }catch(e){ console.error('cup bye:',e); }
-    if(C._pendingMatch) C._pendingMatch = null;
-    saveCareerV2();
-    renderCareerV2();
-    return;
-  }
-
-  // Simuler en fond tous les AUTRES matchs du tour (ceux qui ne concernent
-  // pas le joueur), pour que le tour puisse être finalisé une fois que le
-  // joueur aura disputé le sien.
-  cup.bracket.forEach(function(bm){
-    if(bm===m || bm.played) return;
-    const r=_cupSimMatch(bm.a, bm.b);
-    if(r.winner){ bm.winner=r.winner; bm.ga=r.ga; bm.gb=r.gb; bm.played=true; }
-  });
-
-  const level  = oppEntry.level || C.club.level;
-  const nation = C.nation || 'panthalassa';
-  const region = C.club.region;
-
-  const xi = _buildCareerMatchXI(C);
-
-  teams[0] = {
-    name:    C.club.name,
-    color:   C.club.color || '#e02030',
-    img:     C.club.img   || '',
-    strat:   C.club.strat || '321',
-    players: xi.starters,
-    bench:   xi.matchBench,
-    reserves: xi.surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
-  };
-
-  const aiSquad = WORLDS.generateSquad(nation, region, {
-    positions: xi.XI_POS,
-    bench: xi.BENCH_POS,
-    reserves: [],
-    level: level,
-  });
-  const regionObj = WORLDS.getRegion(nation, region);
-  const aiColor = oppEntry.color || (regionObj ? regionObj.color : '#1878e8');
-  const aiBadge = oppEntry.badge || null;
-
-  teams[1] = {
-    name:    oppEntry.name,
-    color:   aiColor,
-    img:     '',
-    badge:   aiBadge,
-    strat:   '321',
-    players: aiSquad.players,
-    bench:   aiSquad.bench,
-    reserves: [],
-  };
-
-  applyFormationRoles(0);
-  applyFormationRoles(1);
-
-  window._careerCupPlaying = m; // mémorise le match de bracket en cours
-  G.leagueMode = true; // pour que endMatch sache qu'il faut enregistrer
-
-  showPreMatch(null);
-  nav('match');
-}
-
-// ── Enregistrer le résultat d'un match de Coupe nationale joué interactivement ──
-// Symétrique de _recordCareerV2MatchResult, mais met à jour le bracket de
-// C.cup au lieu d'un fixture de championnat, applique la prime/élimination,
-// gère les tirs au but en cas d'égalité (pas de nul en coupe), puis termine
-// le tour via _finalizeCupRound (couronnement ou tour suivant).
-function _recordCareerV2CupMatchResult(){
-  if(!careerV2 || !careerV2.cup || !window._careerCupPlaying) return;
-  const C = careerV2;
-  const cup = C.cup;
-  const m = window._careerCupPlaying;
-  const roundIdx = cup.round;
-
-  let s0 = G.scores[0]; // notre score (team 0 = toujours le club joueur ici)
-  let s1 = G.scores[1]; // adversaire (team 1)
-  let wentToPens = false;
-  if(s0===s1){
-    // Pas de nul possible en coupe : tirs au but (simple pile ou face, comme
-    // pour les autres confrontations simulées par _cupSimMatch).
-    wentToPens = true;
-    if(Math.random()<0.5) s0++; else s1++;
-  }
-
-  const meIsA = !!(m.a && m.a.isPlayer);
-  const playerEntry = meIsA ? m.a : m.b;
-  const oppEntry    = meIsA ? m.b : m.a;
-  const win = s0 > s1;
-
-  m.winner = win ? playerEntry : oppEntry;
-  m.ga = meIsA ? s0 : s1;
-  m.gb = meIsA ? s1 : s0;
-  m.played = true;
-
-  const scoreStr = wentToPens ? (Math.min(s0,s1))+'-'+(Math.min(s0,s1))+' ('+s0+'-'+s1+' tab)' : s0+'-'+s1;
-  if(win){
-    const prime = 4000 + roundIdx*3000;
-    C.club.budget += prime;
-    careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — VICTOIRE '+scoreStr+' vs '+oppEntry.name+' ! Prime '+fmtG(prime), '#18c860');
-  } else {
-    cup.playerOut = true;
-    careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — élimination '+scoreStr+' vs '+oppEntry.name+'.', '#e06060');
-  }
-
-  // Toutes les autres confrontations du tour ont déjà été simulées en fond
-  // au lancement du match (cf. playCareerCupMatchV2) : le tour est complet.
-  const survivors = (cup.bracket||[]).filter(function(bm){ return bm.played && bm.winner; }).map(function(bm){ return bm.winner; });
-  cup.round++;
-  _finalizeCupRound(C, cup, survivors);
-
-  window._careerCupPlaying = null;
-  if(C._pendingMatch) C._pendingMatch = null;
-  saveCareerV2();
 }
 
 function _recordCareerV2MatchResult(){
@@ -8499,10 +8348,7 @@ function simCareerMatchDirector(){
   if(!careerV2) return;
   const C = careerV2;
   if(C._pendingMatch && C._pendingMatch.cup){
-    // force=true : on sait déjà (via _matchOnDateKey) que c'est bien le jour
-    // du tour de coupe, même si C.week n'a pas encore été incrémenté (le
-    // tour tombe le mercredi, avant le passage de semaine du samedi).
-    try{ _advanceNationalCup(true); }catch(e){ console.error('cup:',e); }
+    try{ _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
     C._pendingMatch = null;
     saveCareerV2();
     renderCareerV2();
