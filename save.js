@@ -1427,7 +1427,7 @@ function _cupPairUp(teams){
 }
 // Simule un match de coupe entre deux équipes (par leur niveau de division).
 function _cupSimMatch(a,b){
-  if(!b) return a; // bye
+  if(!b) return { winner: a, ga: null, gb: null }; // bye : qualification directe
   const sa=_cupTeamStrength(a.level), sb=_cupTeamStrength(b.level);
   // Buts ~ Poisson simplifié pondéré par la force + hasard de coupe.
   const gA=Math.max(0, Math.round((sa*2.2 + Math.random()*2.2) - sb*1.2));
@@ -1439,12 +1439,19 @@ function _cupSimMatch(a,b){
   return { winner: ga>gb?a:b, ga, gb };
 }
 // Fait avancer la coupe si la semaine courante est une semaine de coupe.
-function _advanceNationalCup(){
+function _advanceNationalCup(force){
   const C=careerV2; if(!C || !C.cup || C.cup.winner) return;
   const cup=C.cup;
   const roundIdx = cup.round;
   if(roundIdx>=cup.weeks.length) return;
-  if(C.week < cup.weeks[roundIdx]) return; // pas encore l'heure de ce tour
+  // NOTE : un tour de coupe tombe le MERCREDI (_cupWeekDate = _weekDate - 3j),
+  // soit AVANT que C.week ne soit incrémenté (ce qui n'arrive que le samedi
+  // suivant). Sans `force`, cette garde reste donc TOUJOURS vraie le jour même
+  // du tour → le tour ne se joue jamais et la bannière "Tour de coupe" reste
+  // bloquée en boucle (soft-lock silencieux). `force` permet à l'appel
+  // interactif (bouton "Simuler le tour de coupe", déjà confirmé par la date
+  // via _matchOnDateKey) de résoudre le tour immédiatement malgré ce décalage.
+  if(!force && C.week < cup.weeks[roundIdx]) return; // pas encore l'heure de ce tour
   // Jouer tout le tour courant.
   const survivors=[];
   cup.bracket.forEach(function(m){
@@ -1456,7 +1463,12 @@ function _advanceNationalCup(){
       const me=m.a&&m.a.isPlayer?m.a:m.b; const opp=m.a&&m.a.isPlayer?m.b:m.a;
       const win = res.winner && res.winner.isPlayer;
       const myG = m.a&&m.a.isPlayer?res.ga:res.gb, opG = m.a&&m.a.isPlayer?res.gb:res.ga;
-      if(win){
+      if(win && !opp){
+        // Tour exempt (bye) : qualification directe, pas d'adversaire ni de score.
+        const prime = 4000 + roundIdx*3000;
+        C.club.budget += prime;
+        careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — exempt, qualification directe ! Prime '+fmtG(prime), '#18c860');
+      } else if(win){
         const prime = 4000 + roundIdx*3000;
         C.club.budget += prime;
         careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+' ! Prime '+fmtG(prime), '#18c860');

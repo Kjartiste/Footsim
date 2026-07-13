@@ -8348,7 +8348,10 @@ function simCareerMatchDirector(){
   if(!careerV2) return;
   const C = careerV2;
   if(C._pendingMatch && C._pendingMatch.cup){
-    try{ _advanceNationalCup(); }catch(e){ console.error('cup:',e); }
+    // force=true : on sait déjà (via _matchOnDateKey) que c'est bien le jour
+    // du tour de coupe, même si C.week n'a pas encore été incrémenté (le
+    // tour tombe le mercredi, avant le passage de semaine du samedi).
+    try{ _advanceNationalCup(true); }catch(e){ console.error('cup:',e); }
     C._pendingMatch = null;
     saveCareerV2();
     renderCareerV2();
