@@ -8011,6 +8011,14 @@ function _calCupOnDate(C, dateKey){
 function _renderDirectorCalendar(){
   const C = careerV2;
   const club = C.club;
+  // Filet de sécurité : garantir que le système d'entraînement est initialisé
+  // pour cette carrière (statut, planning hebdo, cohésion…), même si la save a
+  // été restaurée par un chemin qui n'a pas déclenché la migration.
+  try{
+    if(typeof TRAINING!=='undefined' && (!club.status || !C.weekPlan)){
+      TRAINING.migrateCareer(C);
+    }
+  }catch(e){ console.error('calendar migrate:', e); }
   // Mois affiché : celui de la date courante, sauf navigation manuelle.
   const viewDate = window._calViewDate || Object.assign({}, C.date);
   window._calViewDate = viewDate;
@@ -8033,9 +8041,25 @@ function _renderDirectorCalendar(){
     const avgHm = _squadAll.reduce(function(s,p){return s+(p._hm||0);},0)/_squadAll.length;
     const fmCol = avgFm>=3?'#18c860':avgFm>=0?'#f0c028':'#e06060';
     const hmCol = avgHm>=3?'#18c860':avgHm>=0?'#f0c028':'#e06060';
+    const avgCoh = _squadAll.reduce(function(s,p){return s+(p._coh!=null?p._coh:50);},0)/_squadAll.length;
+    const cohCol = avgCoh>=65?'#18c860':avgCoh>=45?'#f0c028':'#e06060';
     h += '<div style="display:flex;gap:14px;margin-bottom:8px;font-size:9px">';
     h += '<div>💪 Forme moy. <b style="color:'+fmCol+'">'+avgFm.toFixed(1)+'</b>/10</div>';
     h += '<div>🙂 Moral moy. <b style="color:'+hmCol+'">'+avgHm.toFixed(1)+'</b>/10</div>';
+    h += '<div>🤝 Cohésion <b style="color:'+cohCol+'">'+Math.round(avgCoh)+'</b>/100</div>';
+    h += '</div>';
+  }
+  // ── Style du coach (influence le planning auto-généré par l'IA) ──────────
+  if(typeof TRAINING_CONFIG!=='undefined' && TRAINING_CONFIG.coachStyles){
+    const cur = (club && club.coachStyle) || 'equilibre';
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:9px">';
+    h += '<span style="color:var(--muted)">🎓 Style du coach :</span>';
+    h += '<select onchange="_calSetCoachStyle(this.value)" style="background:var(--dark);border:1px solid var(--b1);border-radius:6px;color:var(--fg);font-size:9px;padding:3px 6px">';
+    Object.keys(TRAINING_CONFIG.coachStyles).forEach(function(k){
+      h += '<option value="'+k+'"'+(k===cur?' selected':'')+'>'+TRAINING_CONFIG.coachStyles[k].label+'</option>';
+    });
+    h += '</select>';
+    h += '<span style="color:var(--muted);font-size:8px">(oriente les séances auto)</span>';
     h += '</div>';
   }
 
@@ -8059,7 +8083,13 @@ function _renderDirectorCalendar(){
     const isPast = _dateToOrdinal(d) < _dateToOrdinal(C.date);
     const fix = _calMatchOnDate(C, dk);
     const cup = _calCupOnDate(C, dk);
-    const plan = C.dayPlans && C.dayPlans[dk];
+    let plan = C.dayPlans && C.dayPlans[dk];
+    // Si aucun override, dériver la journée du planning hebdo (aperçu).
+    let planFromWeek = false;
+    if(!plan && C.weekPlan && typeof _dayOfWeek==='function' && !isPast){
+      const dow = _dayOfWeek(d);
+      if(C.weekPlan[dow] && C.weekPlan[dow].slots){ plan = C.weekPlan[dow]; planFromWeek = true; }
+    }
 
     let bg = 'var(--panel)', border = 'var(--b1)', icon = '', label='';
     if(fix){
@@ -8072,10 +8102,29 @@ function _renderDirectorCalendar(){
       icon = '🏆'; label = 'Coupe';
       bg = 'rgba(240,192,40,.12)'; border='#f0c028';
     } else if(plan){
-      const planIcons = {training:'🏃', rest:'😴', friendly:'🤝'};
-      icon = planIcons[plan.type]||'📌';
-      label = plan.type==='training' ? (plan.focus||'entraîn.') : plan.type==='friendly' ? (plan.oppName ? plan.oppName.slice(0,8) : 'amical') : 'repos';
-      bg = 'rgba(0,188,212,.10)'; border = '#00bcd4';
+      const planIcons = {training:'🏃', recovery:'🩹', rest:'😴', friendly:'🤝', video:'📹', matchprep:'📋', social:'🍻', magie:'✨'};
+      if(plan.slots && typeof TRAINING_CONFIG!=='undefined'){
+        // Journée à slots : icône = famille du 1er créneau actif, label = nb séances.
+        const order = TRAINING_CONFIG.slots.order;
+        let firstFam = null, nSess = 0;
+        order.forEach(function(sk){
+          const sl = plan.slots[sk];
+          if(sl && sl.type && sl.type!=='rest'){ if(!firstFam) firstFam = sl.family||sl.type; nSess++; }
+        });
+        if(firstFam && TRAINING_CONFIG.families[firstFam]){ icon = TRAINING_CONFIG.families[firstFam].icon; }
+        else if(firstFam){ icon = planIcons[firstFam]||'📌'; }
+        else { icon = '😴'; }
+        label = nSess>1 ? (nSess+' séances') : nSess===1 ? (TRAINING_CONFIG.families[firstFam]?TRAINING_CONFIG.families[firstFam].label:'séance') : 'repos';
+      } else if((plan.type==='training'||plan.type==='recovery') && plan.family && typeof TRAINING_CONFIG!=='undefined' && TRAINING_CONFIG.families[plan.family]){
+        icon = TRAINING_CONFIG.families[plan.family].icon;
+        const s = (typeof TRAINING!=='undefined') ? TRAINING.getSession(plan.family, plan.session) : null;
+        label = s ? s.label : (TRAINING_CONFIG.families[plan.family].label);
+      } else {
+        icon = planIcons[plan.type]||'📌';
+        label = plan.type==='training' ? (plan.focus||'entraîn.') : plan.type==='friendly' ? (plan.oppName ? plan.oppName.slice(0,8) : 'amical') : plan.type==='rest' ? 'repos' : (planIcons[plan.type]?plan.type:'repos');
+      }
+      bg = planFromWeek ? 'rgba(0,188,212,.05)' : 'rgba(0,188,212,.10)';
+      border = planFromWeek ? 'var(--b1)' : '#00bcd4';
     }
     if(isToday){ border = club.color || '#e02030'; }
 
@@ -8091,7 +8140,7 @@ function _renderDirectorCalendar(){
 
   // ── Légende ──────────────────────────────────────────────────────
   h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:8px;color:var(--muted)">';
-  h += '<span>⚽ Match</span><span>🏆 Coupe</span><span>🏃 Entraînement</span><span>😴 Repos</span><span>🤝 Amical</span>';
+  h += '<span>⚽ Match</span><span>🏆 Coupe</span><span>🏃 Entraîn.</span><span>🩹 Récup.</span><span>📹 Vidéo</span><span>🍻 Vie de groupe</span><span>✨ Magie</span><span>😴 Repos</span><span>🤝 Amical</span>';
   h += '</div>';
 
   // ── Panneau de planification (si un jour a été cliqué) ─────────────
@@ -8103,17 +8152,90 @@ function _renderDirectorCalendar(){
     h += '<div style="font-size:10px;font-weight:900;color:#00bcd4">📌 Planifier le '+pk.split('-').reverse().join('/')+'</div>';
     h += '<span onclick="_calClosePlanner()" style="cursor:pointer;color:var(--muted);font-size:12px">✕</span>';
     h += '</div>';
-    h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin-bottom:4px">Entraînement</div>';
-    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
-    [['physique','💪 Physique'],['technique','🎯 Technique'],['tactique','🧠 Tactique'],['recuperation','🩹 Récup.']].forEach(function(f){
-      h += '<button class="btn'+(existing&&existing.type==='training'&&existing.focus===f[0]?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'training\',\''+f[0]+'\')" style="font-size:9px;padding:5px 8px">'+f[1]+'</button>';
-    });
-    h += '</div>';
+    // ── Sélecteur riche piloté par TRAINING (familles → séances) ──────────
+    if(typeof TRAINING!=='undefined'){
+      const club = C.club;
+      const stLabel = TRAINING.statusLabel(club);
+      const cap = TRAINING.maxSessions(club);
+      const minS = TRAINING.minSessions(club);
+      // Compte des séances d'effort déjà posées cette semaine (plafond).
+      let weekSess = 0;
+      try{ weekSess = _calCountWeekEffort(pk); }catch(e){}
+      h += '<div style="font-size:8px;color:var(--muted);margin-bottom:6px">Statut : <b style="color:var(--gold)">'+stLabel+'</b> · séances cette semaine : <b style="color:'+(weekSess>=cap?'#e06060':'#18c860')+'">'+weekSess+'/'+cap+'</b> (min '+minS+')</div>';
+
+      // ── Barre de créneaux (matin / après-midi / soir) ───────────────────
+      const slotCfg = TRAINING_CONFIG.slots;
+      const curSlot = window._calPlannerSlot || _calFirstOpenSlot(club);
+      const dayObj = (existing && existing.slots) ? existing : null;
+      h += '<div style="font-size:8px;font-weight:700;color:var(--muted);margin-bottom:3px">Créneau du jour</div>';
+      h += '<div style="display:flex;gap:5px;margin-bottom:8px">';
+      (slotCfg.order).forEach(function(sk){
+        const open = TRAINING.slotOpen(club, sk);
+        const on = sk===curSlot;
+        const filled = dayObj && dayObj.slots && dayObj.slots[sk] && dayObj.slots[sk].type && dayObj.slots[sk].type!=='rest';
+        let lbl = slotCfg.icons[sk]+' '+slotCfg.labels[sk];
+        if(filled){ const fs=TRAINING.getSession(dayObj.slots[sk].family, dayObj.slots[sk].session); lbl += fs?' · '+fs.label.slice(0,10):''; }
+        h += '<button '+(open?'onclick="_calSetSlot(\''+pk+'\',\''+sk+'\')"':'')+' style="flex:1;font-size:8.5px;padding:5px 4px;border-radius:6px;cursor:'+(open?'pointer':'not-allowed')+';opacity:'+(open?1:.4)+';border:1px solid '+(on?'#00bcd4':filled?'#18c860':'var(--b1)')+';background:'+(on?'rgba(0,188,212,.15)':filled?'rgba(24,200,96,.10)':'var(--dark)')+';color:var(--fg);font-weight:700">'+lbl+(open?'':' 🔒')+'</button>';
+      });
+      h += '</div>';
+
+      const famKey = window._calPlannerFamily || (dayObj&&dayObj.slots&&dayObj.slots[curSlot]&&dayObj.slots[curSlot].family) || 'physique';
+      // Onglets de familles.
+      h += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">';
+      const magicOK = TRAINING.magicUnlocked(club);
+      Object.keys(TRAINING_CONFIG.families).forEach(function(fk){
+        const fam = TRAINING_CONFIG.families[fk];
+        // Masquer la famille magie tant que la Tour de Magie n'est pas construite.
+        if(fam.requiresBuilding && !magicOK) return;
+        const on = fk===famKey;
+        h += '<button onclick="_calSetFamily(\''+pk+'\',\''+fk+'\')" style="font-size:9px;padding:4px 7px;border-radius:6px;cursor:pointer;border:1px solid '+(on?fam.color:'var(--b1)')+';background:'+(on?fam.color+'22':'var(--dark)')+';color:'+(on?fam.color:'var(--fg)')+';font-weight:700">'+fam.icon+' '+fam.label+'</button>';
+      });
+      h += '</div>';
+      if(!magicOK){ h += '<div style="font-size:7.5px;color:var(--muted);margin-bottom:6px">🔮 Construis la <b>Tour de Magie</b> (onglet Infrastructures) pour débloquer l\'entraînement magique.</div>'; }
+      // Séances de la famille active, avec métadonnées.
+      const famDef = TRAINING_CONFIG.families[famKey];
+      const dtype = famDef.recovery?'recovery':famDef.social?'social':famDef.requiresBuilding?'magie':'training';
+      const isFree = (TRAINING_CONFIG.slots.freeTypes||[]).indexOf(dtype)>=0;
+      h += '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">';
+      TRAINING.familySessions(famKey).forEach(function(s){
+        const cur = dayObj&&dayObj.slots&&dayObj.slots[curSlot];
+        const on = cur&&cur.family===famKey&&cur.session===s.key;
+        const intPct = Math.round((s.intensity||0)*100);
+        const injPct = ((s.injury||0)*100).toFixed(1);
+        const attrs = (s.attrs||[]).map(function(a){return a.toUpperCase();}).join('/');
+        // Libellé d'effet spécifique magie / social.
+        let effLbl = attrs;
+        if(s.magic){ const m=[]; if(s.magic.precision)m.push('précision'); if(s.magic.manaMax)m.push('mana'); if(s.magic.learnSpell)m.push('nouveau sort'); effLbl = m.join('/'); }
+        if(famDef.social){ effLbl = 'cohésion +'+(s.cohesion||0)+' · moral +'+(s.morale||0); }
+        h += '<div onclick="_calPlanSlotSession(\''+pk+'\',\''+curSlot+'\',\''+dtype+'\',\''+famKey+'\',\''+s.key+'\')" style="cursor:pointer;background:'+(on?'rgba(0,188,212,.12)':'var(--dark)')+';border:1px solid '+(on?'#00bcd4':'var(--b1)')+';border-radius:6px;padding:6px 8px">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;font-weight:800">'+s.label+(isFree?' <span style=\"font-size:7px;color:#18c860\">(hors plafond)</span>':'')+'</span><span style="font-size:8px;color:var(--muted)">'+(s.dur||0)+' min</span></div>';
+        h += '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:7.5px;color:var(--muted);margin-top:2px">';
+        h += '<span>⚡ '+intPct+'%</span>';
+        h += '<span>😓 '+(s.fatigue>0?'+':'')+(s.fatigue||0)+'</span>';
+        if(effLbl) h += '<span>📈 '+effLbl+'</span>';
+        h += '<span>🤕 '+injPct+'%</span>';
+        h += '</div></div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<div style="font-size:9px;font-weight:700;color:var(--muted);margin-bottom:4px">Entraînement</div>';
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      [['physique','💪 Physique'],['technique','🎯 Technique'],['tactique','🧠 Tactique'],['recuperation','🩹 Récup.']].forEach(function(f){
+        h += '<button class="btn'+(existing&&existing.type==='training'&&existing.focus===f[0]?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'training\',\''+f[0]+'\')" style="font-size:9px;padding:5px 8px">'+f[1]+'</button>';
+      });
+      h += '</div>';
+    }
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
     h += '<button class="btn'+(existing&&existing.type==='friendly'?' btng':'')+'" onclick="_calToggleFriendlyPicker(\''+pk+'\')" style="font-size:9px;padding:5px 8px">🤝 Match amical</button>';
-    h += '<button class="btn'+(existing&&existing.type==='rest'?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'rest\',null)" style="font-size:9px;padding:5px 8px">😴 Repos</button>';
-    if(existing) h += '<button class="btn" onclick="_calPlanDay(\''+pk+'\',null,null)" style="font-size:9px;padding:5px 8px;color:#e06060;border-color:#e06060">✕ Annuler</button>';
+    h += '<button class="btn" onclick="_calRestDay(\''+pk+'\')" style="font-size:9px;padding:5px 8px">😴 Journée repos</button>';
+    if(typeof TRAINING!=='undefined'){
+      h += '<button class="btn" onclick="_calAutoDay(\''+pk+'\')" style="font-size:9px;padding:5px 8px">🤖 Auto (IA)</button>';
+    }
+    if(existing) h += '<button class="btn" onclick="_calPlanDay(\''+pk+'\',null,null)" style="font-size:9px;padding:5px 8px;color:#e06060;border-color:#e06060">✕ Réinit.</button>';
     h += '</div>';
+    if(C.weekPlanLockedByUser){
+      h += '<div style="margin-top:6px;font-size:8px;color:var(--muted)">✋ Planning verrouillé (tes modifications priment). <span onclick="_calUnlockWeek()" style="text-decoration:underline;cursor:pointer;color:#00bcd4">Rendre la main à l\'IA</span></div>';
+    }
     // Sélecteur d'adversaire pour l'amical (déplié au clic sur le bouton).
     if(window._calFriendlyPickerKey===pk){
       h += _calFriendlyPickerHTML(pk);
@@ -8157,6 +8279,187 @@ function _calPlanDay(dateKey, type, focus){
   window._calPlannerKey = null;
   window._calFriendlyPickerKey = null;
   renderCareerDirectorTab('calendar');
+}
+
+// Change la famille de séances affichée dans le planificateur (sans planifier).
+function _calSetFamily(dateKey, familyKey){
+  window._calPlannerFamily = familyKey;
+  renderCareerDirectorTab('calendar');
+}
+
+// Change le style du coach (réoriente les prochains plannings auto de l'IA).
+function _calSetCoachStyle(style){
+  if(!careerV2 || !careerV2.club) return;
+  careerV2.club.coachStyle = style;
+  // Régénérer le planning hebdo par défaut si le joueur n'a rien verrouillé.
+  if(!careerV2.weekPlanLockedByUser && typeof TRAINING!=='undefined'){
+    careerV2.weekPlan = TRAINING.generateWeekPlan(careerV2.club, {});
+  }
+  saveCareerV2();
+  renderCareerDirectorTab('calendar');
+}
+
+// Met toute la journée au repos (créneaux ouverts → repos).
+function _calRestDay(dateKey){
+  if(!careerV2) return;
+  const C = careerV2;
+  if(!C.dayPlans) C.dayPlans = {};
+  const slots = {};
+  (TRAINING_CONFIG.slots.order||['evening']).forEach(function(sk){
+    slots[sk] = TRAINING.slotOpen(C.club, sk) ? { type:'rest' } : null;
+  });
+  C.dayPlans[dateKey] = { type:'day', slots:slots };
+  C.weekPlanLockedByUser = true;
+  saveCareerV2();
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+
+// Laisse l'IA générer la journée (copie la journée hebdo correspondante).
+function _calAutoDay(dateKey){
+  if(!careerV2 || typeof TRAINING==='undefined') return;
+  const C = careerV2;
+  const parts = String(dateKey).split('-');
+  const d = { year:+parts[0], month:+parts[1], day:+parts[2] };
+  const dow = (typeof _dayOfWeek==='function') ? _dayOfWeek(d) : 0;
+  // Régénère un planning frais et prend la journée voulue.
+  const fresh = TRAINING.generateWeekPlan(C.club, {});
+  if(C.dayPlans) delete C.dayPlans[dateKey]; // retire l'override → suit l'hebdo
+  if(!C.weekPlan) C.weekPlan = fresh;
+  C.weekPlan[dow] = fresh[dow];
+  saveCareerV2();
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+
+// Rend la main à l'IA : supprime les overrides et déverrouille le planning.
+function _calUnlockWeek(){
+  if(!careerV2 || typeof TRAINING==='undefined') return;
+  const C = careerV2;
+  C.weekPlanLockedByUser = false;
+  C.dayPlans = C.dayPlans || {};
+  // Ne retire que les overrides d'entraînement (garde amicaux/matchs).
+  Object.keys(C.dayPlans).forEach(function(k){
+    const p = C.dayPlans[k];
+    if(p && (p.slots || p.type==='training' || p.type==='recovery' || p.type==='social' || p.type==='magie' || p.type==='rest' || p.type==='video' || p.type==='matchprep')){
+      if(!(p.type==='friendly')) delete C.dayPlans[k];
+    }
+  });
+  C.weekPlan = TRAINING.generateWeekPlan(C.club, {});
+  saveCareerV2();
+  window._calPlannerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+
+// Sélectionne le créneau (matin/après-midi/soir) en cours d'édition.
+function _calSetSlot(dateKey, slotKey){
+  window._calPlannerSlot = slotKey;
+  window._calPlannerFamily = null; // réinitialise l'onglet famille
+  renderCareerDirectorTab('calendar');
+}
+// Premier créneau ouvert pour le statut du club (défaut d'édition).
+function _calFirstOpenSlot(club){
+  const order = (TRAINING_CONFIG.slots&&TRAINING_CONFIG.slots.order)||['evening'];
+  for(const sk of order){ if(TRAINING.slotOpen(club, sk)) return sk; }
+  return 'evening';
+}
+// Compte les séances d'effort de la semaine contenant dateKey (override + hebdo).
+function _calCountWeekEffort(dateKey){
+  const C = careerV2; if(!C) return 0;
+  const wk = _weekOfDateKey(dateKey);
+  const freeTypes = (TRAINING_CONFIG.slots.freeTypes||[]);
+  let n = 0;
+  // Overrides posés par le joueur sur des dates de cette semaine.
+  const seen = {};
+  Object.keys(C.dayPlans||{}).forEach(function(k){
+    if(_weekOfDateKey(k)!==wk) return;
+    const d = C.dayPlans[k];
+    seen[k] = true;
+    if(d && d.slots){
+      Object.keys(d.slots).forEach(function(s){
+        const sl=d.slots[s];
+        if(sl&&sl.type&&sl.type!=='rest'&&sl.type!=='match'&&freeTypes.indexOf(sl.type)<0) n++;
+      });
+    } else if(d && d.type==='training'){ n++; }
+  });
+  return n;
+}
+
+// Assigne une séance à un créneau précis du jour (crée un dayPlan à slots).
+// Respecte le plafond hebdo : refuse un créneau d'effort au-delà de la limite.
+function _calPlanSlotSession(dateKey, slotKey, dtype, family, session){
+  if(!careerV2) return;
+  const C = careerV2;
+  const freeTypes = (TRAINING_CONFIG.slots.freeTypes||[]);
+  const isEffort = freeTypes.indexOf(dtype) < 0;
+
+  // Récupère (ou initialise depuis le planning hebdo) la journée à slots.
+  if(!C.dayPlans) C.dayPlans = {};
+  let day = C.dayPlans[dateKey];
+  if(!day || !day.slots){
+    // Repartir de la journée hebdo correspondante si elle existe.
+    const parts = String(dateKey).split('-');
+    const d = { year:+parts[0], month:+parts[1], day:+parts[2] };
+    const dow = (typeof _dayOfWeek==='function') ? _dayOfWeek(d) : 0;
+    const base = (C.weekPlan && C.weekPlan[dow] && C.weekPlan[dow].slots) ? C.weekPlan[dow] : null;
+    day = { type:'day', slots: base ? JSON.parse(JSON.stringify(base.slots)) : {} };
+  }
+
+  // Contrôle du plafond si on ajoute une séance d'effort sur un créneau vide.
+  const already = day.slots[slotKey] && day.slots[slotKey].type && day.slots[slotKey].type!=='rest';
+  if(isEffort && !already){
+    const cap = TRAINING.maxSessions(C.club);
+    const wkCount = _calCountWeekEffort(dateKey);
+    if(wkCount >= cap){
+      logEvent('❌ Plafond atteint : club '+TRAINING.statusLabel(C.club).toLowerCase()+' → '+cap+' séance(s)/semaine max.','#e02030');
+      return;
+    }
+  }
+  // Toggle : recliquer la même séance = vider le créneau.
+  const c = day.slots[slotKey];
+  if(c && c.family===family && c.session===session){ day.slots[slotKey] = { type:'rest' }; }
+  else { day.slots[slotKey] = { type:dtype, family:family, session:session }; }
+
+  C.dayPlans[dateKey] = day;
+  C.weekPlanLockedByUser = true;
+  saveCareerV2();
+  renderCareerDirectorTab('calendar');
+}
+
+// Planifie une séance précise (famille + type) sur un jour, en respectant le
+// plafond de séances du statut du club (empêche p.ex. un amateur d'en abuser).
+function _calPlanSession(dateKey, type, family, session){
+  if(!careerV2) return;
+  const C = careerV2;
+  // Contrôle du plafond hebdo : compte les séances déjà planifiées cette semaine.
+  if(type==='training' && typeof TRAINING!=='undefined'){
+    const cap = TRAINING.maxSessions(C.club);
+    const wk = _weekOfDateKey(dateKey);
+    let count = 0;
+    Object.keys(C.dayPlans||{}).forEach(function(k){
+      const p = C.dayPlans[k];
+      if(p && p.type==='training' && _weekOfDateKey(k)===wk && k!==dateKey) count++;
+    });
+    if(count >= cap){
+      logEvent('❌ Plafond atteint : un club '+TRAINING.statusLabel(C.club).toLowerCase()+' ne peut programmer que '+cap+' séance(s)/semaine.','#e02030');
+      return;
+    }
+  }
+  const ok = _planDay(dateKey, type, null, { family:family, session:session });
+  if(!ok){ logEvent('❌ Un match est déjà prévu ce jour-là.','#e02030'); return; }
+  C.weekPlanLockedByUser = true; // l'IA ne réécrase plus le planning cette semaine
+  saveCareerV2();
+  window._calPlannerKey = null;
+  window._calFriendlyPickerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+
+// Numéro de semaine ISO-approché d'un dateKey 'Y-MM-DD', pour compter les séances.
+function _weekOfDateKey(dateKey){
+  const parts = String(dateKey).split('-');
+  const d = { year:+parts[0], month:+parts[1], day:+parts[2] };
+  if(typeof _dateToOrdinal==='function') return Math.floor(_dateToOrdinal(d)/7);
+  return d.year*52 + d.month*4 + Math.floor(d.day/7);
 }
 
 // Ouvre / ferme le sélecteur d'adversaire d'amical pour une date donnée.
@@ -8293,6 +8596,22 @@ function _runWeeklySystems(){
 
   _triggerRegionEvent();
   _triggerWeeklyEvent();
+
+  // ── Planning d'entraînement hebdomadaire (IA) ───────────────────────────
+  // L'IA régénère un planning respectant le statut du club et le style du
+  // coach. Le joueur reste libre de déplacer/écraser les séances via l'UI.
+  try{
+    if(typeof TRAINING!=='undefined' && C.club){
+      const congested = !!(C.fixtures||[]).find(function(f){
+        return !f.played && (f.homeIsPlayer||f.awayIsPlayer) && f.week===C.week;
+      });
+      const squadAll = (C.players||[]).concat(C.bench||[]);
+      const avgForm = squadAll.length ? squadAll.reduce(function(s,p){return s+(p._fm||0);},0)/squadAll.length : 0;
+      if(!C.weekPlanLockedByUser){
+        C.weekPlan = TRAINING.generateWeekPlan(C.club, { congested:congested, avgForm:avgForm });
+      }
+    }
+  }catch(e){ console.error('weekly training plan:', e); }
 }
 
 // Saut rapide d'une semaine entière (conservé pour compatibilité / usage

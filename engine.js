@@ -674,7 +674,7 @@ function physStep(dt,rawDt){
       // Fatigue — même calcul que 7v7
       const stamFactor=1.1-p.s.stam/99;
       p.hp=Math.max(0,p.hp-0.003*dt*60*stamFactor);
-      p.mp=Math.min(100,p.mp+0.018*dt*60);
+      p.mp=Math.min((p._mpMax||100),p.mp+0.018*dt*60*(p._mpRegen||1));
 
       // Blessure de fatigue (même prob que 7v7)
       if(p.hp<15&&p.injLevel===0&&Math.random()<dt*0.008){
@@ -900,7 +900,7 @@ function physStep(dt,rawDt){
     const isPressingNow=G.gegenT&&G.gegenT[ti]>0?1.4:pressDrain;
     p.hp=Math.max(0,p.hp-.009*dt*60*(1.1-p.s.stam/99)*(0.7+isPressingNow*0.5));
     const _mReg = (typeof magRegenMult==='function') ? magRegenMult(p) : 1;
-    p.mp=Math.min(100,p.mp+.009*dt*60*_mReg); // regen (modulé par Régén. de mana en Complet)
+    p.mp=Math.min((p._mpMax||100),p.mp+.009*dt*60*_mReg*(p._mpRegen||1)); // regen (modulé par Régén. de mana en Complet + entraînement magique)
     // Produits dopants : timer + fin de buff
     if(p._dopeT>0){
       p._dopeT=Math.max(0,p._dopeT-dt*60);

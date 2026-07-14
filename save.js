@@ -104,7 +104,7 @@ function _syncGlobalsFromProfile(pid){
   const lastCareerId = p._lastActiveCareer;
   if(lastCupId && p.cups[lastCupId]) cupState = p.cups[lastCupId].state;
   if(lastLeagueId && p.leagues[lastLeagueId]) leagueState = p.leagues[lastLeagueId].state;
-  if(lastCareerId && p.careers[lastCareerId]) careerV2 = p.careers[lastCareerId].state;
+  if(lastCareerId && p.careers[lastCareerId]){ careerV2 = p.careers[lastCareerId].state; _migrateTraining(); }
 }
 
 // ── Sauvegarder une compétition dans le profil actif ─────────────────
@@ -209,13 +209,24 @@ function loadCareerV2(){
   const p = activeProfile();
   if(p?._lastActiveCareer){
     const state = loadCompetition('career', p._lastActiveCareer);
-    if(state){ careerV2 = state; return; }
+    if(state){ careerV2 = state; _migrateTraining(); return; }
   }
   // Fallback legacy
   try {
     const d = localStorage.getItem('footsim_careerV2');
     if(d) careerV2 = JSON.parse(d);
   } catch(e){ careerV2 = null; }
+  _migrateTraining();
+}
+
+// Migration transparente du système d'entraînement pour les saves existantes.
+// Ajoute club.status/coachStyle, cohésion des joueurs et un planning par défaut.
+function _migrateTraining(){
+  try{
+    if(careerV2 && typeof TRAINING!=='undefined' && careerV2.type==='director'){
+      TRAINING.migrateCareer(careerV2);
+    }
+  }catch(e){ console.error('training migration:', e); }
 }
 
 // ── ÉQUIPES RÉSERVES AFFILIÉES (générique) ────────────────────────────────
@@ -452,6 +463,11 @@ function startCareerDirector(regionId, clubId, nationId){
       color: clubColor,
       badge: clubBadge,
       level: startLevel,
+      // Statut officiel du club (amateur / semi-pro / pro) — pilote le système
+      // d'entraînement. Déduit du niveau moteur, modifiable ensuite.
+      status: (typeof TRAINING!=='undefined') ? TRAINING.clubStatus({level:startLevel}) : undefined,
+      coachStyle: 'equilibre',
+      trainingVersion: (typeof TRAINING_CONFIG!=='undefined') ? TRAINING_CONFIG.version : 1,
       divisionName: startDivName || null,
       pilierDivId: startPilierDivId || null,
       group: 0,
@@ -1254,35 +1270,54 @@ function _matchOnDateKey(dateKey){
 }
 function _resolveDayPlan(dateKey){
   const C = careerV2; if(!C || C.type!=='director') return null;
-  const plan = (C.dayPlans && C.dayPlans[dateKey]) || { type:'rest', focus:null };
   const squad = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]);
   if(!squad.length) return null;
 
-  if(plan.type==='training'){
-    const focus = plan.focus || 'physique';
-    let msg = null;
-    squad.forEach(function(p){
-      if(!p) return;
-      // Gain de forme, plafonné à 10 (échelle -10 à +10 existante).
-      const gain = focus==='recuperation' ? 0.4 : 0.8;
-      p._fm = Math.min(10, (p._fm||0) + gain);
-      if(focus==='recuperation' && p.injLevel>0 && p.injT>0){
-        p.injT = Math.max(0, p.injT - 2); // récup accélérée
-        if(p.injT===0) p.injLevel=0;
+  // ── Journée à SLOTS ────────────────────────────────────────────────────
+  // Priorité : override par date (C.dayPlans[dateKey].slots) posé par le joueur,
+  // sinon la journée correspondante du planning hebdo (C.weekPlan[jourSemaine]).
+  if(typeof TRAINING!=='undefined'){
+    let slotDay = null;
+    const over = C.dayPlans && C.dayPlans[dateKey];
+    if(over && over.slots){ slotDay = over; }
+    else if(!over && C.weekPlan){
+      const parts = String(dateKey).split('-');
+      const d = { year:+parts[0], month:+parts[1], day:+parts[2] };
+      const dow = (typeof _dayOfWeek==='function') ? _dayOfWeek(d) : 0; // 0=Lundi
+      const wd = C.weekPlan[dow];
+      if(wd && wd.slots) slotDay = wd;
+    }
+    if(slotDay){
+      const msg = TRAINING.applyDaySlots(C.club, squad, slotDay);
+      return msg || null;
+    }
+  }
+
+  const plan = (C.dayPlans && C.dayPlans[dateKey]) || { type:'rest', focus:null };
+
+  if(plan.type==='training' || plan.type==='recovery' || plan.type==='video' || plan.type==='matchprep' || plan.type==='social' || plan.type==='magie'){
+    // ── Nouveau moteur d'entraînement (piloté par les données) ────────────
+    // On mappe la journée planifiée vers le modèle famille/séance de TRAINING.
+    if(typeof TRAINING!=='undefined'){
+      let day;
+      if(plan.family && plan.session){
+        day = { type:plan.type, family:plan.family, session:plan.session };
+      } else {
+        // Compatibilité : anciens plans stockaient seulement un `focus` large.
+        const focusMap = {
+          physique:    { type:'training',  family:'physique' },
+          technique:   { type:'training',  family:'technique' },
+          tactique:    { type:'training',  family:'tactique' },
+          recuperation:{ type:'recovery',  family:'recuperation', session:'soins' },
+        };
+        day = focusMap[plan.focus] || { type:'training', family:'physique' };
       }
-      if(focus==='technique' && p.age && p.age<23 && Math.random()<0.01){
-        // Petite chance de progression permanente pour les jeunes.
-        const keys=['tec','sht','pas','def','spd']; const k=keys[Math.floor(Math.random()*keys.length)];
-        if(p.s && typeof p.s[k]==='number'){ p.s[k]=Math.min(99,p.s[k]+1); msg=(msg?msg+' ':'')+'✨ '+p.name+' progresse ('+k+' +1) !'; }
-      }
-      if(focus==='physique' && Math.random()<0.015 && p.injLevel===0){
-        // Petit risque de surentraînement.
-        p.injLevel=1; p.injT=2+Math.floor(Math.random()*3);
-        msg=(msg?msg+' ':'')+'🤕 '+p.name+' se blesse à l\'entraînement !';
-      }
-    });
-    const focusLabel = {physique:'physique', technique:'technique', tactique:'tactique', recuperation:'récupération'}[focus]||focus;
-    return '🏃 Entraînement ('+focusLabel+') effectué.' + (msg?' '+msg:'');
+      const msg = TRAINING.applyDay(C.club, squad, day);
+      return msg || '🏃 Séance effectuée.';
+    }
+    // ── Repli si le module n'est pas chargé (sécurité) ────────────────────
+    squad.forEach(function(p){ if(p) p._fm = Math.min(10,(p._fm||0)+0.4); });
+    return '🏃 Entraînement effectué.';
   }
 
   if(plan.type==='friendly'){
@@ -2921,6 +2956,7 @@ const INFRA_V2_DEFS = {
   formation:{ name:'Académie / centre jeunes', icon:'🌱', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,5,7,9],  baseCost:[0,12000,29000,62000,125000], effect:'+qualité et quantité des jeunes' },
   medical:  { name:'Centre médical',     icon:'🏥', max:5, permitWeeks:[0,1,1,2,2], buildWeeks:[0,2,4,5,6],  baseCost:[0,8000,19000,40000,80000], effect:'-blessures · +récupération' },
   scout:    { name:'Réseau de scouts',   icon:'🔭', max:5, permitWeeks:[0,0,1,1,1], buildWeeks:[0,2,3,4,5],  baseCost:[0,7000,16000,34000,68000], effect:'+découverte de talents' },
+  magic:    { name:'Tour de Magie',      icon:'🔮', max:5, permitWeeks:[0,1,2,2,3], buildWeeks:[0,3,4,5,6],  baseCost:[0,12000,28000,60000,120000], effect:"débloque l'entraînement magique · +précision des sorts" },
 };
 
 // Noms d'état lisibles selon la qualité (0-100) d'une installation.

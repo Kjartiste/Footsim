@@ -194,7 +194,7 @@ function aiDecide(dt=0.016){
         const sp=SPELLS.find(x=>x.id===sid);
         if(!sp||carrier.mp<sp.mp)continue;
         const mult=mentalitySpellMult(ati,ATTACK_SPELLS&&ATTACK_SPELLS.has(sid));
-        if(Math.random()<sp.prob*mult){ spell11=sp; break; }
+        if(Math.random()<sp.prob*mult*(carrier._spellPrec||1)){ spell11=sp; break; }
       }
     }
 
@@ -402,7 +402,7 @@ function aiDecide(dt=0.016){
         // mp 45+ → ×0.7.
         const costMul=Math.max(0.7,Math.min(1.8,1+(25-(sp.mp||20))/28));
         const mentaMul=mentalitySpellMult(ati,ATTACK_SPELLS.has(sp.id));
-        if(canFire&&Math.random()<sp.prob*(5.0+Math.max(0,carrier._fm||0)*0.20)*tecTrig*costMul*mentaMul){spell=sp;break;}
+        if(canFire&&Math.random()<sp.prob*(5.0+Math.max(0,carrier._fm||0)*0.20)*tecTrig*costMul*mentaMul*(carrier._spellPrec||1)){spell=sp;break;}
       }
     }
   }
@@ -449,7 +449,7 @@ function aiDecide(dt=0.016){
         const tecTrig2=Math.max(0.8,Math.min(1.4,1+((caster.s?.tec??50)-50)/130));
         const costMul2=Math.max(0.7,Math.min(1.8,1+(25-(sp.mp||20))/28));
         const mentaMul2=mentalitySpellMult(ti2,false); // sorts hors-ballon = toujours soutien/malus
-        if(Math.random()<sp.prob*0.15*tecTrig2*costMul2*mentaMul2*dt*60){
+        if(Math.random()<sp.prob*0.15*tecTrig2*costMul2*mentaMul2*dt*60*(caster._spellPrec||1)){
           G._offBallCastCool[ti2]=7; // ~7 s entre deux sorts hors ballon par équipe
           // Si l'équipe qui lance ne possède PAS le ballon, on protège l'état de
           // jeu (possession + phase) : un buff/malus défensif ne doit pas voler
