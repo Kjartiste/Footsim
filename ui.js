@@ -1522,19 +1522,23 @@ function _prepareTeamsForMode(){
   [0,1].forEach(function(ti){ (teams[ti].players||[]).forEach(_ensureMotionFields); });
 }
 
-// Complète le banc d'une équipe en y faisant monter ses RÉSERVISTES tant qu'il
-// n'atteint pas une taille cible. Les réservistes (T.reserves) ne pouvaient
-// jamais entrer sur le terrain (voir resetMatch) ; en les plaçant sur le banc,
-// ils deviennent des remplaçants utilisables (manuellement, blessure, ou coach
-// IA) — ce qui évite de finir un match à 6 contre 7.
+// Complète le banc d'une équipe jusqu'à une taille CIBLE, identique pour les
+// deux équipes (sinon le joueur, qui a des réservistes en carrière, se
+// retrouvait avec un banc plus fourni que l'IA générée sans réserve).
+// Priorité : on puise d'abord dans les RÉSERVISTES du club (T.reserves) — ça
+// les rend utilisables sur le terrain, ce qui évite de finir en sous-nombre —
+// puis, si ça ne suffit pas, on GÉNÈRE des remplaçants au niveau de l'équipe
+// pour égaliser les bancs.
 function _topUpBenchFromReserves(ti){
   const T = teams[ti];
   if(!T) return;
+  T.players = T.players || [];
   T.bench = T.bench || [];
   T.reserves = T.reserves || [];
   // Cible de banc selon le format (assez de rechange pour ne pas manquer de
-  // joueurs même après plusieurs sorties).
+  // joueurs même après plusieurs sorties), commune aux DEUX équipes.
   const target = window.gameMode==='11v11' ? 9 : window.gameMode==='5v5' ? 5 : 7;
+  // 1) Monter les réservistes existants sur le banc.
   while(T.bench.length < target && T.reserves.length > 0){
     const p = T.reserves.shift();
     if(!p) break;
@@ -1544,6 +1548,32 @@ function _topUpBenchFromReserves(ti){
     if(p.mp==null) p.mp = 100;
     if(p.injLevel==null) p.injLevel = 0;
     T.bench.push(p);
+  }
+  // 2) Compléter par génération si le banc n'atteint toujours pas la cible, pour
+  //    que les deux équipes aient EXACTEMENT le même nombre de remplaçants.
+  if(T.bench.length < target && window.WORLDS && WORLDS.generatePlayer){
+    const nation = T.nation || (window.careerV2 && careerV2.nation) || 'panthalassa';
+    const region = T.region || (window.careerV2 && careerV2.club && careerV2.club.region) || 'solgrath';
+    const level  = (typeof fillLevelForTeam==='function') ? fillLevelForTeam(T) : 'r1';
+    const benchPos = window.gameMode==='11v11'
+      ? ['GB','DC','DD','DG','MC','MC','ATT','MO','DC']
+      : window.gameMode==='5v5'
+      ? ['GB','DC','MC','ATT','DC']
+      : ['GB','MC','ATT','DC','DD'];
+    let gi = 0;
+    while(T.bench.length < target){
+      const pos = benchPos[gi % benchPos.length] || 'MC';
+      gi++;
+      let p = null;
+      try{ p = WORLDS.generatePlayer(nation, region, pos, (typeof randPlayerName==='function'?randPlayerName():'Remplaçant'), level, 'bench'); }catch(e){ p=null; }
+      if(!p) break;
+      p.onBench = true;
+      p.subbedOut = false;
+      if(p.hp==null) p.hp = 100;
+      if(p.mp==null) p.mp = 100;
+      if(p.injLevel==null) p.injLevel = 0;
+      T.bench.push(p);
+    }
   }
 }
 
@@ -6522,6 +6552,24 @@ function _careerPickPilierDiv(divId){
   const el = document.getElementById('career-out') || document.getElementById('career-director-content');
   if(el) _renderClubStep(el, window._careerNation||'pilier', window._careerRegion, window._careerMode||'director');
 }
+function _careerPickValoriaDiv(divId){
+  window._careerValoriaDiv = divId;
+  window._careerClubPreview = null; // forcer la re-sélection du 1er club de la nouvelle division
+  const el = document.getElementById('career-out') || document.getElementById('career-director-content');
+  if(el) _renderClubStep(el, window._careerNation||'valoria', window._careerRegion, window._careerMode||'director');
+}
+// Divisions Valoria proposables au choix pour une région donnée : la Ligue
+// pro (nationale, commune aux deux régions) + toutes les divisions régionales
+// de la région du joueur, triées par ordre hiérarchique.
+function _valoriaSelectableDivs(regionId){
+  const divMap = window.VALORIA_DIVISIONS || {};
+  const regName = (typeof _valRegionName==='function') ? _valRegionName(regionId) : 'Valcourt';
+  const prefix = regName==='Brumefer' ? 'brumefer_' : 'valcourt_';
+  return Object.entries(divMap)
+    .filter(([id,d]) => id==='pro' || id.indexOf(prefix)===0)
+    .sort((a,b) => (a[1].order||0) - (b[1].order||0))
+    .map(([id]) => id);
+}
 
 function _renderClubStep(el, nationId, regionId, mode){
   const nation = WORLDS.get(nationId);
@@ -6590,10 +6638,27 @@ function _renderClubStep(el, nationId, regionId, mode){
       });
       _pilierDivSelector += '</div>';
     } else {
+      // VALORIA : même logique de CHOIX de division que le Pilier. Le joueur
+      // peut reprendre un club dans n'importe quelle division de sa région
+      // (+ la Ligue pro nationale), au lieu d'être coincé sur le seul niveau
+      // de départ de la région.
       divMap = window.VALORIA_DIVISIONS || {};
-      divId = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
+      const allDivs = _valoriaSelectableDivs(regionId);
+      // Division par défaut : le niveau de départ normalisé de la région.
+      if(!allDivs.includes(window._careerValoriaDiv)){
+        const def = (typeof valoriaNormalizeLevel==='function') ? valoriaNormalizeLevel(startLevel, regionId) : null;
+        window._careerValoriaDiv = (def && allDivs.includes(def)) ? def : allDivs[allDivs.length-1];
+      }
+      divId = window._careerValoriaDiv;
       divTeams = divId ? valoriaTeamsByDivision(divId) : [];
       divName = (divId&&divMap[divId]?divMap[divId].name:'');
+      // Sélecteur de division (puces cliquables), identique au Pilier.
+      _pilierDivSelector = '<div style="font-size:9px;color:var(--muted);margin-bottom:6px">Division :</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">';
+      allDivs.forEach(function(id){
+        const d=divMap[id]; if(!d) return; const on=(id===divId);
+        _pilierDivSelector += '<button onclick="_careerPickValoriaDiv(\''+id+'\')" style="padding:4px 9px;border-radius:14px;cursor:pointer;font-size:9px;font-weight:800;border:1.5px solid '+(on?'var(--gold)':'var(--b1)')+';background:'+(on?'rgba(240,192,40,.16)':'transparent')+';color:'+(on?'var(--gold)':'var(--muted)')+'">'+d.name.replace('Ligue ','').replace('District ','D').replace(' de Valcourt','').replace(' de Brumefer','')+'</button>';
+      });
+      _pilierDivSelector += '</div>';
     }
     // Club actuellement déployé (fiche ouverte). Par défaut : le premier.
     if(divTeams.length && !divTeams.some(t=>t.name===window._careerClubPreview)){
@@ -6840,7 +6905,14 @@ function renderCareerDirector(el){
   html += '<div style="font-size:22px;font-weight:900;color:var(--fg);letter-spacing:.5px">'+club.name+'</div>';
   html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">';
   html += (region?region.name:'?')+' · '+(club.divisionName || (pyramid?pyramid.name:club.level))+' · Saison '+C.season;
-  html += ' · Semaine '+C.week+' · '+_fmtDateFrLong(C.date);
+  // Indicateur de PRÉSAISON : tant que la 1re journée n'est pas atteinte, on
+  // affiche « Présaison » plutôt qu'un numéro de semaine de championnat.
+  const _inPreseason = (C.seasonStartDate && typeof _daysBetween==='function' && _daysBetween(C.date, C.seasonStartDate) > 0);
+  if(_inPreseason){
+    html += ' · <span style="color:var(--gold);font-weight:700">🌱 Présaison</span> · '+_fmtDateFrLong(C.date);
+  } else {
+    html += ' · Semaine '+C.week+' · '+_fmtDateFrLong(C.date);
+  }
   html += '</div></div>';
   // Budget
   html += '<div style="text-align:right;flex-shrink:0">';
@@ -7206,7 +7278,6 @@ function _renderDirectorOverview(){
   // ── Bandeau match du jour en attente ─────────────────────────────────
   if(C._pendingMatch){
     if(C._pendingMatch.cup){
-      // Adversaire du tour courant (si connu) pour l'afficher.
       let cupOpp = null;
       if(C.cup && Array.isArray(C.cup.bracket)){
         const mm = C.cup.bracket.find(function(x){ return !x.played && ((x.a&&x.a.isPlayer)||(x.b&&x.b.isPlayer)); });
@@ -7221,8 +7292,19 @@ function _renderDirectorOverview(){
       h += '<button class="btn" onclick="simCareerMatchDirector()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
       h += '</div>';
       h += '</div>';
+    } else if(C._pendingMatch.friendly){
+      const plan = C.dayPlans && C.dayPlans[C._pendingMatch.dateKey];
+      const opp = plan && plan.oppName ? plan.oppName : '(adversaire)';
+      h += '<div style="background:linear-gradient(135deg,#00bcd422,var(--panel));border:2px solid #00bcd4;border-radius:10px;padding:14px;margin-bottom:12px">';
+      h += '<div style="font-size:12px;font-weight:900;color:#00bcd4;margin-bottom:6px">🤝 Match amical aujourd\'hui !</div>';
+      h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:6px">'+club.name+' <span style="color:var(--muted)">vs</span> <b>'+opp+'</b></div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Match sans enjeu de classement — entretient forme et moral.</div>';
+      h += '<div style="display:flex;gap:8px">';
+      h += '<button class="btn btng" onclick="playCareerFriendlyMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
+      h += '<button class="btn" onclick="simCareerFriendlyMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
+      h += '</div>';
+      h += '</div>';
     } else {
-      const fix = (C.fixtures||[]).find(function(f){ return f.id===C._pendingMatch.fixtureId; });
       if(fix){
         const isHome = fix.homeIsPlayer;
         const opp = isHome ? fix.awayName : fix.homeName;
@@ -7992,7 +8074,7 @@ function _renderDirectorCalendar(){
     } else if(plan){
       const planIcons = {training:'🏃', rest:'😴', friendly:'🤝'};
       icon = planIcons[plan.type]||'📌';
-      label = plan.type==='training' ? (plan.focus||'entraîn.') : plan.type==='friendly' ? 'amical' : 'repos';
+      label = plan.type==='training' ? (plan.focus||'entraîn.') : plan.type==='friendly' ? (plan.oppName ? plan.oppName.slice(0,8) : 'amical') : 'repos';
       bg = 'rgba(0,188,212,.10)'; border = '#00bcd4';
     }
     if(isToday){ border = club.color || '#e02030'; }
@@ -8028,10 +8110,15 @@ function _renderDirectorCalendar(){
     });
     h += '</div>';
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-    h += '<button class="btn'+(existing&&existing.type==='friendly'?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'friendly\',null)" style="font-size:9px;padding:5px 8px">🤝 Match amical</button>';
+    h += '<button class="btn'+(existing&&existing.type==='friendly'?' btng':'')+'" onclick="_calToggleFriendlyPicker(\''+pk+'\')" style="font-size:9px;padding:5px 8px">🤝 Match amical</button>';
     h += '<button class="btn'+(existing&&existing.type==='rest'?' btng':'')+'" onclick="_calPlanDay(\''+pk+'\',\'rest\',null)" style="font-size:9px;padding:5px 8px">😴 Repos</button>';
     if(existing) h += '<button class="btn" onclick="_calPlanDay(\''+pk+'\',null,null)" style="font-size:9px;padding:5px 8px;color:#e06060;border-color:#e06060">✕ Annuler</button>';
-    h += '</div></div>';
+    h += '</div>';
+    // Sélecteur d'adversaire pour l'amical (déplié au clic sur le bouton).
+    if(window._calFriendlyPickerKey===pk){
+      h += _calFriendlyPickerHTML(pk);
+    }
+    h += '</div>';
   }
 
   h += '</div>';
@@ -8068,6 +8155,63 @@ function _calPlanDay(dateKey, type, focus){
   }
   saveCareerV2();
   window._calPlannerKey = null;
+  window._calFriendlyPickerKey = null;
+  renderCareerDirectorTab('calendar');
+}
+
+// Ouvre / ferme le sélecteur d'adversaire d'amical pour une date donnée.
+function _calToggleFriendlyPicker(dateKey){
+  window._calFriendlyPickerKey = (window._calFriendlyPickerKey===dateKey) ? null : dateKey;
+  window._calFriendlyOppFilter = window._calFriendlyOppFilter || '';
+  renderCareerDirectorTab('calendar');
+}
+function _calSetFriendlyFilter(v){
+  window._calFriendlyOppFilter = v||'';
+  renderCareerDirectorTab('calendar');
+  // Redonner le focus au champ après re-render.
+  setTimeout(function(){ const el=document.getElementById('friendly-opp-filter'); if(el){ el.focus(); el.value=window._calFriendlyOppFilter; } },0);
+}
+// HTML du sélecteur d'adversaire : recherche + liste cliquable des clubs.
+function _calFriendlyPickerHTML(dateKey){
+  const C = careerV2;
+  const all = (typeof _friendlyOpponents==='function') ? _friendlyOpponents() : [];
+  const filter = (window._calFriendlyOppFilter||'').toLowerCase();
+  const list = (filter ? all.filter(function(t){ return t.name.toLowerCase().indexOf(filter)>=0; }) : all).slice(0, 40);
+  let h = '<div style="margin-top:8px;border-top:1px dashed #00bcd4;padding-top:8px">';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:6px">Choisis l\'adversaire de l\'amical :</div>';
+  h += '<input id="friendly-opp-filter" type="text" placeholder="Rechercher un club..." value="'+(window._calFriendlyOppFilter||'').replace(/"/g,'&quot;')+'" oninput="_calSetFriendlyFilter(this.value)" style="width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--b1);border-radius:6px;color:var(--fg);padding:6px 8px;font-size:11px;margin-bottom:6px">';
+  if(!list.length){
+    h += '<div style="font-size:9px;color:var(--muted);padding:6px">Aucun club trouvé.</div>';
+  } else {
+    h += '<div style="display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto">';
+    list.forEach(function(t){
+      const lvlLabel = t.level ? String(t.level).replace('valcourt_','V-').replace('brumefer_','B-').replace('district','D').toUpperCase() : '';
+      h += '<div onclick="_calPlanFriendly(\''+dateKey+'\',\''+t.name.replace(/'/g,"\\\\'").replace(/"/g,'&quot;')+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;background:var(--dark);border:1px solid var(--b1)">';
+      h += '<span style="width:18px;height:18px;border-radius:50%;background:'+(t.color||'#888')+'33;border:2px solid '+(t.color||'#888')+';flex-shrink:0"></span>';
+      h += '<span style="flex:1;font-size:11px;font-weight:700;color:'+(t.color||'var(--fg)')+'">'+t.name+'</span>';
+      if(lvlLabel) h += '<span style="font-size:8px;color:var(--muted)">'+lvlLabel+'</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+// Planifie un amical avec l'adversaire choisi, à la date donnée.
+function _calPlanFriendly(dateKey, oppName){
+  if(!careerV2) return;
+  const all = (typeof _friendlyOpponents==='function') ? _friendlyOpponents() : [];
+  const opp = all.find(function(t){ return t.name===oppName; });
+  if(!opp){ logEvent('Adversaire introuvable.','#e02030'); return; }
+  const ok = _planDay(dateKey, 'friendly', null, {
+    oppName: opp.name, oppLevel: opp.level, oppColor: opp.color||null, oppBadge: opp.badge||null,
+  });
+  if(!ok){ logEvent('❌ Un match est déjà prévu ce jour-là.','#e02030'); return; }
+  careerLog('🤝 Amical programmé le '+dateKey.split('-').reverse().join('/')+' contre '+opp.name+'.', '#00bcd4');
+  saveCareerV2();
+  window._calFriendlyPickerKey = null;
+  window._calPlannerKey = null;
+  window._calFriendlyOppFilter = '';
   renderCareerDirectorTab('calendar');
 }
 
@@ -8191,7 +8335,9 @@ function _advanceOneDay(){
   const todayKey = _dateKey(C.date);
   const pending = _matchOnDateKey(todayKey);
   if(pending){
-    C._pendingMatch = pending.cup ? {cup:true} : {fixtureId:pending.id};
+    if(pending.cup) C._pendingMatch = {cup:true};
+    else if(pending.friendly) C._pendingMatch = {friendly:true, dateKey:pending.dateKey};
+    else C._pendingMatch = {fixtureId:pending.id};
     saveCareerV2();
     renderCareerV2();
     return;
@@ -8482,13 +8628,18 @@ function playCareerMatchV2(){
 
   // Mémoriser le fix en cours pour enregistrer le résultat après match
   window._careerFixPlaying = fix;
+
+  // Réinitialiser l'état moteur AVANT le pré-match, sinon un match précédent
+  // laissé en phase 'END' bloque le lancement suivant (le bouton semble inerte).
+  nav('match');
+  resetMatch();
+  // resetMatch() remet leagueMode=false : on (re)pose donc les flags APRÈS.
   G.leagueMode = true; // pour que endMatch sache qu'il faut enregistrer
   G._humanTeams = [true, false]; // le joueur dirige team0 ; l'IA coache team1
   try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
-
+  syncHUD(); renderTB(0); renderTB(1);
   // Lancer le pré-match normal
   showPreMatch(null);
-  nav('match');
 }
 
 function _recordCareerV2MatchResult(){
@@ -8528,7 +8679,135 @@ function _recordCareerV2MatchResult(){
   saveCareerV2();
 }
 
-// ── JOUER un tour de coupe (match du joueur sur le terrain) ────────────────
+// ── MATCH AMICAL (planifié librement par le dirigeant) ─────────────────────
+// Construit l'équipe du joueur + l'adversaire choisi (à SON niveau), lance le
+// match jouable, et n'affecte que le moral/la forme (jamais le classement).
+function playCareerFriendlyMatch(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const pm = C._pendingMatch;
+  const dk = (pm && pm.friendly) ? pm.dateKey : _dateKey(C.date);
+  const plan = C.dayPlans && C.dayPlans[dk];
+  if(!plan || plan.type!=='friendly' || !plan.oppName){ logEvent('Aucun amical prévu aujourd\'hui.','#e02030'); return; }
+
+  const nation = C.nation || 'panthalassa';
+  const region = C.club.region;
+  const oppLevel = (typeof _friendlyOppEngineLevel==='function') ? _friendlyOppEngineLevel(plan) : (plan.oppLevel||'r2');
+
+  const mode = window.gameMode || '7v7';
+  const XI_POS = mode==='11v11' ? ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT']
+               : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
+               :                  ['GB','DC','DD','DG','MC','MC','ATT'];
+  const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
+                  : mode==='5v5'   ? ['GB','DC','MC','ATT','DC']
+                  :                  ['GB','MC','ATT','DC','MC'];
+  const xiSize = XI_POS.length, benchSize = BENCH_POS.length;
+
+  // Équipe du joueur (mêmes règles que le championnat).
+  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
+    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
+  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; }).sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; }).sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const starters = [];
+  if(gkPool[0]) starters.push(gkPool[0]);
+  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
+  const leftoverGk  = gkPool.slice(1);
+  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
+  const matchBench = [];
+  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
+  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
+  const usedIds = starters.concat(matchBench);
+  const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
+  starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
+  matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
+
+  teams[0] = {
+    name: C.club.name, color: C.club.color||'#e02030', img: C.club.img||'',
+    strat: C.club.strat||'321',
+    players: starters, bench: matchBench,
+    reserves: surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
+  };
+
+  let aiSquad;
+  try{
+    aiSquad = WORLDS.generateSquad(nation, region, { positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel });
+  }catch(e){
+    console.error('friendly ai squad:', e);
+    logEvent('⚠️ Impossible de générer l\'adversaire amical. Match simulé à la place.','#e0a020');
+    simCareerFriendlyMatch(); return;
+  }
+  if(!aiSquad || !(aiSquad.players||[]).length){ simCareerFriendlyMatch(); return; }
+
+  teams[1] = {
+    name: plan.oppName, color: plan.oppColor||'#1878e8', img:'', badge: plan.oppBadge||null,
+    strat:'321', players: aiSquad.players, bench: aiSquad.bench, reserves: [],
+  };
+
+  applyFormationRoles(0);
+  applyFormationRoles(1);
+
+  window._careerFriendlyPlaying = { dateKey: dk, oppName: plan.oppName };
+
+  nav('match');
+  resetMatch();
+  G.leagueMode = true; // pour router endMatch() vers l'enregistrement carrière
+  G._humanTeams = [true, false];
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
+  syncHUD(); renderTB(0); renderTB(1);
+  showPreMatch(null);
+}
+
+// Simule un amical sans le jouer (résultat rapide, effets moral/forme).
+function simCareerFriendlyMatch(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const pm = C._pendingMatch;
+  const dk = (pm && pm.friendly) ? pm.dateKey : _dateKey(C.date);
+  const plan = C.dayPlans && C.dayPlans[dk];
+  if(!plan || plan.type!=='friendly'){ return; }
+  // Force du joueur = OVR moyen de l'effectif ramené sur 0..1.
+  const _sq = (C.players||[]).concat(C.bench||[]);
+  const myStr = _sq.length
+    ? Math.min(0.95, Math.max(0.2, (_sq.reduce(function(a,p){ return a+_playerOvr(p); },0)/_sq.length)/100))
+    : 0.6;
+  const oppLvl = (typeof _friendlyOppEngineLevel==='function') ? _friendlyOppEngineLevel(plan) : 'r2';
+  const oppStr = ({d1:0.9,d2:0.8,d3:0.7,r1:0.6,r2:0.5,r3:0.4,dh:0.3})[oppLvl] || 0.5;
+  const gf = Math.max(0, Math.round(myStr*3 + Math.random()*1.6 - 1));
+  const ga = Math.max(0, Math.round(oppStr*3 + Math.random()*1.6 - 1));
+  _applyFriendlyOutcome(gf, ga, plan.oppName);
+  if(C.dayPlans) delete C.dayPlans[dk];
+  if(C._pendingMatch) C._pendingMatch = null;
+  saveCareerV2();
+  renderCareerV2();
+}
+
+// Effets d'un amical (moral + forme + petites blessures), SANS toucher au
+// classement ni aux finances de championnat.
+function _applyFriendlyOutcome(gf, ga, oppName){
+  const C = careerV2; if(!C) return;
+  const win = gf>ga, draw = gf===ga;
+  const squad = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]);
+  squad.forEach(function(p){
+    if(!p) return;
+    p._hm = Math.max(-10, Math.min(10, (p._hm||0) + (win?1.0:draw?0.3:-0.4)));
+    p._fm = Math.min(10, (p._fm||0) + 0.4); // un match entretient la forme
+    if(Math.random()<0.008 && (p.injLevel||0)===0){ p.injLevel=1; p.injT=1+Math.floor(Math.random()*2); }
+  });
+  const res = win?'✅ victoire':draw?'🟡 nul':'❌ défaite';
+  const col = win?'#18c860':draw?'#f0c028':'#e06060';
+  careerLog('🤝 Amical : '+C.club.name+' '+gf+'-'+ga+' '+(oppName||'')+' — '+res+' (moral & forme ajustés).', col);
+}
+
+function _recordCareerV2FriendlyResult(){
+  if(!careerV2 || !window._careerFriendlyPlaying) return;
+  const ref = window._careerFriendlyPlaying;
+  window._careerFriendlyPlaying = null;
+  const C = careerV2;
+  try{ _applyFriendlyOutcome(G.scores[0], G.scores[1], ref.oppName); }catch(e){ console.error('friendly record:', e); }
+  if(C.dayPlans && ref.dateKey) delete C.dayPlans[ref.dateKey];
+  if(C._pendingMatch) C._pendingMatch = null;
+  saveCareerV2();
+}
 // Charge l'adversaire de coupe (potentiellement d'une AUTRE division que le
 // club joueur) au bon niveau, lance le match interactif, et mémorise la paire
 // du bracket à résoudre à la fin. Corrige deux bugs :
@@ -8631,12 +8910,17 @@ function playCareerCupMatch(){
 
   // Mémoriser la paire de coupe à résoudre après le match.
   window._careerCupPlaying = { match: m, isHome: isHome };
+
+  // Réinitialiser l'état moteur AVANT le pré-match (sinon un match précédent en
+  // phase 'END' bloque le lancement).
+  nav('match');
+  resetMatch();
+  // resetMatch() remet leagueMode=false : on (re)pose donc les flags APRÈS.
   G.leagueMode = true; // route endMatch() vers _recordCareerV2CupMatchResult
   G._humanTeams = [true, false]; // le joueur dirige team0 ; l'IA coache team1
   try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
-
+  syncHUD(); renderTB(0); renderTB(1);
   showPreMatch(null);
-  nav('match');
 }
 
 // Résout la paire de coupe du joueur (scores myG/oppG déjà connus), applique

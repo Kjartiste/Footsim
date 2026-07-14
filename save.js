@@ -350,6 +350,7 @@ function startCareerDirector(regionId, clubId, nationId){
     if(vt && vt.tier){
       // Mapper le tier Valoria vers un niveau moteur si dispo.
       if(typeof valoriaNormalizeLevel==='function' && vt.division) startLevel = vt.division;
+      if(typeof VALORIA_DIVISIONS!=='undefined' && VALORIA_DIVISIONS[startLevel]) startDivName = VALORIA_DIVISIONS[startLevel].name;
     }
   }
   // ── PROFIL DE DÉPART SELON LE NIVEAU ──────────────────────────────────
@@ -369,7 +370,21 @@ function startCareerDirector(regionId, clubId, nationId){
     r3: { squad:14, bench:4, reserves:1, budget:9000,    infra:{stadium:1,training:1,formation:0,medical:1,scout:0}, cap:2000,  staff:false },
     dh: { squad:13, bench:4, reserves:1, budget:3000,    infra:{stadium:0,training:0,formation:0,medical:0,scout:0}, cap:800,   staff:false },
   };
-  const prof = _lvlProfile[startLevel] || _lvlProfile.dh;
+  // Le profil (budget/effectif/infra) est indexé par NIVEAU MOTEUR (d1..dh).
+  // Pour Valoria, startLevel est un id de division ('pro','valcourt_r1',...)
+  // qui n'existe pas dans _lvlProfile → il faut le convertir, sinon TOUS les
+  // clubs Valoria repris héritaient par erreur du profil 'dh' (district).
+  let profileLevel = startLevel;
+  if(nationId==='valoria'){
+    const _valTierToEngine = {
+      pro:'d1',
+      valcourt_r1:'r1', valcourt_r2:'r2', valcourt_r3:'r3',
+      valcourt_district1:'dh', valcourt_district2:'dh', valcourt_district3:'dh', valcourt_district4:'dh',
+      brumefer_r1:'r1', brumefer_r2:'r2',
+    };
+    profileLevel = _valTierToEngine[startLevel] || 'dh';
+  }
+  const prof = _lvlProfile[profileLevel] || _lvlProfile.dh;
   // Prestige du CHAMPIONNAT (nation) : tous les pays ne se valent pas. Le Pilier
   // est un grand championnat riche ; Valoria est modeste (petits budgets), sauf
   // une poignée de clubs "cadors" qui sortent du lot.
@@ -419,7 +434,7 @@ function startCareerDirector(regionId, clubId, nationId){
     positions: _mkPositions(squadCount),
     bench: _mkPositions(benchCount),
     reserves: _mkPositions(reservesCount),
-    level: startLevel,
+    level: profileLevel,
   });
 
   careerV2 = {
@@ -444,7 +459,7 @@ function startCareerDirector(regionId, clubId, nationId){
       transferBudget: Math.round(budget * 0.40),
       wage_budget: Math.round(budget * 0.45),
       weekly_costs: 0,
-      reputation: WORLDS.startReputation(startLevel, region),
+      reputation: WORLDS.startReputation(profileLevel, region),
       fanbase: _startFanbase(region),
       infra: Object.assign({ stadium:0, training:0, formation:0, medical:0, scout:0 }, prof.infra),
       sponsor: null,
@@ -1169,13 +1184,43 @@ function _sameCalendarWeek(d1, d2){
 // C.dayPlans = { 'Y-MM-DD': { type:'training'|'rest'|'friendly',
 //                             focus:'physique'|'technique'|'tactique'|'recuperation' } }
 // ═══════════════════════════════════════════════════════════
-function _planDay(dateKey, type, focus){
+function _planDay(dateKey, type, focus, extra){
   const C = careerV2; if(!C) return false;
   if(!C.dayPlans) C.dayPlans = {};
   // Impossible de planifier sur un jour de match déjà fixé.
   if(_matchOnDateKey(dateKey)) return false;
-  C.dayPlans[dateKey] = { type: type, focus: focus||null };
+  const plan = { type: type, focus: focus||null };
+  // Un amical peut porter un adversaire choisi (nom + niveau + couleur/blason).
+  if(extra && typeof extra==='object') Object.assign(plan, extra);
+  C.dayPlans[dateKey] = plan;
   return true;
+}
+
+// Liste d'adversaires possibles pour un match amical, tirée du vivier de la
+// nation du joueur (tous niveaux confondus). Renvoie [{name,level,color,badge}].
+// Sert au dirigeant à CHOISIR contre qui jouer l'amical.
+function _friendlyOpponents(){
+  const C = careerV2; if(!C) return [];
+  const mine = C.club ? C.club.name : null;
+  let pool = [];
+  if(C.nation==='pilier' && typeof PILIER_TEAMS!=='undefined'){
+    pool = PILIER_TEAMS.map(function(t){ return { name:t.name, level:t.level||'dh', color:t.color, badge:t.badge||null, division:t.division }; });
+  } else if(C.nation==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
+    pool = VALORIA_TEAMS.map(function(t){ return { name:t.name, level:t.division||'valcourt_r3', color:t.color, badge:t.badge||null, division:t.division }; });
+  }
+  return pool.filter(function(t){ return t.name!==mine; });
+}
+// Niveau moteur (d1..dh) d'un adversaire d'amical, pour générer son effectif.
+function _friendlyOppEngineLevel(opp){
+  if(!opp) return 'r2';
+  const lvl = opp.level;
+  // Pilier : les niveaux sont déjà moteur (d1..dh).
+  if(['d1','d2','d3','r1','r2','r3','dh'].indexOf(lvl)>=0) return lvl;
+  // Valoria : mapper la division vers un niveau moteur.
+  const map = { pro:'d1', valcourt_r1:'r1', valcourt_r2:'r2', valcourt_r3:'r3',
+    valcourt_district1:'dh', valcourt_district2:'dh', valcourt_district3:'dh', valcourt_district4:'dh',
+    brumefer_r1:'r1', brumefer_r2:'r2' };
+  return map[lvl] || 'r2';
 }
 function _unplanDay(dateKey){
   const C = careerV2; if(!C || !C.dayPlans) return;
@@ -1200,10 +1245,13 @@ function _matchOnDateKey(dateKey){
       }
     }
   }
+  // Amical planifié par le dirigeant ce jour-là (avec adversaire choisi) :
+  // il devient un match JOUABLE (comme un match officiel, mais hors classement).
+  if(C.dayPlans && C.dayPlans[dateKey] && C.dayPlans[dateKey].type==='friendly' && C.dayPlans[dateKey].oppName){
+    return { friendly:true, dateKey:dateKey };
+  }
   return null;
 }
-// Applique les effets du plan du jour (ou repos passif par défaut) sur
-// l'effectif du joueur. Retourne un message pour le journal, ou null.
 function _resolveDayPlan(dateKey){
   const C = careerV2; if(!C || C.type!=='director') return null;
   const plan = (C.dayPlans && C.dayPlans[dateKey]) || { type:'rest', focus:null };
@@ -1274,9 +1322,20 @@ function _buildRoundRobinFixtures(allClubs){
   // Ancrer la date de début de saison AVANT de calculer les dates de journées.
   // On la cale sur le prochain SAMEDI (jour traditionnel des matchs de ligue),
   // pour que toutes les journées tombent un samedi tout au long de la saison.
+  // ── PRÉSAISON ──────────────────────────────────────────────────────────
+  // La saison ne démarre pas le jour 1 : on laisse d'abord une PRÉSAISON de
+  // quelques semaines (entraînements, amicaux planifiables, mercato) avant la
+  // 1re journée officielle. Concrètement, la journée 1 est repoussée de
+  // PRESEASON_WEEKS semaines : la période entre la date de départ du save et ce
+  // 1er samedi de championnat constitue la présaison.
+  const PRESEASON_WEEKS = 3;
   if(careerV2 && !careerV2.seasonStartDate){
     const base = Object.assign({}, careerV2.date || {year:1,month:8,day:1});
-    careerV2.seasonStartDate = _nextWeekday(base, 5); // 5 = Samedi
+    // Premier samedi APRÈS la présaison.
+    const firstSat = _nextWeekday(base, 5); // 5 = Samedi
+    careerV2.seasonStartDate = _addDays(firstSat, PRESEASON_WEEKS * 7);
+    careerV2.preseasonWeeks = PRESEASON_WEEKS;
+    careerV2.preseasonEndDate = Object.assign({}, careerV2.seasonStartDate);
   }
   let clubs = allClubs.slice();
   if(clubs.length % 2 !== 0){ clubs.push({id:'__bye__', name:'(exempt)', isPlayer:false}); }
@@ -1455,7 +1514,12 @@ function _generateNationalCup(){
     .concat(pool.slice(0, SIZE-1).map(t=>({ name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh', isPlayer:false })));
   // Noms de tours selon la taille.
   const roundNames = SIZE===32 ? ['32es','16es','8es','Quarts','Demies','Finale'] : ['16es','8es','Quarts','Demies','Finale'];
-  const weeks = SIZE===32 ? [2,4,7,10,13,16] : [3,6,9,12,15];
+  // Semaines des tours de coupe. Elles sont exprimées en SEMAINES DE CHAMPIONNAT
+  // (la journée N tombe le samedi de la semaine N ; les tours de coupe se jouent
+  // le mercredi de la même semaine). On décale les tours pour qu'ils démarrent
+  // APRÈS que le championnat soit lancé (jamais en semaine 1-2, encore moins en
+  // présaison) et qu'ils s'espacent jusqu'à la fin de saison.
+  const weeks = SIZE===32 ? [4,7,10,13,16,19] : [5,8,11,14,17];
   C.cup = {
     name: cupInfo.name, icon: cupInfo.icon, block,
     field, round: 0, roundNames, weeks,
@@ -1598,12 +1662,13 @@ function _pickHouseCupWeeks(nbRounds){
     (((C.cup||{}).weeks)||[]).concat(((C.leagueCup||{}).playoffWeeks)||[])
   );
   const weeks = [];
-  let w = 3;
+  // Démarrer après le lancement du championnat (jamais en présaison / journées 1-4).
+  let w = 5;
   while(weeks.length < nbRounds && w <= 36){
     if(!used.has(w)) weeks.push(w);
     w += 2;
   }
-  w = 3;
+  w = 5;
   while(weeks.length < nbRounds && w <= 37){
     if(!weeks.includes(w) && !used.has(w)) weeks.push(w);
     w++;
