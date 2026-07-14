@@ -1769,6 +1769,10 @@ function goMatch(){
   _lastNav='setup';
   _prepareTeamsForMode();
   nav('match');
+  // Exhibition : les deux équipes sont réputées « joueur » par défaut → le
+  // coach IA reste inactif (comportement historique inchangé). Les modes
+  // carrière/ligue posent explicitement G._humanTeams avant de lancer.
+  G._humanTeams = [true, true];
   resetMatch();
   syncHUD();renderTB(0);renderTB(1);
   showPreMatch();
@@ -3520,6 +3524,14 @@ function playLeagueMatch(){
   _leagueUserTeamBackup=[teams[0],teams[1]];
   teams[0]=deepCloneTeam(hD);
   teams[1]=deepCloneTeam(aD);
+  // Marquer quelles équipes sont humaines (pour le coach IA de l'adversaire).
+  // team0 = home, team1 = away.
+  (function(){
+    const ht=leagueState.teams.find(t=>t.id===fix.home);
+    const at=leagueState.teams.find(t=>t.id===fix.away);
+    const isHuman=t=>!!(t&&(t.isUser||(t.isSaved&&savedTeams[t.savedIdx]&&savedTeams[t.savedIdx].isHuman)));
+    G._humanTeams=[isHuman(ht), isHuman(at)];
+  })();
   _lastNav='league';_prepareTeamsForMode();resetMatch();G.leagueMode=true;
   // Restaurer le mode de jeu de la ligue
   if(leagueState.window.gameMode && leagueState.window.gameMode !== window.gameMode){
@@ -4918,6 +4930,7 @@ function playCupMatch(){
   cupCurrentMatch={...cm,leg,swapped};
   _leagueUserTeamBackup=[teams[0],teams[1]];
   teams[0]=deepCloneTeam(hD);teams[1]=deepCloneTeam(aD);
+  _setCupHumanTeams(hId,aId);
   _lastNav='cup';_prepareTeamsForMode();resetMatch();G.leagueMode=true;
   nav('match');syncHUD();renderTB(0);renderTB(1);
   const hN=cupState.teams.find(t=>t.id===fix.home)?.name||hD.name;
@@ -4925,6 +4938,17 @@ function playCupMatch(){
   const legLbl=leg===2?' (Retour — terrain adverse)':fix?.legs===2?' (Aller)':'';
   logEvent('Coupe : '+hN+' ⬡ '+aN+legLbl,'#f0c028');
   showPreMatch();
+}
+
+// Détermine quelles équipes d'un match de coupe (standalone) sont humaines,
+// pour que le coach IA ne pilote QUE les équipes PNJ. hId/aId = ids des
+// équipes home/away déjà résolus (après swap éventuel du match retour).
+function _setCupHumanTeams(hId,aId){
+  try{
+    const lt=id=>cupState&&cupState.teams.find(t=>t.id===id);
+    const isHuman=t=>!!(t&&(t.isUser||(t.isSaved&&savedTeams[_resolveSavedIdx(t)]&&savedTeams[_resolveSavedIdx(t)].isHuman)));
+    G._humanTeams=[isHuman(lt(hId)), isHuman(lt(aId))];
+  }catch(e){ G._humanTeams=[true,true]; }
 }
 
 // simulateCupMatch is defined earlier near simulateMatch
@@ -4950,6 +4974,7 @@ function playCupFixDirectly(cm){
   cupCurrentMatch={...cm,leg,swapped};
   _leagueUserTeamBackup=[teams[0],teams[1]];
   teams[0]=deepCloneTeam(hD);teams[1]=deepCloneTeam(aD);
+  _setCupHumanTeams(hId,aId);
   _lastNav='cup';_prepareTeamsForMode();resetMatch();G.leagueMode=true;
   nav('match');syncHUD();renderTB(0);renderTB(1);
   const hN=cupState.teams.find(t=>t.id===fix.home)?.name||hD.name;
@@ -8423,6 +8448,8 @@ function playCareerMatchV2(){
   // Mémoriser le fix en cours pour enregistrer le résultat après match
   window._careerFixPlaying = fix;
   G.leagueMode = true; // pour que endMatch sache qu'il faut enregistrer
+  G._humanTeams = [true, false]; // le joueur dirige team0 ; l'IA coache team1
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
 
   // Lancer le pré-match normal
   showPreMatch(null);
@@ -8570,6 +8597,8 @@ function playCareerCupMatch(){
   // Mémoriser la paire de coupe à résoudre après le match.
   window._careerCupPlaying = { match: m, isHome: isHome };
   G.leagueMode = true; // route endMatch() vers _recordCareerV2CupMatchResult
+  G._humanTeams = [true, false]; // le joueur dirige team0 ; l'IA coache team1
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
 
   showPreMatch(null);
   nav('match');

@@ -1596,6 +1596,9 @@ function frame(ts){
     G.minTick+=rawDt*speedMult;
     if(G.minTick>=SEC_PER_MIN){
       G.minTick=0;G.minute++;
+      // Coach IA de l'équipe adverse : réévalue mentalité/changements chaque
+      // minute simulée (ne touche qu'aux équipes non-humaines).
+      try{ if(typeof managerAiTick==='function') managerAiTick(); }catch(e){ console.error('managerAiTick:',e); }
       // Affichage horloge : au-delà de 45/90, on montre "45+2'" façon TV.
       _updateClockDisplay();
       // ── TEMPS ADDITIONNEL ────────────────────────────────────────────────
@@ -1734,6 +1737,7 @@ function resetMatch(){
   G.tacMode=[null,null];
   G.gegenT=[0,0];
   G.gkCoolT=0;
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
   showTacBtns(false);
   document.getElementById('prematch-modal')?.classList.remove('on');
   G.running=false;G._paused=false;G._celebrating=false;G._everStarted=false;
