@@ -8031,7 +8031,7 @@ function _renderDirectorSponsors(){
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
     h += '<div style="font-size:10px;font-weight:800">'+sd.icon+' '+sd.label+'</div>';
     if(cur){
-      h += '<button class="btn" onclick="terminateSponsor(\''+sd.key+'\')" style="font-size:8px;padding:2px 8px;background:transparent;border:1px solid #e06060;color:#e06060">Résilier</button>';
+      h += '<button class="btn" onclick="terminateSponsorV2(\''+sd.key+'\')" style="font-size:8px;padding:2px 8px;background:transparent;border:1px solid #e06060;color:#e06060">Résilier</button>';
     }
     h += '</div>';
     if(cur){
@@ -8051,10 +8051,10 @@ function _renderDirectorSponsors(){
         h += '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:700">'+o.name+'</div>';
         h += '<div style="font-size:8px;color:var(--muted)">'+_fmtMoney(o.weekly)+'/sem · '+o.weeks+' sem · prime signature '+_fmtMoney(o.signBonus)+'</div>';
         h += '<div style="font-size:8px;color:'+(o.objective?'#f0c028':'var(--muted)')+'">'+objTxt+'</div></div>';
-        h += '<button class="btn btng" onclick="signSponsor(\''+sd.key+'\','+i+')" style="font-size:9px;padding:3px 10px">Signer</button>';
+        h += '<button class="btn btng" onclick="signSponsorV2(\''+sd.key+'\','+i+')" style="font-size:9px;padding:3px 10px">Signer</button>';
         h += '</div>';
       });
-      h += '<button class="btn" onclick="refreshSponsorOffers(\''+sd.key+'\')" style="font-size:8px;padding:2px 8px;margin-top:2px">🔄 Nouvelles offres</button>';
+      h += '<button class="btn" onclick="refreshSponsorOffersV2(\''+sd.key+'\')" style="font-size:8px;padding:2px 8px;margin-top:2px">🔄 Nouvelles offres</button>';
     }
     h += '</div>';
   });
@@ -8063,7 +8063,7 @@ function _renderDirectorSponsors(){
   return h;
 }
 
-function signSponsor(slot, idx){
+function signSponsorV2(slot, idx){
   if(!careerV2 || typeof SPONSORS==='undefined') return;
   const C = careerV2; const club = C.club;
   SPONSORS.ensure(club);
@@ -8082,7 +8082,7 @@ function signSponsor(slot, idx){
   renderCareerDirectorTab('sponsors');
 }
 
-function terminateSponsor(slot){
+function terminateSponsorV2(slot){
   if(!careerV2 || typeof SPONSORS==='undefined') return;
   const C = careerV2; const club = C.club;
   const cur = club.sponsors && club.sponsors[slot];
@@ -8097,7 +8097,7 @@ function terminateSponsor(slot){
   renderCareerDirectorTab('sponsors');
 }
 
-function refreshSponsorOffers(slot){
+function refreshSponsorOffersV2(slot){
   if(!careerV2 || typeof SPONSORS==='undefined') return;
   SPONSORS.refresh(careerV2.club, slot); // change la graine → nouvelles offres
   saveCareerV2();
