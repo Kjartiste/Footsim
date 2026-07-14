@@ -8012,6 +8012,17 @@ function _renderDirectorSponsors(){
   h += '<div style="font-size:9px;color:var(--muted)">Revenu sponsors : <b style="color:#18c860">'+_fmtMoney(weekly)+'</b>/sem.</div>';
   h += '</div>';
   h += '<div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.4">Signe un contrat par emplacement. Les paiements hebdomadaires alimentent ton budget ; certains contrats offrent une prime de fin de saison si un objectif sportif est atteint.</div>';
+  // Contexte : les offres dépendent de la division, de la nation et de la
+  // richesse de la région du club.
+  try{
+    const reg = WORLDS.getRegion(club.nation || C.nation, club.region);
+    if(reg){
+      const wLbl = (reg.wealth>=3) ? 'région riche — grandes marques nationales'
+                 : (reg.wealth===2) ? 'région intermédiaire — marques mixtes'
+                 : 'région modeste — surtout des sponsors locaux';
+      h += '<div style="font-size:8px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--b1)">📍 '+reg.name+' · '+wLbl+' · division <b>'+String(club.level).toUpperCase()+'</b></div>';
+    }
+  }catch(e){}
   h += '</div>';
 
   slots.forEach(function(sd){
@@ -8031,10 +8042,9 @@ function _renderDirectorSponsors(){
       h += '<div style="font-size:8px;color:var(--muted);margin-top:2px">'+(cur.weeksLeft!=null?cur.weeksLeft:cur.weeks)+' sem. restantes'+objTxt+'</div>';
       h += '</div>';
     } else {
-      // Générer/mémoriser des offres par emplacement (stables entre rendus).
-      C._sponsorOffers = C._sponsorOffers || {};
-      if(!C._sponsorOffers[sd.key]) C._sponsorOffers[sd.key] = SPONSORS.offersFor(club, sd.key);
-      const offers = C._sponsorOffers[sd.key];
+      // Offres déterministes (dérivées d'une graine) : identiques à chaque
+      // rendu et après un rechargement, donc l'index du bouton reste valide.
+      const offers = SPONSORS.offersFor(club, sd.key);
       offers.forEach(function(o, i){
         const objTxt = o.objective ? ('🎯 '+o.objective.label+' (+'+_fmtMoney(o.objective.bonus)+')') : 'Sans objectif';
         h += '<div style="display:flex;align-items:center;gap:8px;padding:7px;background:var(--panel);border:1px solid var(--b1);border-radius:6px;margin-bottom:5px">';
@@ -8056,7 +8066,9 @@ function _renderDirectorSponsors(){
 function signSponsor(slot, idx){
   if(!careerV2 || typeof SPONSORS==='undefined') return;
   const C = careerV2; const club = C.club;
-  const offers = (C._sponsorOffers && C._sponsorOffers[slot]) || [];
+  SPONSORS.ensure(club);
+  // Les offres sont régénérées à l'identique depuis la graine du club.
+  const offers = SPONSORS.offersFor(club, slot);
   const deal = offers[idx];
   if(!deal){ logEvent('Offre introuvable.','#e02030'); return; }
   const res = SPONSORS.sign(club, deal);
@@ -8065,8 +8077,6 @@ function signSponsor(slot, idx){
     club.budget += res.bonus;
     try{ _addFinanceLog('Prime signature sponsor : '+deal.name, res.bonus); }catch(e){}
   }
-  // Consommer les offres de cet emplacement (contrat signé).
-  if(C._sponsorOffers) delete C._sponsorOffers[slot];
   logEvent('✅ Contrat signé avec '+deal.name+' ('+SPONSORS.slotDef(slot).label+') — '+_fmtMoney(deal.weekly)+'/sem.','#18c860');
   saveCareerV2();
   renderCareerDirectorTab('sponsors');
@@ -8089,9 +8099,8 @@ function terminateSponsor(slot){
 
 function refreshSponsorOffers(slot){
   if(!careerV2 || typeof SPONSORS==='undefined') return;
-  const C = careerV2;
-  C._sponsorOffers = C._sponsorOffers || {};
-  C._sponsorOffers[slot] = SPONSORS.offersFor(C.club, slot);
+  SPONSORS.refresh(careerV2.club, slot); // change la graine → nouvelles offres
+  saveCareerV2();
   renderCareerDirectorTab('sponsors');
 }
 

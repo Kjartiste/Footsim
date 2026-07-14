@@ -33,16 +33,62 @@ const SPONSORS = (function(){
   const SLOT_ORDER = SLOTS.map(function(s){ return s.key; });
   function slotDef(key){ return SLOTS.find(function(s){ return s.key===key; }) || SLOTS[0]; }
 
-  // ── Banques de noms de marques (univers neutre / aquatique du jeu) ──
-  const BRANDS = {
-    maillot: ['AbyssTel','Marega','NyxCola','CoralBank','TritonAir','PelagosPay','OndaMobile','KrakenEnergy','LumenSea','VortexBet'],
-    manche:  ['SelKa','BrumeVive','AquaPur','Récif+','MaréeFC','SonarPro','NacreCo'],
-    equipementier: ['Squale','Méduse Sport','Nérite','FinTech Wear','Abysse Athletic','Vague9'],
-    stade:   ['Arena Corail','Dôme Pélagique','Grand Bleu','Baie d\'Argent','Lagon Central','Fosse aux Requins'],
+  // ── Marques par NATION ─────────────────────────────────────────────
+  // Chaque nation a son propre tissu économique : les marques qui sponsorisent
+  // un club de Panthalassa (empire océanique) n'ont rien à voir avec celles du
+  // Pilier Céleste (verticalité, anges/démons) ou de Rorang (chaos/magie).
+  const NATION_BRANDS = {
+    panthalassa: {
+      maillot: ['AbyssTel','Marega','NyxCola','CoralBank','TritonAir','PelagosPay','OndaMobile','KrakenEnergy'],
+      manche:  ['SelKa','BrumeVive','AquaPur','Récif+','SonarPro','NacreCo'],
+      equipementier: ['Squale','Méduse Sport','Nérite','Abysse Athletic','Vague9'],
+      stade:   ['Arena Corail','Dôme Pélagique','Grand Bleu','Baie d\'Argent','Lagon Central'],
+    },
+    valoria: {
+      maillot: ['Valor Banque','Aurum Tel','Rubis Mobile','Lys Assurances','ValorPay','Blason Énergie'],
+      manche:  ['Cépage Royal','Forge & Fils','Écu+','Vigne d\'Or','Sablier'],
+      equipementier: ['Cuirasse Sport','Lame Athletic','Heaume','Étendard Wear'],
+      stade:   ['Arène du Blason','Grand Tournoi','Cour d\'Honneur','Donjon Central'],
+    },
+    pilier: {
+      maillot: ['Zénith Corp','Ascension Bank','SolTel','Nimbus Énergie','Séraphin Pay','Abîme Industries'],
+      manche:  ['Plume+','Encens','Palier Neuf','Chute Libre','Halo'],
+      equipementier: ['Aile Sport','Griffe Athletic','Ascendant Wear','Sabot & Co'],
+      stade:   ['Terrasse Céleste','Grand Palier','Vertige','Fosse Inférieure'],
+    },
+    rorang: {
+      maillot: ['Chaos Tel','Mana Bank','Rune Mobile','Éclat Instable','GrimoirePay','Sortilège Énergie'],
+      manche:  ['Fiole+','Cendre Vive','Arcane','Bézoard','Tempête'],
+      equipementier: ['Totem Sport','Fétiche Athletic','Sortilège Wear','Écaille'],
+      stade:   ['Cirque des Runes','Arène Instable','Cercle Magique','Faille Centrale'],
+    },
   };
-  function randBrand(slot){
-    const arr = BRANDS[slot] || BRANDS.maillot;
-    return arr[Math.floor(Math.random()*arr.length)];
+  function _nationBrands(nation){
+    return NATION_BRANDS[nation] || NATION_BRANDS.panthalassa;
+  }
+
+  // Génère un nom de marque thématisé : la RÉGION peut préfixer/suffixer la
+  // marque (une marque locale porte le nom de sa région), ce qui donne des
+  // sponsors sensiblement différents d'une région à l'autre.
+  function _brandFor(nation, region, slot, rnd){
+    const bank = _nationBrands(nation);
+    const arr = bank[slot] || bank.maillot;
+    const base = arr[Math.floor(rnd()*arr.length)];
+    const rInfo = _regionInfo(nation, region);
+    const rName = rInfo.name;
+    if(!rName) return base;
+    // Régions pauvres/isolées → sponsors surtout LOCAUX (nom de la région).
+    // Régions riches → grandes marques nationales, rarement localisées.
+    const localChance = rInfo.wealth >= 3 ? 0.18 : rInfo.wealth === 2 ? 0.40 : 0.70;
+    if(rnd() < localChance){
+      const forms = [
+        base+' '+rName,
+        rName+' '+base,
+        base+' de '+rName,
+      ];
+      return forms[Math.floor(rnd()*forms.length)];
+    }
+    return base;
   }
 
   // ── Valeur de base hebdomadaire par niveau de club ─────────────────
@@ -64,35 +110,115 @@ const SPONSORS = (function(){
   ];
   function objectiveById(id){ return OBJECTIVES.find(function(o){ return o.id===id; }) || null; }
 
+  // ── RNG déterministe (seed) ────────────────────────────────────────
+  // Les offres doivent rester IDENTIQUES entre deux rendus et survivre à un
+  // rechargement de la sauvegarde : on les dérive d'une graine (club + slot +
+  // compteur de rafraîchissement) plutôt que de les stocker dans careerV2.
+  function _hash(str){
+    let h = 2166136261 >>> 0;
+    for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h >>> 0;
+  }
+  function _mulberry(seed){
+    let a = seed >>> 0;
+    return function(){
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  // Graine stable pour un club/slot donné (change si le club change de
+  // division ou si le joueur demande de nouvelles offres).
+  function seedFor(club, slot){
+    const id   = (club && (club.id || club.name)) || 'club';
+    const lvl  = (club && club.level) || 'dh';
+    const nat  = (club && club.nation) || (typeof careerV2!=='undefined' && careerV2 && careerV2.nation) || 'x';
+    const reg  = (club && club.region) || 'x';
+    const bump = (club && club._sponsorRefresh && club._sponsorRefresh[slot]) || 0;
+    return _hash([id,nat,reg,lvl,slot,bump].join('|'));
+  }
+
+  // ── Contexte régional : richesse, nom, couleur ──────────────────────
+  // Une capitale riche attire des marques bien plus généreuses qu'une région
+  // isolée, même à division égale.
+  function _regionInfo(nation, region){
+    try{
+      if(typeof WORLDS!=='undefined' && WORLDS.getRegion){
+        const r = WORLDS.getRegion(nation, region);
+        if(r) return { wealth: r.wealth||2, name: r.name||'', type: r.type||'', traits: r.traits||{} };
+      }
+    }catch(e){}
+    return { wealth:2, name:'', type:'', traits:{} };
+  }
+
+  // ── Objectifs plausibles selon le palier ───────────────────────────
+  // Pas de « monter en division » si le club est déjà au sommet, pas de
+  // « éviter la relégation » tout en bas de la pyramide.
+  function _objectivesForLevel(level){
+    const top = (level==='d1');
+    const bottom = ['dh','dh_1','dh_2','dh_3','dh_4'].indexOf(level) >= 0;
+    return OBJECTIVES.filter(function(o){
+      if(o.id==='promo' && top) return false;
+      if(o.id==='no_releg' && bottom) return false;
+      return true;
+    });
+  }
+
   // ── Génère une liste d'offres pour un emplacement donné ────────────
-  // Renvoie 2-3 offres variées (durée / prime / objectif) adaptées au niveau
-  // et à la réputation du club.
+  // Offres STABLES (RNG déterministe) et adaptées à la division, à la nation
+  // et à la région du club.
   function offersFor(club, slot){
     const level = (club && club.level) || 'dh';
     const rep   = (club && typeof club.reputation==='number') ? club.reputation : 50;
-    const base  = levelBase(level) * slotDef(slot).weightMul;
-    const repMul = 0.7 + Math.min(1.2, rep/120); // 0.7 .. ~1.9
+    const nation = (club && club.nation) || (typeof careerV2!=='undefined' && careerV2 && careerV2.nation) || 'panthalassa';
+    const region = (club && club.region) || null;
 
-    const templates = [
-      // Court, sûr, sans objectif.
-      { weeks:20, variance:0.85, objChance:0.0,  bonusW:2 },
-      // Moyen, offre correcte, objectif modéré.
-      { weeks:34, variance:1.00, objChance:0.6,  bonusW:4 },
-      // Long, gros contrat, objectif ambitieux.
-      { weeks:52, variance:1.20, objChance:0.9,  bonusW:6 },
-    ];
+    // RNG déterministe : mêmes offres tant que le joueur ne rafraîchit pas.
+    const rnd = _mulberry(seedFor(club, slot));
+
+    const rInfo = _regionInfo(nation, region);
+    const wealthMul = 0.6 + (rInfo.wealth||2) * 0.30;   // ~0.9 (pauvre) .. 1.5 (riche)
+
+    const base  = levelBase(level) * slotDef(slot).weightMul;
+    const repMul = 0.7 + Math.min(1.2, rep/120);
+
+    // Les paliers amateurs n'attirent ni contrats longs ni gros objectifs.
+    const amateur = ['dh','dh_1','dh_2','dh_3','dh_4','r3'].indexOf(level) >= 0;
+    const templates = amateur
+      ? [ { weeks:12, variance:0.85, objChance:0.0, bonusW:1 },
+          { weeks:20, variance:1.00, objChance:0.3, bonusW:2 },
+          { weeks:34, variance:1.15, objChance:0.5, bonusW:3 } ]
+      : [ { weeks:20, variance:0.85, objChance:0.0, bonusW:2 },
+          { weeks:34, variance:1.00, objChance:0.6, bonusW:4 },
+          { weeks:52, variance:1.20, objChance:0.9, bonusW:6 } ];
+
+    const objPool = _objectivesForLevel(level);
+    const used = {};
 
     return templates.map(function(t){
-      const weekly = Math.max(1, Math.round(base * t.variance * repMul * (0.9 + Math.random()*0.25)));
-      const signBonus = Math.round(weekly * (t.bonusW + Math.random()*2));
+      const weekly = Math.max(1, Math.round(base * t.variance * repMul * wealthMul * (0.9 + rnd()*0.25)));
+      const signBonus = Math.round(weekly * (t.bonusW + rnd()*2));
       let objective = null;
-      if(Math.random() < t.objChance){
-        const o = OBJECTIVES[Math.floor(Math.random()*OBJECTIVES.length)];
+      if(objPool.length && rnd() < t.objChance){
+        const o = objPool[Math.floor(rnd()*objPool.length)];
         objective = { id:o.id, label:o.label, bonus: Math.round(weekly * o.bonusMul) };
       }
-      return { slot:slot, name:randBrand(slot), weekly:weekly, signBonus:signBonus,
+      // Marque thématisée nation/région, sans doublon dans la liste.
+      let name = _brandFor(nation, region, slot, rnd);
+      let guard = 0;
+      while(used[name] && guard++ < 10) name = _brandFor(nation, region, slot, rnd);
+      used[name] = true;
+      return { slot:slot, name:name, weekly:weekly, signBonus:signBonus,
                weeks:t.weeks, weeksLeft:t.weeks, objective:objective };
     });
+  }
+
+  // Demande de nouvelles offres : incrémente le compteur de la graine.
+  function refresh(club, slot){
+    if(!club) return;
+    if(!club._sponsorRefresh) club._sponsorRefresh = {};
+    club._sponsorRefresh[slot] = (club._sponsorRefresh[slot]||0) + 1;
   }
 
   // ── Accès aux contrats actifs du club ──────────────────────────────
@@ -166,7 +292,7 @@ const SPONSORS = (function(){
 
   return {
     SLOTS: SLOTS, SLOT_ORDER: SLOT_ORDER, slotDef: slotDef, OBJECTIVES: OBJECTIVES,
-    offersFor: offersFor, ensure: ensure, active: active, weeklyIncome: weeklyIncome,
+    offersFor: offersFor, refresh: refresh, ensure: ensure, active: active, weeklyIncome: weeklyIncome,
     sign: sign, terminationFee: terminationFee, objectiveMet: objectiveMet, tickWeek: tickWeek,
     objectiveById: objectiveById,
   };
