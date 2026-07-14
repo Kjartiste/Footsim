@@ -7693,6 +7693,23 @@ function _renderPlayerCardOverlay(p){
   else h+='<div style="font-size:10px;color:var(--muted)">Aucun sort.</div>';
   // Valeur
   h+='<div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--b1);display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">Valeur estimée</span><span style="font-weight:900;color:#18c860">'+_fmtMoney(_playerValue(p))+'</span></div>';
+  // ── Gestion d'effectif : monter dans le 11 / mettre sur le banc ────────
+  (function(){
+    const data = window._playerCardData || {};
+    const teamKey = data.teamKey || 'main';
+    const arr = _squadArraysFor(teamKey);
+    if(!arr) return;
+    const pid = String(p.id!=null ? p.id : p.name);
+    const inBench = arr.bench.some(x=>_sameP(x,p));
+    const inStart = arr.players.some(x=>_sameP(x,p));
+    h+='<div style="margin-top:12px;display:flex;gap:8px">';
+    if(inBench){
+      h+='<button onclick="_squadPromote(\''+teamKey+'\',\''+pid.replace(/\'/g,"")+'\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#18c860;color:#fff;font-size:11px;font-weight:800;cursor:pointer">⬆️ Intégrer à l\'effectif</button>';
+    } else if(inStart){
+      h+='<button onclick="_squadDemote(\''+teamKey+'\',\''+pid.replace(/\'/g,"")+'\')" style="flex:1;padding:8px;border:1px solid var(--b2);border-radius:8px;background:transparent;color:var(--muted);font-size:11px;font-weight:800;cursor:pointer">⬇️ Mettre sur le banc</button>';
+    }
+    h+='</div>';
+  })();
   h+='</div>';
   // Injecter en tête du contenu
   const el=document.getElementById('career-director-content');
@@ -7700,6 +7717,52 @@ function _renderPlayerCardOverlay(p){
 }
 function _closePlayerCard(){
   window._playerCardData=null;
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+
+// ── Déplacer un joueur entre l'effectif (titulaires) et le banc ──────────
+// Résout les tableaux réels (équipe première ou affiliée) à partir de teamKey.
+function _squadArraysFor(teamKey){
+  const C = careerV2; if(!C) return null;
+  if(teamKey==='main') return { players:(C.players||(C.players=[])), bench:(C.bench||(C.bench=[])) };
+  const aff=(C.affiliates||[])[parseInt(String(teamKey).replace('aff',''),10)];
+  if(!aff) return null;
+  return { players:(aff.players||(aff.players=[])), bench:(aff.bench||(aff.bench=[])) };
+}
+function _sameP(a,b){
+  if(!a||!b) return false;
+  if(a.id!=null && b.id!=null) return String(a.id)===String(b.id);
+  return a===b;
+}
+// Fait monter un joueur du banc dans l'effectif de départ.
+function _squadPromote(teamKey, pid){
+  const arr=_squadArraysFor(teamKey); if(!arr) return;
+  const i=arr.bench.findIndex(x=>String(x&&x.id||'')===pid || (x&&x.name)===pid);
+  if(i<0){ logEvent('Joueur introuvable sur le banc.','#e02030'); return; }
+  const p=arr.bench[i];
+  arr.bench.splice(i,1);
+  p.onBench=false;
+  arr.players.push(p);
+  logEvent('⬆️ '+p.name+' intègre l\'effectif de départ.','#18c860');
+  saveCareerV2();
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+// Renvoie un titulaire sur le banc (garde au moins un gardien dans l'effectif).
+function _squadDemote(teamKey, pid){
+  const arr=_squadArraysFor(teamKey); if(!arr) return;
+  const i=arr.players.findIndex(x=>String(x&&x.id||'')===pid || (x&&x.name)===pid);
+  if(i<0){ logEvent('Joueur introuvable dans l\'effectif.','#e02030'); return; }
+  const p=arr.players[i];
+  // Empêcher de laisser l'effectif sans aucun gardien.
+  if(p.pos==='GB'){
+    const otherGK=arr.players.some((x,j)=>j!==i && x && x.pos==='GB');
+    if(!otherGK){ logEvent('⚠️ Impossible : ce serait le seul gardien de l\'effectif.','#e06060'); return; }
+  }
+  arr.players.splice(i,1);
+  p.onBench=true;
+  arr.bench.push(p);
+  logEvent('⬇️ '+p.name+' est envoyé sur le banc.','#f0c028');
+  saveCareerV2();
   const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
 }
 
@@ -7796,12 +7859,23 @@ function _renderDirectorMercato(){
   return h;
 }
 
+// Taille d'effectif maximale autorisée selon le niveau du club (titulaires +
+// banc). Aligne le plafond du mercato sur les vrais profils de division au lieu
+// d'un 16 en dur qui bloquait les clubs pros (D3-D1 → 23-25 joueurs).
+function _careerSquadMax(){
+  const C = careerV2; if(!C || !C.club) return 16;
+  const MAX = { d1:25, d2:24, d3:23, r1:21, r2:20, r3:18, dh:16,
+    'dh_1':16, 'dh_2':16, 'dh_3':15, 'dh_4':15 };
+  return MAX[C.club.level] || 18;
+}
+
 function signFreeAgent(idx){
   if(!careerV2) return;
   const p = (careerV2.freeAgents||[])[idx];
   if(!p){ logEvent('Joueur introuvable','#e02030'); return; }
   const total = (careerV2.players||[]).length + (careerV2.bench||[]).length;
-  if(total >= 16){ logEvent('Effectif plein ! (max 16)','#e02030'); return; }
+  const _maxSquad = _careerSquadMax();
+  if(total >= _maxSquad){ logEvent('Effectif plein ! (max '+_maxSquad+')','#e02030'); return; }
 
   p.onBench = true;
   if(!careerV2.bench) careerV2.bench = [];
@@ -7817,7 +7891,8 @@ function promoteYouth(idx){
   const p = (careerV2.youthPool||[])[idx];
   if(!p){ logEvent('Joueur introuvable','#e02030'); return; }
   const total = (careerV2.players||[]).length + (careerV2.bench||[]).length;
-  if(total >= 16){ logEvent('Effectif plein !','#e02030'); return; }
+  const _maxSquad = _careerSquadMax();
+  if(total >= _maxSquad){ logEvent('Effectif plein ! (max '+_maxSquad+')','#e02030'); return; }
 
   p.onBench = true;
   if(!careerV2.bench) careerV2.bench = [];

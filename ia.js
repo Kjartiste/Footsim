@@ -71,12 +71,20 @@ function _doShot11(sh, ati, dti, def2, gk, goalX){
   G.shots[ati]++; if(sh) sh.mSh++;
   const ast=strat(ati)||{atk:1}; const dst=strat(dti)||{def:1};
   const atkS = ((sh?sh.s.sht:40)+irng(-12,12))*ast.atk;
-  const defS = ((gk?gk.s.def+28:30)+(def2?def2.s.def*.3:0)+irng(-10,10))*dst.def;
+  const defS = ((gk?gk.s.def+28:0)+(def2?def2.s.def*.3:0)+irng(-10,10))*dst.def;
   const gy = clamp(PCY+rng(-5.5,5.5), GY1-1.5, GY2+1.5);
   kickTo(goalX, gy, 2.6); freeB();
   logEvent(`Tir de ${sh?sh.name:'?'} !`, teams[ati].color+'cc');
   setTimeout(()=>{
     if(!G.running)return;
+    // But vide : sans gardien, un tir cadré rentre presque toujours.
+    if(!gk){
+      const clearChance = def2 ? Math.min(0.35, 0.12 + (def2.s.def/300)) : 0;
+      const onTarget = Math.random() < 0.88;
+      if(onTarget && Math.random() >= clearChance){ goalScored(sh, ati, goalX); }
+      else { logEvent(onTarget?`Sauvetage sur la ligne !`:`Tir dans le but vide manqué !`, teams[dti].color); G.atkTi=dti; setPhase('GOALKICK'); }
+      return;
+    }
     if(atkS>defS){
       goalScored(sh, ati, goalX);
     } else {
@@ -183,7 +191,7 @@ function aiDecide(dt=0.016){
     const carrier11 = G.owner ? allPlayers.find(p=>p.id===G.owner) : null;
     const carrier = carrier11 || pick(byR(ati,'ATT','MO','MC','AG','AD')) || pick(ap);
     const opp = pick(byR(dti,'DD','DC','DG','MDC','DCD','DCG','LB','RB')) || pick(dp);
-    const gk = byR(dti,'GB')[0];
+    const gk = realGK(dti);
     const oppGoalX = ati===0 ? WW : 0;
     const fwd = ati===0 ? 1 : -1;
 
@@ -377,7 +385,9 @@ function aiDecide(dt=0.016){
     ? ['ATT','MO','AG','AD','ATT2']
     : ['ATT','MO','MOG','MOD'];
   const opp=pick(byR(dti,...defRoles))||pick(dp);
-  const gk=byR(dti,'GB')[0];
+  // Vrai gardien (undefined = but vide). NE PAS utiliser realGK(dti) :
+  // son repli renverrait un joueur de champ quand le poste est vacant.
+  const gk=realGK(dti);
   const oppGoalX=ati===0?WW:0;
   const fwd=ati===0?1:-1;
 
@@ -939,13 +949,17 @@ function aiDecide(dt=0.016){
       break;
     }
     case 'PENALTY_KICK':{
-      const scored=Math.random()<Math.min(0.97,Math.max(0.20,(0.55+((kicker.s.sht+(kicker._hm||0))/99)*.35-((gk?(gk.s.def+(gk._hm||0)):50)/99)*.20)));
+      // But vide : pénalty quasi-certain (seul un tir manqué le rate).
+      const scored = gk
+        ? Math.random()<Math.min(0.97,Math.max(0.20,(0.55+((kicker.s.sht+(kicker._hm||0))/99)*.35-((gk.s.def+(gk._hm||0))/99)*.20)))
+        : Math.random()<0.95;
       G.shots[ati]++;kicker.mSh++;
       kickTo(oppGoalX,PCY+rng(-3,3),3.0);
       logEvent(`⚡ Pénalty de ${kicker.name}...`,teams[ati].color);
       setTimeout(()=>{
         if(!G.running)return;
         if(scored){goalScored(kicker,ati,oppGoalX,null);}
+        else if(!gk){logEvent(`Pénalty de ${kicker.name} manqué — but pourtant vide !`,teams[ati].color+'99');G.atkTi=dti;setPhase('GOALKICK');}
         else{logEvent(`🧤 Arrêt de ${gk?.name||'GB'} !`,teams[dti].color);if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}
       },500/speedMult);
       break;
@@ -983,7 +997,9 @@ function aiDecide(dt=0.016){
       const _fkAtkMul=Math.min(1.5,Math.max(0.7,ast.atk))*((teams[ati]&&teams[ati]._setpAtk)||1);
       const _fkDefMul=Math.min(1.5,Math.max(0.7,dst.def))*((teams[dti]&&teams[dti]._setpDef)||1);
       const atkS=((sh.s.sht+(sh._hm||0))+sh.s.tec*.70+irng(-10,10))*_fkAtkMul*fatMul(sh);
-      const defS=((gk?gk.s.def*fatMul(gk):50+irng(-8,8))+wallDef)*_fkDefMul*1.08;
+      // But vide : pas de gardien → seul le mur (wallDef) défend. Sans ce
+      // correctif, un gardien fantôme (valeur 50) "arrêtait" le coup franc.
+      const defS=((gk?gk.s.def*fatMul(gk):0)+wallDef+irng(-8,8))*_fkDefMul*(gk?1.08:1);
       kickTo(oppGoalX,PCY+rng(-5.5,5.5),2.2);
       logEvent(`Coup franc de ${sh.name}...`,teams[ati].color+'bb');
       setTimeout(()=>{
@@ -996,7 +1012,7 @@ function aiDecide(dt=0.016){
         // pour un excellent tireur face à un mauvais gardien) et base/pente
         // abaissées pour un taux de conversion moyen réaliste (~7-9%).
         if(Math.random()<(()=>{const _a=Math.max(1,atkS),_d=Math.max(1,defS),_r=Math.pow(_a/_d,1.5);return Math.min(0.42,Math.max(0.01,0.07+(_r-1)*0.11));})()){goalScored(sh,ati,oppGoalX,G._lastPasser?.[ati]);}
-        else{logEvent(`Coup franc repoussé par ${gk?.name||'GB'}`,teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}
+        else{logEvent(gk?`Coup franc repoussé par ${gk.name}`:`Coup franc de ${sh.name} — au-dessus du but vide !`,teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}
       },580/speedMult);
       break;
     }
@@ -1065,6 +1081,29 @@ function doShot(sh,ati,dti,def2,gk,goalX){
   const _dGoal=Math.abs(sh.x-goalX);
   const _boxDepth = (typeof PA_W==='number' && PA_W>0) ? PA_W : WW*0.16;
   const _mode = window.gameMode || '7v7';
+  // ── BUT VIDE ────────────────────────────────────────────────────────
+  // Aucun gardien dans les cages (expulsé, blessé sans remplaçant, ou sorti
+  // du poste) : un tir cadré ne peut plus être "arrêté" par un gardien
+  // fantôme. Seul un défenseur qui sauve sur la ligne, ou un tir non cadré,
+  // peut empêcher le but. On court-circuite la logique d'arrêt habituelle.
+  if(!gk){
+    kickTo(goalX,gy,2.6);freeB();
+    setTimeout(()=>{
+      if(!G.running)return;
+      const clearChance = def2 ? Math.min(0.35, 0.12 + ((_S(def2,'def'))/300)) : 0;
+      const onTarget = Math.random() < 0.88; // la plupart des tirs cadrés rentrent
+      if(onTarget && Math.random() >= clearChance){
+        goalScored(sh,ati,goalX,G._lastPasser?.[ati]);
+      } else if(!onTarget){
+        logEvent(`Tir de ${sh.name} — but vide manqué !`,teams[ati].color+'99');
+        G.atkTi=dti;setPhase('GOALKICK');
+      } else {
+        logEvent(`Sauvetage sur la ligne ! ${def2?def2.name:'La défense'} dégage`,teams[dti].color);
+        G.atkTi=dti;setPhase('GOALKICK');
+      }
+    },400/speedMult);
+    return;
+  }
   // Zone "pleine conversion" : dans la surface + une petite marge → facteur 1.
   // Au-delà, décroissance qui devient sévère surtout en 11v11.
   const _fullZone = _boxDepth * 1.25;                     // conversion pleine jusque-là
@@ -1185,7 +1224,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
       }catch(e){}
     }
     const def2=pick(byR(dti,'DD','DC','DG'));
-    const gk2=byR(dti,'GB')[0];
+    const gk2=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     let atkS=((carrier.s.sht+(carrier._hm||0))+sp.pow*_mPow+irng(-8,8))*strat(ati).atk*fatMul(carrier);
     let defS=((gk2?(gk2.s.def)*fatMul(gk2):28)+(def2?def2.s.def*.2*fatMul(def2):0)+irng(-8,8))*strat(dti).def;
@@ -1294,7 +1333,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
   } else if(sp.id==='mouton'){
     spawnMouton(carrier.x,carrier.y);
     G.shots[ati]++;carrier.mSh++;
-    const gk2=byR(dti,'GB')[0];
+    const gk2=realGK(dti);
     // La balle rebondit sur 2-3 joueurs adverses avant de tenter le but
     const targets=[...byR(dti,'DD','DC','DG','MC')].sort(()=>Math.random()-.5).slice(0,irng(1,3));
     let delay=0;
@@ -1436,7 +1475,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Cyclone (Élémentalisme Air) — tir + disperse défenseurs ─
   } else if(sp.id==='cyclon'){
-    const gk2=byR(dti,'GB')[0];const def2=pick(byR(dti,'DD','DC','DG'));
+    const gk2=realGK(dti);const def2=pick(byR(dti,'DD','DC','DG'));
     G.shots[ati]++;carrier.mSh++;
     // Stun tous les défenseurs proches (vent violent)
     actP(dti).forEach(p=>{if(Math.hypot(p.x-carrier.x,p.y-carrier.y)<14){p.stunT=irng(4,8);}});
@@ -1450,7 +1489,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Coup Télékinésique — tir invisible, gardien réagit tard ─
   } else if(sp.id==='telekib'){
-    const gk2=byR(dti,'GB')[0];
+    const gk2=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     const scorer3=carrier;
     // Balle invisible : le gardien voit la balle trop tard (-60% défense)
@@ -1474,7 +1513,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     actP(dti).forEach(p=>{p._spdDebuff=(p._spdDebuff||0)+irng(6,10)*60;});
     actP(ati).forEach(p=>{p._spdDebuff=(p._spdDebuff||0)+irng(2,4)*60;});// propre équipe moins affectée
     // Tir en prime
-    const gk2=byR(dti,'GB')[0];const scorer4=carrier;
+    const gk2=realGK(dti);const scorer4=carrier;
     G.shots[ati]++;carrier.mSh++;
     const atkS2=((scorer4.s.sht+(scorer4._hm||0))+sp.pow+irng(-8,8))*strat(ati).atk*fatMul(scorer4);
     const defS2=(gk2?(gk2.s.def)*fatMul(gk2):28)*strat(dti).def;
@@ -1517,7 +1556,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Blizzard — version améliorée de Frappe Glacée ───────────────────
   } else if(sp.id==='blizzard'){
-    const gkB=byR(dti,'GB')[0];
+    const gkB=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     // Gèle la surface de réparation : tous les défenseurs stun
     actP(dti).forEach(p=>{if(p.x>(WW*.55)){p.stunT=irng(3,6);p._spdDebuff=(p._spdDebuff||0)+irng(6,10)*60;}});
@@ -1531,7 +1570,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Séisme — version supérieure du Cyclone ───────────────────────────
   } else if(sp.id==='seisme'){
-    const gkS=byR(dti,'GB')[0];
+    const gkS=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     // Renverse TOUS les défenseurs, pas seulement les proches
     actP(dti).forEach(p=>{p.stunT=irng(5,10);p._spdDebuff=(p._spdDebuff||0)+irng(4,8)*60;});
@@ -1656,7 +1695,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     // Petite frappe tentée au hasard : parfois ça surprend le gardien, souvent
     // non. La trajectoire est bruitée (d'où le côté "chanceux").
     const oppGoalX = ati===0 ? WW : 0;
-    const oppGk = (byR(dti,'GB')[0]) || null;
+    const oppGk = (realGK(dti)) || null;
     // Puissance volontairement faible + aléa
     const power = 10 + irng(0,14);
     const atkS = (carrier.s.sht*0.4 + power + irng(-6,6)) * (strat(ati).atk||1);
@@ -1774,7 +1813,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
       for(let i=0;i<8;i++)G.ptcl.push({t:'s',x:d.x+rng(-2,2),y:d.y+rng(-1,1),vx:rng(-1.5,1.5),vy:rng(-1,0),l:25,m:25,col:'#82b1ff',sz:rng(.2,.5)});
     });
     G.shots[ati]++;carrier.mSh++;
-    const gk3=byR(dti,'GB')[0];
+    const gk3=realGK(dti);
     const atkSpin=((carrier.s.sht+(carrier._hm||0))+sp.pow+carrier.s.spd*.3+irng(-6,6))*strat(ati).atk*fatMul(carrier);
     const defSpin=((gk3?gk3.s.def*.8*fatMul(gk3):15)+irng(-5,5))*strat(dti).def;
     const gySpin=clamp(PCY+rng(-4,4),GY1-1.5,GY2+1.5);
@@ -1815,7 +1854,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   } else if(sp.id==='atk_demo'){
     // Attaque Démoniaque — frappe surpuissante qui ignore en partie la défense
-    const gk=byR(dti,'GB')[0];
+    const gk=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     const atkS=((carrier.s.sht+(carrier._hm||0))*1.5+sp.pow+irng(-5,5))*strat(ati).atk*fatMul(carrier);
     const defS=(gk?gk.s.def*fatMul(gk):50)*strat(dti).def*0.5; // défense réduite de 50%
@@ -2013,7 +2052,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   } else {
     const def2=pick(byR(dti,'DD','DC','DG'));
-    const gk2=byR(dti,'GB')[0];
+    const gk2=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     const scorer=carrier; // capture before async gap
     const atkS=((scorer.s.sht+(scorer._hm||0))+(sp.pow||20)+irng(-8,8))*strat(ati).atk*fatMul(scorer);
@@ -2076,7 +2115,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Télékinésie Absolue — tir télékinétique puissance max ──
   if(sp.id==='telekinesie_abs'){
-    const gk2=byR(dti,'GB')[0];
+    const gk2=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     const scorer=carrier;
     const atkS=((scorer.s.sht+(scorer._hm||0))+sp.pow+irng(-5,5))*strat(ati).atk*fatMul(scorer);
@@ -2151,7 +2190,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
 
   // ── Frappe de Gaïa — PV + Vol5+ + Force5+ ──
   if(sp.id==='gaia'){
-    const gk2=byR(dti,'GB')[0];
+    const gk2=realGK(dti);
     G.shots[ati]++;carrier.mSh++;
     const scorer=carrier;
     const atkS=((scorer.s.sht+(scorer._hm||0))+65+irng(-3,3))*strat(ati).atk*fatMul(scorer);
@@ -2197,7 +2236,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
   // ── The Explosion ──
   if(sp.id==='explosion_sort'){
     freeB();const gy=clamp(PCY+rng(-2,2),GY1-1,GY2+1);kickTo(goalX,gy,5.0);
-    const gk=byR(dti,'GB')[0];
+    const gk=realGK(dti);
     const atkS=(carrier.s.sht+55)*strat(ati).atk*fatMul(carrier);
     const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def;
     if(gk)gk.stunT=irng(4,7)*60;
@@ -2213,7 +2252,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
   // ── Lance des Ténèbres ──
   if(sp.id==='lance_tenebres'){
     freeB();const gy=clamp(PCY+rng(-1,1),GY1-1,GY2+1);kickTo(goalX,gy,5.5);
-    const gk=byR(dti,'GB')[0];
+    const gk=realGK(dti);
     const atkS=(carrier.s.sht+45)*strat(ati).atk*fatMul(carrier);
     const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.8;
     for(let i=0;i<20;i++){const t2=i/20;G.ptcl.push({t:'s',x:carrier.x+t2*(goalX-carrier.x),y:carrier.y-t2*20,vx:0,vy:.5,l:35,m:35,col:'#311b92',sz:.3+Math.random()*.4});}
@@ -2229,7 +2268,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
   // Sinon : faisceau qui tacle et stun l'adversaire le plus proche.
   if(sp.id==='laser_oculaire'){
     if(carrier.hasBall){
-      const gk=byR(dti,'GB')[0];
+      const gk=realGK(dti);
       G.shots[ati]++;carrier.mSh++;
       const atkS=((carrier.s.sht+(carrier._hm||0))+sp.pow+irng(-5,5))*strat(ati).atk*fatMul(carrier);
       const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.6;
@@ -2261,7 +2300,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
   if(sp.id==='attentat'){
     freeB();const gy=clamp(PCY,GY1-1,GY2+1);kickTo(goalX,gy,6.0);
     actP(dti).forEach(p=>{p.stunT=irng(15,25);});
-    const gk=byR(dti,'GB')[0];
+    const gk=realGK(dti);
     const atkS=(carrier.s.sht+70)*strat(ati).atk*fatMul(carrier);
     const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.4;
     for(let i=0;i<35;i++){const a=i/35*Math.PI*2;const r2=4+Math.random()*14;G.ptcl.push({t:'s',x:carrier.x+Math.cos(a)*r2,y:carrier.y+Math.sin(a)*r2,vx:Math.cos(a)*1.5,vy:Math.sin(a)*1.5-1,l:70,m:70,col:i%3===0?'#b71c1c':i%3===1?'#ef5350':'#ff8a80',sz:.3+Math.random()*.6});}
@@ -2304,7 +2343,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const gy=clamp(PCY+rng(-2,2),GY1-1,GY2+1);kickTo(goalX,gy,4.5);
     for(let i=0;i<20;i++){const a=i/20*Math.PI*2;G.ptcl.push({t:'s',x:carrier.x+Math.cos(a)*6,y:carrier.y+Math.sin(a)*6,vx:Math.cos(a)*.8,vy:Math.sin(a)*.8-0.5,l:50,m:50,col:'#87ceeb',sz:.3+Math.random()*.4});}
     G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-7,tx:'🦄 TIR PÉGASE !',col:'#87ceeb',l:60,m:60,sz:1.3});
-    const gk=byR(dti,'GB')[0]; const atkS=(carrier.s.sht+35)*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*(gk&&gk._defBuff>0?1.15:1);
+    const gk=realGK(dti); const atkS=(carrier.s.sht+35)*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*(gk&&gk._defBuff>0?1.15:1);
     G.shots[ati]++;carrier.mSh++;
     logEvent(`🦄 ${carrier.name} — Tir Pégase !`,'#87ceeb');
     setTimeout(()=>{if(!G.running)return;const r=Math.pow(atkS/Math.max(1,defS),1.3);const p=Math.min(0.82,Math.max(0.08,0.25+(r-1)*0.18));if(Math.random()<p){goalScored(carrier,ati,goalX,null);}else{logEvent('Arrêté !',teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}},300/speedMult);
@@ -2338,7 +2377,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     for(let i=0;i<25;i++){const a=i/25*Math.PI*2;G.ptcl.push({t:'s',x:carrier.x+Math.cos(a)*8,y:carrier.y+Math.sin(a)*8,vx:Math.cos(a)*1.2,vy:Math.sin(a)*1.2,l:55,m:55,col:i%2===0?'#9c27b0':'#ce93d8',sz:.3+Math.random()*.5});}
     G.ptcl.push({t:'ring_expand',x:carrier.x,y:carrier.y,col:'#9c27b0',maxR:18,l:40,m:40});
     G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-8,tx:'🦄 TIR DE LA LICORNE !',col:'#ce93d8',l:70,m:70,sz:1.6});
-    const gk=byR(dti,'GB')[0]; const atkS=(carrier.s.sht+50+(ally?10:0))*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*(gk&&gk._defBuff>0?1.15:1);
+    const gk=realGK(dti); const atkS=(carrier.s.sht+50+(ally?10:0))*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*(gk&&gk._defBuff>0?1.15:1);
     G.shots[ati]++;carrier.mSh++;
     logEvent(`🦄 ${carrier.name}${ally?' & '+ally.name:''} — Tir de la Licorne !`,'#9c27b0');
     setTimeout(()=>{if(!G.running)return;const r=Math.pow(atkS/Math.max(1,defS),1.3);const p=Math.min(0.85,Math.max(0.08,0.25+(r-1)*0.18));if(Math.random()<p){goalScored(carrier,ati,goalX,null);maybeInjureGKOnBigShot(dti,gk,sp,carrier);}else{logEvent('Arrêté !',teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}},300/speedMult);
@@ -2352,7 +2391,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     for(let i=0;i<30;i++){const a=i/30*Math.PI*2;G.ptcl.push({t:'s',x:carrier.x+Math.cos(a)*10,y:carrier.y+Math.sin(a)*10,vx:Math.cos(a)*1.5,vy:Math.sin(a)*1.5,l:65,m:65,col:'#1565c0',sz:.3+Math.random()*.5});}
     G.ptcl.push({t:'ring_expand',x:carrier.x,y:carrier.y,col:'#42a5f5',maxR:20,l:45,m:45});
     G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-9,tx:'🔵 TRI-PÉGASE !!',col:'#42a5f5',l:75,m:75,sz:1.8});
-    const gk=byR(dti,'GB')[0]; const atkS=(carrier.s.sht+60)*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.7;
+    const gk=realGK(dti); const atkS=(carrier.s.sht+60)*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.7;
     G.shots[ati]++;carrier.mSh++;
     logEvent(`🔵 TRI-PÉGASE ! ${carrier.name} et ses alliés — pégase bleu !!`,'#1565c0');
     setTimeout(()=>{if(!G.running)return;const r=Math.pow(atkS/Math.max(1,defS),1.3);const p=Math.min(0.88,Math.max(0.08,0.25+(r-1)*0.18));if(Math.random()<p){goalScored(carrier,ati,goalX,null);maybeInjureGKOnBigShot(dti,gk,sp,carrier);}else{logEvent('Arrêté !',teams[dti].color+'88');if(gk)giveB(gk);G.atkTi=dti;setPhase('GOALKICK');}},300/speedMult);
@@ -2367,7 +2406,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     G.ptcl.push({t:'ring_expand',x:goalX,y:PCY,col:'#ffd700',maxR:25,l:50,m:50});
     G.ptcl.push({t:'lbl',x:50,y:PCY/3,tx:'⚡ TIR CÉLESTE !',col:'#ffd700',l:90,m:90,sz:2.2});
     G.ptcl.push({t:'lbl',x:50,y:PCY/3+8,tx:'✨ ÉCLAT DIVIN !!',col:'#fff9c4',l:80,m:80,sz:1.6});
-    const gk=byR(dti,'GB')[0]; let atkS=(carrier.s.sht+50)*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.5;
+    const gk=realGK(dti); let atkS=(carrier.s.sht+50)*strat(ati).atk*fatMul(carrier); const defS=(gk?gk.s.def*fatMul(gk):28)*strat(dti).def*0.5;
     // Façon Inazuma Eleven : quand un GARDIEN lance ce tir légendaire, c'est un
     // super-tir surpuissant. On lui donne un gros bonus de frappe et seulement
     // un léger malus de distance — il peut vraiment marquer de loin.

@@ -672,6 +672,12 @@ function deepCloneTeam(T){
     reserves:(T.reserves||[]).map(p=>({...p,s:{...p.s}}))};
 }
 function byR(ti,...r){const a=actP(ti);const f=a.filter(p=>r.includes(p.pos));return f.length?f:a;}
+// Vrai gardien ACTIF de l'équipe ti, ou undefined si les cages sont vides
+// (gardien expulsé, gravement blessé, ou aucun joueur au poste GB). Contrairement
+// à byR(ti,'GB')[0], ne renvoie JAMAIS un joueur de champ par repli : c'est le
+// signal fiable d'un "but vide".
+function realGK(ti){ return actP(ti).find(p=>p && p.pos==='GB'); }
+if(typeof window!=='undefined') window.realGK = realGK;
 const strat=ti=>{
   const base={...(STRATS.find(s=>s.id===teams[ti].strat)||STRATS[0])};
   const sl=G.tacSliders[ti];
