@@ -2862,7 +2862,10 @@ function renderTeamSelectPage(){
   if(_teamSel.tier==='pro' && (_teamSel.step==='division' || _teamSel.division)){ const _ntdP=nationTeamsData(_teamSel.country); const _dmP=(_ntdP&&_ntdP.divisions)||{}; const dnP=(_teamSel.division&&_dmP[_teamSel.division])?_dmP[_teamSel.division].name:'Division'; parts.push(_teamSel.step==='division'?here('Division'):crumb(dnP,'division')); }
   const breadcrumb = `<div class="fm-crumbs">${parts.join('<span class="sep">›</span>')}</div>`;
 
-  const title = `<div style="margin-bottom:var(--sp-3)"><div class="fm-title">📚 Sélection d'équipes</div></div>`;
+  const title = `<div class="ts-fs__head">
+      <div class="fm-title">📚 Sélection d'équipes</div>
+      <button class="fm-btn fm-btn--sm" onclick="nav('setup')" title="Retour">✕ Fermer</button>
+    </div>`;
 
   const bigBtn=(label,sub,onclick,col)=>`
     <button class="fm-row" style="width:100%;text-align:left;cursor:pointer;margin-bottom:var(--sp-2)${col?';border-color:'+col:''}" onclick="${onclick}">
@@ -3008,7 +3011,13 @@ function renderTeamSelectPage(){
       <span style="font-size:15px">✅</span><span><b style="color:${_presetToast.col}">${_presetToast.name}</b> chargée dans <b>${slot}</b>.</span></div>`;
   }
 
-  el.innerHTML=`<div style="max-width:560px;margin:0 auto">${title}${targetBar}${toast}${breadcrumb}${body}</div>`;
+  // Plein écran : conteneur large pour la grille de cartes (étape "teams"),
+  // colonne centrée plus étroite pour les étapes de navigation.
+  const isGrid = (_teamSel.step==='teams');
+  const inner = isGrid
+    ? `${title}${targetBar}${toast}${breadcrumb}${body}`
+    : `<div style="max-width:560px;margin:0 auto">${title}${targetBar}${toast}${breadcrumb}${body}</div>`;
+  el.innerHTML=`<div class="ts-fs">${inner}</div>`;
 }
 
 
@@ -3029,7 +3038,36 @@ function _posLine(pos){
   if(pos[0]==='A') return 'att';   // ATT, AD, AG
   return 'mid';
 }
-// Renvoie {ovr, att, mid, def} pour une équipe (0-99), ou null si effectif inconnu.
+// Hash stable d'une chaîne (pour une variation déterministe par équipe).
+function _seedFromName(str){
+  let h=0; str=String(str||'');
+  for(let i=0;i<str.length;i++){ h=(h*31 + str.charCodeAt(i))|0; }
+  return Math.abs(h);
+}
+// OVR de base attendu par palier/division, pour les équipes générées à la volée
+// (championnats Valoria/Pilier) qui n'ont pas d'effectif détaillé. Donne des
+// notes cohérentes et STABLES (mêmes valeurs à chaque affichage).
+function _tierBaseOvr(teamRef){
+  const tier=(teamRef&&teamRef.tier)||'regional';
+  // Fourchette centrale par palier.
+  const base = tier==='pro' ? 78 : tier==='regional' ? 64 : tier==='district' ? 52 : 60;
+  // Ajustement selon le "niveau" de division si disponible (D1>D2>…).
+  let divAdj = 0;
+  const div = String((teamRef&&teamRef.division)||'');
+  const m = div.match(/(\d+)/);
+  if(m){ divAdj = -(parseInt(m[1],10)-1)*3; } // chaque cran de division ≈ -3
+  // Variation stable par équipe : ±6.
+  const seed = _seedFromName((teamRef&&teamRef.name)||'');
+  const jitter = (seed % 13) - 6;
+  const ovr = Math.max(38, Math.min(90, base + divAdj + jitter));
+  // Répartition att/mil/déf autour de l'OVR, variée mais déterministe.
+  const a = Math.max(35, Math.min(93, ovr + ((seed>>3)%7) - 3));
+  const md= Math.max(35, Math.min(93, ovr + ((seed>>6)%7) - 3));
+  const d = Math.max(35, Math.min(93, ovr + ((seed>>9)%7) - 3));
+  return { ovr:ovr, att:a, mid:md, def:d, approx:true };
+}
+// Renvoie {ovr, att, mid, def} pour une équipe (0-99). Utilise l'effectif réel
+// s'il existe, sinon une estimation stable basée sur le palier/division.
 function teamCardStats(teamRef){
   const key = (teamRef && (teamRef.presetId || teamRef._presetId || teamRef.name)) || null;
   // Retrouver l'effectif complet.
@@ -3039,7 +3077,10 @@ function teamCardStats(teamRef){
   } else if(key && typeof savedTeams!=='undefined'){
     squad = savedTeams.find(t=>t && (t._presetId===key || t._presetId===teamRef.presetId || t.name===teamRef.name));
   }
-  if(!squad || !Array.isArray(squad.players) || !squad.players.length) return null;
+  // Pas d'effectif détaillé (équipe générée à la volée) → estimation par palier.
+  if(!squad || !Array.isArray(squad.players) || !squad.players.length){
+    return _tierBaseOvr(teamRef);
+  }
 
   const all=[...squad.players, ...(squad.bench||[])];
   const cacheKey = key + ':' + all.length;
