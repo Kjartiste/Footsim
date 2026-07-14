@@ -250,6 +250,31 @@ const _BRANCH_ROLE = { Secundus:'réserve', Academia:'U23 / académie', Custodes
   Ferrum:'réserve', Sanctum:'réserve', Nova:'nouvelle branche', Ordo:'réserve', Legio:'réserve',
   Vigilia:'réserve', Mercatoria:'réserve', Excelsior:'réserve élite' };
 
+// Ordre des niveaux moteur, du plus HAUT (d1) au plus BAS (dh). Sert à savoir
+// quelle branche d'une Maison est l'équipe PREMIÈRE (division la plus haute)
+// et lesquelles sont ses réserves.
+const _LEVEL_ORDER = { d1:0, d2:1, d3:2, r1:3, r2:4, r3:5, dh:6 };
+function _levelRank(lvl){ const r=_LEVEL_ORDER[lvl]; return (r==null)?99:r; }
+
+// Dans une Maison du Pilier, l'équipe PREMIÈRE est celle qui évolue dans la
+// division la plus haute (level le plus fort). Toutes les autres branches sont
+// ses réserves, quel que soit leur nom ("Primus" n'est PAS toujours le senior).
+// Renvoie l'entrée PILIER_TEAMS du club principal de la Maison de `clubName`,
+// ou null si le club n'appartient à aucune Maison.
+function _houseMainClub(clubName){
+  if(typeof PILIER_TEAMS==='undefined') return null;
+  const me = PILIER_TEAMS.find(function(t){ return t.name===clubName; });
+  if(!me || !me.house) return null;
+  const fam = PILIER_TEAMS.filter(function(t){ return t.house===me.house; });
+  if(!fam.length) return null;
+  return fam.slice().sort(function(a,b){
+    const d = _levelRank(a.level) - _levelRank(b.level);
+    if(d!==0) return d;
+    // égalité de niveau improbable : départage stable par ordre de division.
+    return (a.division||'').localeCompare(b.division||'');
+  })[0];
+}
+
 function _buildAffiliates(clubName, nationId){
   if(!careerV2) return;
   careerV2.affiliates = careerV2.affiliates || [];
@@ -280,7 +305,22 @@ function startCareerDirector(regionId, clubId, nationId){
   const region = WORLDS.getRegion(nationId, regionId);
   if(!region){ logEvent('❌ Région introuvable','#e02030'); return; }
 
-  const clubName  = clubId || region.clubNames[0];
+  let clubName  = clubId || region.clubNames[0];
+  // ── CLUB RÉSERVE → REDIRECTION VERS L'ÉQUIPE PREMIÈRE ────────────────────
+  // Si le joueur choisit une branche qui n'est qu'une RÉSERVE d'une Maison
+  // (ex. "Lyra Excelsior", réserve de "Lyra Vigilia"), on ne prend pas cette
+  // réserve comme club dirigé : on prend l'équipe PREMIÈRE de la Maison (la
+  // division la plus haute). La réserve choisie redevient alors une simple
+  // équipe affiliée, comme les autres branches. Cela évite qu'une réserve
+  // "devienne" le club principal et hérite d'un budget/infra/effectif senior.
+  let _reserveChoice = null;
+  if(nationId==='pilier' && typeof PILIER_TEAMS!=='undefined'){
+    const main = _houseMainClub(clubName);
+    if(main && main.name !== clubName){
+      _reserveChoice = clubName;      // mémorise le choix initial pour info
+      clubName = main.name;           // on dirige l'équipe première
+    }
+  }
   const clubColor = window._careerColor || region.color;
   // Si on reprend un club existant (Valoria ou Pilier), on récupère son blason.
   let clubBadge = null;
@@ -454,6 +494,11 @@ function startCareerDirector(regionId, clubId, nationId){
 
   saveCareerV2();
   logEvent('🏟 Bienvenue au ' + clubName + ' ! Saison 1 commence.', clubColor);
+  if(_reserveChoice){
+    logEvent('ℹ️ ' + _reserveChoice + ' est une équipe réserve de ' + clubName +
+      '. Vous dirigez donc l\'équipe première ; ' + _reserveChoice +
+      ' figure parmi vos réserves (onglet 🏛 Réserves).', clubColor);
+  }
   renderCareerV2();
 }
 

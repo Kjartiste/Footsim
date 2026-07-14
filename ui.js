@@ -6945,7 +6945,8 @@ function _renderDirectorAffiliates(){
   }
   let h = '<div style="padding:14px">';
   h += '<div style="font-size:15px;font-weight:900;color:var(--gold);margin-bottom:4px">🏛 '+(C.house?('Maison '+C.house):'Équipes réserves')+'</div>';
-  h += '<div style="font-size:10px;color:var(--muted);margin-bottom:14px">Vos équipes réserves jouent leur propre championnat. Vous pouvez les gérer vous-même ou déléguer.</div>';
+  h += '<div style="font-size:10px;color:var(--muted);margin-bottom:6px">Vos équipes réserves jouent leur propre championnat. Vous pouvez les gérer vous-même ou déléguer.</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px;padding:7px 9px;border-radius:7px;background:var(--dark);border:1px solid var(--b1)">🏦 Réserves et équipe première partagent le <b>même budget</b> et les <b>mêmes infrastructures</b> (stade, centre de formation, etc.). Vous pouvez faire circuler les joueurs dans les deux sens : <b>↑ promouvoir</b> une pépite ou <b>⬇ envoyer</b> un joueur prendre du temps de jeu.</div>';
   if(C.houseCup) h += _houseCupHTML(C.houseCup, C.club);
   if(!affs.length){
     h += '<div style="font-size:11px;color:var(--muted);text-align:center;padding:24px">Aucune équipe réserve pour le moment.</div>';
@@ -6975,6 +6976,12 @@ function _renderDirectorAffiliates(){
     h += '<button onclick="_toggleAffiliateSquad('+i+')" style="flex:1;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px solid '+aff.color+';background:'+aff.color+'18;color:'+aff.color+'">'+(isOpen?'▲ Masquer l\'effectif':'👁 Voir l\'effectif')+'</button>';
     h += '<button onclick="_toggleAffiliateDelegate('+i+')" style="flex:1;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px solid '+(aff.delegated?'var(--b1)':aff.color)+';background:'+(aff.delegated?'var(--dark)':aff.color+'22')+';color:'+(aff.delegated?'var(--muted)':aff.color)+'">'+(aff.delegated?'🤖 Déléguée':'🎮 Gérée')+'</button>';
     h += '</div>';
+    // Bouton : envoyer un joueur de l'équipe première vers cette réserve.
+    const sendOpen = (window._affSendIdx===i);
+    h += '<div style="margin-top:6px">';
+    h += '<button onclick="_toggleSendPanel('+i+')" style="width:100%;padding:6px;border-radius:7px;cursor:pointer;font-size:10px;font-weight:800;border:1.5px dashed '+aff.color+';background:'+(sendOpen?aff.color+'22':'transparent')+';color:'+aff.color+'">'+(sendOpen?'▲ Fermer':'⬇ Envoyer un joueur en réserve')+'</button>';
+    h += '</div>';
+    if(sendOpen) h += _sendToAffiliateHTML(i);
     // Effectif déplié (avec repérage des pépites)
     if(isOpen){
       h += _affiliateSquadHTML(aff, i);
@@ -7050,6 +7057,70 @@ function _promoteFromAffiliate(affIdx, playerId){
   if(typeof careerLog==='function') careerLog('⬆ '+p.name+' promu de '+aff.name+' vers l\'équipe première !', C.club.color||'#18c860');
   try{ saveCareerV2(); }catch(e){}
   const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
+}
+
+// Envoie un joueur de l'équipe PREMIÈRE (players/bench/reserves) vers une
+// équipe réserve affiliée (dans son banc). Réciproque de _promoteFromAffiliate :
+// permet de faire redescendre un joueur pour lui donner du temps de jeu.
+function _demoteToAffiliate(affIdx, playerId){
+  const C=careerV2; if(!C||!C.affiliates||!C.affiliates[affIdx]) return;
+  const aff=C.affiliates[affIdx];
+  let p=null;
+  ['players','bench','reserves'].forEach(function(k){
+    const arr=C[k]||[]; const idx=arr.findIndex(x=>x&&x.id===playerId);
+    if(idx>=0 && !p){ p=arr[idx]; arr.splice(idx,1); }
+  });
+  if(!p){ return; }
+  // Garde-fou : ne pas vider l'équipe première sous le minimum jouable.
+  const remaining=(C.players||[]).length;
+  const minXI = (window.gameMode==='11v11')?11:(window.gameMode==='5v5')?5:7;
+  if(remaining < minXI){
+    // remettre le joueur et avertir
+    (C.bench=C.bench||[]).push(p);
+    if(typeof careerLog==='function') careerLog('⚠️ Impossible : l\'équipe première doit garder au moins '+minXI+' titulaires.', '#e0a020');
+    const el0=document.getElementById('career-director-content'); if(el0) el0.innerHTML=_renderDirectorAffiliates();
+    return;
+  }
+  p.onBench=true;
+  aff.bench = aff.bench || [];
+  aff.bench.push(p);
+  if(typeof careerLog==='function') careerLog('⬇ '+p.name+' envoyé en réserve à '+aff.name+'.', aff.color||'#8090a0');
+  try{ saveCareerV2(); }catch(e){}
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
+}
+// Bascule l'affichage du panneau "envoyer un joueur en réserve" pour une
+// affiliée donnée (panneau inline déplié sous la carte de la réserve).
+function _toggleSendPanel(affIdx){
+  window._affSendIdx = (window._affSendIdx===affIdx) ? null : affIdx;
+  window._affOpenIdx = affIdx; // garde l'effectif visible
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorAffiliates();
+}
+// HTML du sélecteur listant les joueurs de l'équipe première envoyables vers
+// une réserve donnée.
+function _sendToAffiliateHTML(affIdx){
+  const C=careerV2; if(!C||!C.affiliates||!C.affiliates[affIdx]) return '';
+  const aff=C.affiliates[affIdx];
+  const pool=[].concat(
+    (C.players||[]).map(p=>({p,grp:'XI'})),
+    (C.bench||[]).map(p=>({p,grp:'Banc'})),
+    (C.reserves||[]).map(p=>({p,grp:'Rés.'}))
+  ).filter(o=>o.p);
+  let h='<div style="margin-top:8px;border-top:1px dashed '+aff.color+'55;padding-top:8px">';
+  h+='<div style="font-size:9px;color:var(--muted);margin-bottom:6px">⬇ Envoyer un joueur de l\'équipe première vers <b style="color:'+aff.color+'">'+aff.name+'</b> :</div>';
+  if(!pool.length){ h+='<div style="font-size:9px;color:var(--muted);padding:6px">Aucun joueur disponible.</div></div>'; return h; }
+  pool.sort((a,b)=>_pOvr(a.p)-_pOvr(b.p)); // plus faibles d'abord (candidats au prêt)
+  pool.forEach(function(o){
+    const p=o.p, ovr=_pOvr(p);
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:6px;margin-bottom:3px;background:var(--dark)">';
+    h+='<span style="font-size:8px;color:var(--muted);width:26px">'+o.grp+'</span>';
+    h+='<span style="font-size:8px;color:var(--muted);width:22px">'+(p.pos||'?')+'</span>';
+    h+='<span style="flex:1;font-size:11px;font-weight:700">'+p.name+'</span>';
+    h+='<span style="font-size:12px;font-weight:900;color:'+(ovr>=80?'#18c860':ovr>=70?'#f0c028':'var(--muted)')+'">'+ovr+'</span>';
+    h+='<button onclick="_demoteToAffiliate('+affIdx+',\''+(p.id||'')+'\')" style="font-size:8px;padding:2px 6px;border-radius:5px;cursor:pointer;border:1px solid '+aff.color+';background:transparent;color:'+aff.color+'">⬇ Envoyer</button>';
+    h+='</div>';
+  });
+  h+='</div>';
+  return h;
 }
 
 function _renderDirectorOverview(){
