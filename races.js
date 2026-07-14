@@ -38,6 +38,41 @@ const RACE_MODIFIERS = {
   giant:      { name:'Géant',       emoji:'🗿', spd:0.85, sht:1.15, def:1.12, stam:0.90, res:1.10, tec:0.82, magic:1.00 },
 };
 
+// ── RÉPARTITION DES SEXES PAR RACE ─────────────────────────────────────
+// Le sexe dépend de la RACE, pas du pays : une sirène reste ~90 % féminine
+// qu'elle joue à Panthalassa ou au Rorang. F = femme, M = homme, X = autre /
+// non-genré. Ces ratios priment sur le sexRatio de nation (fallback si la race
+// est inconnue). Certaines races sont mono-sexes de par leur nature (leyak,
+// fées → féminines dans ce monde).
+const RACE_SEX_RATIO = {
+  human:      { F:0.50, M:0.50, X:0.00 },
+  siren:      { F:0.90, M:0.08, X:0.02 },   // sirènes très majoritairement féminines
+  leyak:      { F:1.00, M:0.00, X:0.00 },   // leyaks : exclusivement féminines
+  fairy:      { F:1.00, M:0.00, X:0.00 },   // fées : exclusivement féminines
+  elf:        { F:0.40, M:0.60, X:0.00 },   // elfes : légère majorité masculine
+  dwarf:      { F:0.20, M:0.80, X:0.00 },   // nains : forte majorité masculine
+  vampire:    { F:0.45, M:0.55, X:0.00 },
+  angel:      { F:0.55, M:0.35, X:0.10 },
+  demon:      { F:0.45, M:0.45, X:0.10 },
+  half_dragon:{ F:0.45, M:0.55, X:0.00 },
+  goblin:     { F:0.35, M:0.65, X:0.00 },
+  hobgoblin:  { F:0.30, M:0.70, X:0.00 },
+  orc:        { F:0.25, M:0.75, X:0.00 },
+  lycan:      { F:0.40, M:0.60, X:0.00 },
+  giant:      { F:0.30, M:0.70, X:0.00 },
+};
+
+// Tire un sexe pour une race. Si la race est absente de la table, on retombe
+// sur `fallbackRatio` (celui de la nation) ou 50/50. Renvoie 'F' | 'M' | 'X'.
+function pickSexForRace(race, fallbackRatio){
+  const sr = RACE_SEX_RATIO[race] || fallbackRatio || { F:0.5, M:0.5, X:0 };
+  const r = Math.random();
+  const pF = sr.F||0, pM = sr.M||0;
+  if(r < pF) return 'F';
+  if(r < pF+pM) return 'M';
+  return 'X';
+}
+
 // Liste ordonnée (pour l'UI / la génération pondérée).
 const RACE_IDS = Object.keys(RACE_MODIFIERS);
 
@@ -80,6 +115,22 @@ const RACE_WEIGHTS_BY_REGION = {
   _default: { // sélection nationale / inconnu : mélange équilibré ~40% non-humain
     human:60, elf:4, angel:3, fairy:3, siren:3, vampire:3, demon:3, half_dragon:3,
     leyak:3, goblin:3, hobgoblin:3, orc:3, dwarf:3, lycan:2, giant:1,
+  },
+
+  // ── RORANG (équivalent Cambodge) : humains majoritaires, forte minorité
+  // de Leyaks (esprits féminins), quelques fées/sirènes, et un peu d'autres
+  // peuples d'Asie (elfes, nains, vampires…). Pas d'anges/démons/géants ici.
+  krong: { // capitale : plus de Leyaks urbaines, un peu de tout
+    human:60, leyak:16, fairy:5, siren:4, elf:5, vampire:4, dwarf:3, goblin:2, lycan:1,
+  },
+  phsar: { // Nord marchand : humains + diaspora, moins d'esprits
+    human:68, leyak:10, elf:6, dwarf:6, vampire:4, siren:2, fairy:2, goblin:2,
+  },
+  tonle: { // Est lacustre : plus de sirènes près des eaux
+    human:58, siren:14, leyak:12, fairy:6, elf:4, dwarf:2, vampire:2, lycan:2,
+  },
+  prey: { // Ouest forestier : terres d'esprits, Leyaks/fées nombreuses
+    human:52, leyak:22, fairy:10, siren:4, elf:5, goblin:3, lycan:2, vampire:2,
   },
 };
 

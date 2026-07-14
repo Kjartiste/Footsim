@@ -1829,10 +1829,11 @@ function goMatch(){
   _lastNav='setup';
   _prepareTeamsForMode();
   nav('match');
-  // Exhibition : les deux équipes sont réputées « joueur » par défaut → le
-  // coach IA reste inactif (comportement historique inchangé). Les modes
-  // carrière/ligue posent explicitement G._humanTeams avant de lancer.
-  G._humanTeams = [true, true];
+  // Exhibition : par défaut tu diriges l'équipe A et le coach IA gère l'équipe
+  // B (plus naturel que de devoir gérer les deux). Un bouton en match permet de
+  // basculer chaque équipe entre 👤 joueur et 🤖 IA à tout moment.
+  G._humanTeams = [true, false];
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
   resetMatch();
   syncHUD();renderTB(0);renderTB(1);
   showPreMatch();
@@ -1896,6 +1897,8 @@ function syncHUD(){
   // Logo latéral : refléter le mode courant
   const logo=document.querySelector('.slogo');
   if(logo){ const m=window.gameMode||'7v7'; logo.textContent='⚽ FootSim '+m; }
+  // Barre de contrôle IA des équipes (afficher/mettre à jour en match).
+  try{ if(typeof _syncAiCtrlBar==='function') _syncAiCtrlBar(); }catch(e){}
 }
 
 function promoteReserve(ti,ri){

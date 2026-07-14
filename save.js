@@ -465,7 +465,7 @@ function startCareerDirector(regionId, clubId, nationId){
       level: startLevel,
       // Statut officiel du club (amateur / semi-pro / pro) — pilote le système
       // d'entraînement. Déduit du niveau moteur, modifiable ensuite.
-      status: (typeof TRAINING!=='undefined') ? TRAINING.clubStatus({level:startLevel}) : undefined,
+      status: (typeof TRAINING!=='undefined') ? TRAINING.clubStatus({level:startLevel, nation:nationId}) : undefined,
       coachStyle: 'equilibre',
       trainingVersion: (typeof TRAINING_CONFIG!=='undefined') ? TRAINING_CONFIG.version : 1,
       divisionName: startDivName || null,
@@ -2756,6 +2756,52 @@ function exportTeamJSON(idx){
   const t=savedTeams[idx];
   if(!t){logEvent('Équipe introuvable.','#ef5350');return;}
   exportTeamData(t);
+}
+
+// ── Contrôle IA d'une équipe pendant le match ──────────────────────────────
+// Bascule une équipe entre pilotage JOUEUR (👤) et coach IA (🤖). Le coach IA
+// (manager_ai.js) gère alors mentalité et changements automatiquement via
+// managerAiTick(). Utilisable à tout moment, y compris en plein match.
+function toggleTeamAi(ti){
+  if(!Array.isArray(G._humanTeams)) G._humanTeams = [true, true];
+  G._humanTeams[ti] = !G._humanTeams[ti];
+  const nowAi = G._humanTeams[ti]===false;
+  try{
+    if(nowAi && typeof resetManagerAi==='function') resetManagerAi();
+  }catch(e){}
+  try{
+    const T = teams[ti];
+    const name = T ? T.name : ('Équipe '+(ti===0?'A':'B'));
+    logEvent((nowAi?'🤖 ':'👤 ')+name+(nowAi?' est confiée au coach IA.':' repasse sous ton contrôle.'), (T&&T.color)||'#f0c028');
+  }catch(e){}
+  _syncAiCtrlBar();
+  try{ syncHUD(); }catch(e){}
+}
+
+// Met à jour l'apparence de la barre de contrôle IA (visible seulement en match).
+function _syncAiCtrlBar(){
+  const row = document.getElementById('ai-ctrl-row');
+  if(!row) return;
+  // Visible seulement sur l'écran match, quand des équipes existent.
+  const matchScreen = document.getElementById('sp-match');
+  const onMatch = matchScreen && matchScreen.classList.contains('on');
+  const inMatch = onMatch && Array.isArray(teams) && teams[0] && teams[1];
+  row.style.display = inMatch ? 'flex' : 'none';
+  if(!inMatch) return;
+  if(!Array.isArray(G._humanTeams)) G._humanTeams = [true, true];
+  [0,1].forEach(function(ti){
+    const btn = document.getElementById('ai-ctrl-'+ti);
+    if(!btn) return;
+    const T = teams[ti];
+    const label = T ? (T.name||'').slice(0,10) : ('Éq. '+(ti===0?'A':'B'));
+    const isAi = G._humanTeams[ti]===false;
+    btn.innerHTML = (isAi?'🤖 ':'👤 ')+label;
+    btn.title = isAi ? 'Équipe gérée par le coach IA — clique pour reprendre la main'
+                     : 'Tu gères cette équipe — clique pour la confier au coach IA';
+    btn.style.borderColor = isAi ? '#8840e0' : ((T&&T.color)||'var(--gold)');
+    btn.style.color       = isAi ? '#b388ff' : ((T&&T.color)||'var(--gold)');
+    btn.style.background   = isAi ? 'rgba(136,64,224,.15)' : 'var(--dark)';
+  });
 }
 
 // Exporte n'importe quel objet équipe en JSON (équipes PNJ de coupe/ligue,

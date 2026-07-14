@@ -18,6 +18,7 @@ const WORLDS = {
     typeof PANTHALASSA!=='undefined' ? PANTHALASSA : null,
     typeof VALORIA!=='undefined' ? VALORIA : null,
     typeof PILIER!=='undefined' ? PILIER : null,
+    typeof RORANG!=='undefined' ? RORANG : null,
     // AUTRE_NATION,  ← ajouter ici quand tu crées une nouvelle nation
   ].filter(Boolean),
 
@@ -72,6 +73,12 @@ const WORLDS = {
       // Pilier Céleste : race choisie par altitude (division) → anges haut, démons bas.
       race = pickRaceForPilier(level, (name||'')+(pos||''));
       isNonSiren = true; // jamais de sirène ici
+    } else if((nationId==='rorang' || nation.useRaceWeights) && typeof pickRaceForRegion==='function'){
+      // Rorang (et toute nation multi-races) : composition tirée des poids de
+      // race PAR RÉGION (races.js → RACE_WEIGHTS_BY_REGION). Le sexe suivra la
+      // race (Leyaks/Fées 100 % féminines, humains 50/50, etc.).
+      race = pickRaceForRegion(regionId);
+      isNonSiren = (race !== 'siren');
     } else {
       const nonSirenChance = region.statMods?.non_siren_chance || 0;
       isNonSiren = Math.random() < nonSirenChance;
@@ -161,14 +168,17 @@ const WORLDS = {
     const spells = nbSpells > 0 ? [...fullPool].sort(()=>Math.random()-.5).slice(0, nbSpells) : [];
 
     // ── SEXE ──────────────────────────────────────────────────────────────
-    // Répartition définie par la nation (sexRatio). Ex : le Pilier est très
-    // majoritairement féminin. Valeurs : 'F' (femme), 'M' (homme), 'X' (non-genré
-    // /autre). Défaut équilibré si la nation ne précise rien.
-    const _sr = nation.sexRatio || { F:0.5, M:0.5, X:0 };
-    let sex = 'F'; {
+    // Le sexe dépend d'abord de la RACE (une sirène reste ~90 % féminine quel
+    // que soit le pays), avec repli sur le sexRatio de la nation si la race
+    // n'est pas répertoriée. F (femme), M (homme), X (non-genré/autre).
+    const _natSr = nation.sexRatio || { F:0.5, M:0.5, X:0 };
+    let sex;
+    if(typeof pickSexForRace === 'function'){
+      sex = pickSexForRace(race, _natSr);
+    } else {
       const r = Math.random();
-      const pF = _sr.F||0, pM = _sr.M||0;
-      if(r < pF) sex='F'; else if(r < pF+pM) sex='M'; else sex='X';
+      const pF = _natSr.F||0, pM = _natSr.M||0;
+      sex = (r < pF) ? 'F' : (r < pF+pM) ? 'M' : 'X';
     }
 
     // ── NATIONALITÉ + NOM DE LIGNÉE ───────────────────────────────────────

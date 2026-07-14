@@ -255,6 +255,14 @@ const TRAINING = (function(){
     const cfg = CFG();
     if(club && club.status && cfg.status[club.status]) return club.status;
     const lvl = club && club.level;
+    // Priorité au statut défini dans la pyramide de la nation (ex : au Rorang,
+    // la D1 est semi-pro et non pro). On lit WORLDS si disponible.
+    try{
+      if(club && club.nation && lvl && typeof WORLDS!=='undefined' && WORLDS.getPyramid){
+        const tier = (WORLDS.getPyramid(club.nation)||[]).find(function(t){ return t.id===lvl; });
+        if(tier && tier.status && cfg.status[tier.status]) return tier.status;
+      }
+    }catch(e){}
     return (cfg.levelToStatus && cfg.levelToStatus[lvl]) || 'amateur';
   }
 
