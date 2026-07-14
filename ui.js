@@ -1753,8 +1753,45 @@ function _ensureTeamSize11v11(ti){
 
   // Si l'équipe a moins de 11 joueurs, compléter en respectant les slots
   if(T.players.length < 11){
-    // Identifier quels slots sont déjà occupés par les joueurs existants
-    // En mode 11v11, on réassigne les postes des joueurs existants selon les slots
+    // On complète l'effectif jusqu'à 11 SANS écraser le poste réel des joueurs
+    // existants (sinon un attaquant/milieu recruté devenait défenseur par
+    // simple remplissage de slots). Les joueurs existants gardent LEUR poste ;
+    // on ne fixe un poste que sur les remplaçants GÉNÉRÉS pour combler un trou.
+    const existing = [...T.players];
+    T.players = [];
+
+    // Slot 0 : GB — on prend un vrai gardien s'il existe, sinon on en génère un
+    // (on NE convertit PAS un joueur de champ en gardien de force ici).
+    let gb = existing.find(p=>p.pos==='GB');
+    if(gb){ T.players.push(gb); existing.splice(existing.indexOf(gb),1); }
+    else {
+      const p = WORLDS.generatePlayer(nation, region, 'GB', randPlayerName(), fillLevelForTeam(T));
+      if(p) T.players.push(p);
+    }
+
+    // On garde d'abord TOUS les joueurs existants avec leur poste d'origine.
+    existing.forEach(function(p){ if(p) T.players.push(p); });
+
+    // Puis on comble jusqu'à 11 avec des joueurs générés, en visant les postes
+    // manquants de la 442 (les slots déjà couverts par un vrai joueur du poste
+    // sont ignorés pour éviter les doublons inutiles).
+    const need = ['DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT'];
+    const have = {};
+    T.players.forEach(function(p){ if(p) have[p.pos]=(have[p.pos]||0)+1; });
+    for(let k=0; k<need.length && T.players.length<11; k++){
+      const pos = need[k];
+      if((have[pos]||0)>0){ have[pos]--; continue; } // déjà couvert par un vrai joueur
+      const p = WORLDS.generatePlayer(nation, region, pos, randPlayerName(), fillLevelForTeam(T));
+      if(p) T.players.push(p);
+    }
+    // Filet de sécurité : compléter si besoin (positions par défaut).
+    while(T.players.length < 11){
+      const slotPos = slots442[T.players.length] || 'MC';
+      const p = WORLDS.generatePlayer(nation, region, slotPos, randPlayerName(), fillLevelForTeam(T));
+      if(p) T.players.push(p);
+    }
+  }
+  if(false){
     const existing = [...T.players];
 
     // Vider et reconstruire l'effectif dans l'ordre des slots
@@ -6918,12 +6955,12 @@ function renderCareerDirector(el){
   const budget = club.budget;
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
-  const tabs = ['overview','squad','mercato','finances','infra','staff','calendar'];
+  const tabs = ['overview','squad','mercato','finances','sponsors','infra','staff','calendar'];
   // Onglet Réserves : seulement si le club a des équipes affiliées.
   if(C.affiliates && C.affiliates.length) tabs.push('affiliates');
   const tabLabels = {
     overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato',
-    finances:'💰 Finances', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
+    finances:'💰 Finances', sponsors:'🤝 Sponsors', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
     affiliates:'🏛 Réserves'
   };
 
@@ -7043,6 +7080,7 @@ function renderCareerDirectorTab(tab){
   else if(tab==='squad') el.innerHTML = _renderDirectorSquad();
   else if(tab==='mercato') el.innerHTML = _renderDirectorMercato();
   else if(tab==='finances') el.innerHTML = _renderDirectorFinances();
+  else if(tab==='sponsors') el.innerHTML = _renderDirectorSponsors();
   else if(tab==='infra') el.innerHTML = _renderDirectorInfra();
   else if(tab==='staff') el.innerHTML = _renderDirectorStaff();
   else if(tab==='calendar') el.innerHTML = _renderDirectorCalendar();
@@ -7934,6 +7972,18 @@ function _renderDirectorFinances(){
   h += '<div style="background:var(--panel);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--muted)">Budget total</div><div style="font-size:14px;font-weight:900;color:#18c860">'+_fmtMoney(club.budget)+'</div></div>';
   h += '<div style="background:var(--panel);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--muted)">Budget mercato</div><div style="font-size:14px;font-weight:900;color:#f0c028">'+_fmtMoney(club.transferBudget)+'</div></div>';
   h += '</div>';
+  // Revenu sponsors hebdomadaire (raccourci vers l'onglet dédié).
+  if(typeof SPONSORS!=='undefined'){
+    try{
+      SPONSORS.ensure(club);
+      const sw = SPONSORS.weeklyIncome(club);
+      const nb = SPONSORS.active(club).length;
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-radius:6px;padding:8px;margin-bottom:10px">';
+      h += '<div style="font-size:9px;color:var(--muted)">🤝 Sponsors ('+nb+') <b style="color:#18c860">'+_fmtMoney(sw)+'</b>/sem.</div>';
+      h += '<button class="btn" onclick="renderCareerDirectorTab(\'sponsors\')" style="font-size:8px;padding:2px 8px">Gérer</button>';
+      h += '</div>';
+    }catch(e){}
+  }
   if(log.length){
     h += '<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">Historique :</div>';
     log.forEach(function(e){
@@ -7944,6 +7994,105 @@ function _renderDirectorFinances(){
   }
   h += '</div>';
   return h;
+}
+
+// ── ONGLET SPONSORS ─────────────────────────────────────────────────────
+function _renderDirectorSponsors(){
+  const C = careerV2; const club = C.club;
+  if(typeof SPONSORS==='undefined'){ return '<div style="padding:12px;font-size:10px;color:var(--muted)">Module sponsors indisponible.</div>'; }
+  SPONSORS.ensure(club);
+  const slots = SPONSORS.SLOTS;
+  const weekly = SPONSORS.weeklyIncome(club);
+
+  let h = '<div style="padding:4px">';
+  // Bandeau synthèse
+  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between">';
+  h += '<div style="font-size:11px;font-weight:900;color:var(--gold)">🤝 Sponsors</div>';
+  h += '<div style="font-size:9px;color:var(--muted)">Revenu sponsors : <b style="color:#18c860">'+_fmtMoney(weekly)+'</b>/sem.</div>';
+  h += '</div>';
+  h += '<div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.4">Signe un contrat par emplacement. Les paiements hebdomadaires alimentent ton budget ; certains contrats offrent une prime de fin de saison si un objectif sportif est atteint.</div>';
+  h += '</div>';
+
+  slots.forEach(function(sd){
+    const cur = club.sponsors[sd.key];
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+    h += '<div style="font-size:10px;font-weight:800">'+sd.icon+' '+sd.label+'</div>';
+    if(cur){
+      h += '<button class="btn" onclick="terminateSponsor(\''+sd.key+'\')" style="font-size:8px;padding:2px 8px;background:transparent;border:1px solid #e06060;color:#e06060">Résilier</button>';
+    }
+    h += '</div>';
+    if(cur){
+      const objTxt = cur.objective ? (' · 🎯 '+cur.objective.label+' → prime '+_fmtMoney(cur.objective.bonus)) : '';
+      h += '<div style="background:var(--panel);border-radius:6px;padding:8px">';
+      h += '<div style="font-size:11px;font-weight:800;color:var(--fg)">'+cur.name+'</div>';
+      h += '<div style="font-size:9px;color:#18c860;font-weight:700">'+_fmtMoney(cur.weekly)+'/sem.</div>';
+      h += '<div style="font-size:8px;color:var(--muted);margin-top:2px">'+(cur.weeksLeft!=null?cur.weeksLeft:cur.weeks)+' sem. restantes'+objTxt+'</div>';
+      h += '</div>';
+    } else {
+      // Générer/mémoriser des offres par emplacement (stables entre rendus).
+      C._sponsorOffers = C._sponsorOffers || {};
+      if(!C._sponsorOffers[sd.key]) C._sponsorOffers[sd.key] = SPONSORS.offersFor(club, sd.key);
+      const offers = C._sponsorOffers[sd.key];
+      offers.forEach(function(o, i){
+        const objTxt = o.objective ? ('🎯 '+o.objective.label+' (+'+_fmtMoney(o.objective.bonus)+')') : 'Sans objectif';
+        h += '<div style="display:flex;align-items:center;gap:8px;padding:7px;background:var(--panel);border:1px solid var(--b1);border-radius:6px;margin-bottom:5px">';
+        h += '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:700">'+o.name+'</div>';
+        h += '<div style="font-size:8px;color:var(--muted)">'+_fmtMoney(o.weekly)+'/sem · '+o.weeks+' sem · prime signature '+_fmtMoney(o.signBonus)+'</div>';
+        h += '<div style="font-size:8px;color:'+(o.objective?'#f0c028':'var(--muted)')+'">'+objTxt+'</div></div>';
+        h += '<button class="btn btng" onclick="signSponsor(\''+sd.key+'\','+i+')" style="font-size:9px;padding:3px 10px">Signer</button>';
+        h += '</div>';
+      });
+      h += '<button class="btn" onclick="refreshSponsorOffers(\''+sd.key+'\')" style="font-size:8px;padding:2px 8px;margin-top:2px">🔄 Nouvelles offres</button>';
+    }
+    h += '</div>';
+  });
+
+  h += '</div>';
+  return h;
+}
+
+function signSponsor(slot, idx){
+  if(!careerV2 || typeof SPONSORS==='undefined') return;
+  const C = careerV2; const club = C.club;
+  const offers = (C._sponsorOffers && C._sponsorOffers[slot]) || [];
+  const deal = offers[idx];
+  if(!deal){ logEvent('Offre introuvable.','#e02030'); return; }
+  const res = SPONSORS.sign(club, deal);
+  if(!res.ok){ logEvent('Signature impossible.','#e02030'); return; }
+  if(res.bonus > 0){
+    club.budget += res.bonus;
+    try{ _addFinanceLog('Prime signature sponsor : '+deal.name, res.bonus); }catch(e){}
+  }
+  // Consommer les offres de cet emplacement (contrat signé).
+  if(C._sponsorOffers) delete C._sponsorOffers[slot];
+  logEvent('✅ Contrat signé avec '+deal.name+' ('+SPONSORS.slotDef(slot).label+') — '+_fmtMoney(deal.weekly)+'/sem.','#18c860');
+  saveCareerV2();
+  renderCareerDirectorTab('sponsors');
+}
+
+function terminateSponsor(slot){
+  if(!careerV2 || typeof SPONSORS==='undefined') return;
+  const C = careerV2; const club = C.club;
+  const cur = club.sponsors && club.sponsors[slot];
+  if(!cur) return;
+  const fee = SPONSORS.terminationFee(cur);
+  if(club.budget < fee){ logEvent('❌ Budget insuffisant pour la pénalité de résiliation ('+_fmtMoney(fee)+').','#e02030'); return; }
+  club.budget -= fee;
+  try{ _addFinanceLog('Résiliation sponsor : '+cur.name, -fee); }catch(e){}
+  club.sponsors[slot] = null;
+  logEvent('📄 Contrat « '+cur.name+' » résilié (pénalité '+_fmtMoney(fee)+').','#f0c028');
+  saveCareerV2();
+  renderCareerDirectorTab('sponsors');
+}
+
+function refreshSponsorOffers(slot){
+  if(!careerV2 || typeof SPONSORS==='undefined') return;
+  const C = careerV2;
+  C._sponsorOffers = C._sponsorOffers || {};
+  C._sponsorOffers[slot] = SPONSORS.offersFor(C.club, slot);
+  renderCareerDirectorTab('sponsors');
 }
 
 function _renderDirectorInfra(){
@@ -9032,10 +9181,6 @@ function upgradeInfraV2(key){
   renderCareerDirectorTab('infra');
 }
 
-function hireStaff(role){
-  logEvent('👔 Recrutement staff — fonctionnalité à venir !','#f0c028');
-}
-
 function openTransferMarket(){
   logEvent('🔄 Marché des transferts — fonctionnalité à venir !','#f0c028');
 }
@@ -9643,9 +9788,25 @@ function _updateCareerStandings(fix){
   }catch(e){ console.error('npc bg sim:',e); }
 }
 
+// Compare deux niveaux de la pyramide : renvoie true si `a` est un échelon
+// SUPÉRIEUR (meilleur) que `b`. Sert à détecter promotion vs relégation.
+function _levelRankBetter(a, b){
+  try{
+    const C = careerV2;
+    const pyramid = WORLDS.getPyramid((C&&C.nation)||'panthalassa') || [];
+    const levels = pyramid.map(function(p){ return p.id; });
+    const ia = levels.indexOf(a), ib = levels.indexOf(b);
+    if(ia<0 || ib<0) return false;
+    return ia < ib; // index plus petit = division plus haute
+  }catch(e){ return false; }
+}
+
 function endCareerSeasonDirector(){
   if(!careerV2) return;
   const C = careerV2;
+  // Mémorise le niveau AVANT résolution (promo/relégation le modifient) pour
+  // évaluer les objectifs des sponsors en fin de fonction.
+  window._levelBeforeSeasonEnd = C.club && C.club.level;
   const sorted = (C.standings||[]).slice().sort(function(a,b){
     return b.Pts - a.Pts || (b.GF-b.GA)-(a.GF-a.GA);
   });
@@ -9696,6 +9857,29 @@ function endCareerSeasonDirector(){
   } else if(myPos >= total-1){
     logEvent('Saison difficile — attention la prochaine fois.','#e06060');
   }
+
+  // ── Primes d'objectif des sponsors ─────────────────────────────────────
+  // On évalue chaque contrat sponsor porteur d'un objectif sportif et on verse
+  // la prime si l'objectif est atteint. `_levelBeforeSeasonEnd` est capturé au
+  // début de la résolution ci-dessus (promotion/relégation modifient le level).
+  if(typeof SPONSORS!=='undefined' && C.club && C.club.sponsors){
+    try{
+      const before = window._levelBeforeSeasonEnd;
+      const promoted = before && C.club.level!==before && _levelRankBetter(C.club.level, before);
+      const relegated = before && C.club.level!==before && !_levelRankBetter(C.club.level, before);
+      const wins = (C.season_stats && C.season_stats.wins) || 0;
+      const stats = { relegated:relegated, promoted:promoted, rank:myPos, wins:wins };
+      SPONSORS.active(C.club).forEach(function(c){
+        if(c.objective && SPONSORS.objectiveMet(c.objective.id, stats)){
+          C.club.budget += c.objective.bonus;
+          try{ _addFinanceLog('Prime objectif sponsor : '+c.name, c.objective.bonus); }catch(e){}
+          logEvent('🎯 Objectif sponsor atteint ('+c.name+') — prime '+_fmtMoney(c.objective.bonus)+' !','#18c860');
+        }
+      });
+    }catch(e){ console.error('sponsor objectives:', e); }
+  }
+  window._levelBeforeSeasonEnd = null;
+
   C.season++; C.week = 1;
   C.date = {year:(C.date&&C.date.year||1)+1, month:8, day:1};
   C.seasonStartDate = null; // ré-ancrée par _generateSeasonFixtures() ci-dessous

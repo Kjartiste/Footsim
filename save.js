@@ -233,6 +233,12 @@ function _migrateTraining(){
       STAFF.ensureStaff(careerV2.club);
     }
   }catch(e){ console.error('staff migration:', e); }
+  // Normalise l'objet sponsors (ancien champ `sponsor` unique → emplacements).
+  try{
+    if(careerV2 && careerV2.club && typeof SPONSORS!=='undefined'){
+      SPONSORS.ensure(careerV2.club);
+    }
+  }catch(e){ console.error('sponsors migration:', e); }
 }
 
 // ── ÉQUIPES RÉSERVES AFFILIÉES (générique) ────────────────────────────────
@@ -516,6 +522,8 @@ function startCareerDirector(regionId, clubId, nationId){
   };
 
   careerV2.club.board_objectives = _generateBoardObjectives(careerV2.club);
+  // Initialise les emplacements de sponsoring (tous vacants au départ).
+  try{ if(typeof SPONSORS!=='undefined') SPONSORS.ensure(careerV2.club); }catch(e){}
   // Pré-remplir les réserves affiliées si le club appartient à une Maison
   // (Pilier). Générique : n'a d'effet que si des branches affiliées existent.
   try{ _buildAffiliates(clubName, nationId); }catch(e){ console.error('affiliates:',e); }
@@ -701,8 +709,11 @@ function _weeklyCareerRevenue(){
     const attendance = Math.round(club.stadium_capacity * Math.min(1, 0.25 + club.reputation/120));
     const ticketPrice = level==='d1' ? 10 : level==='d2' ? 6 : 4;
     revenue += Math.round(attendance * ticketPrice / 4); // par semaine
-    // Sponsors
-    revenue += Math.round(costs.weeklyBase * 0.4);
+  }
+
+  // Sponsors (tous niveaux) : revenu hebdomadaire des contrats actifs.
+  if(typeof SPONSORS!=='undefined'){
+    try{ revenue += SPONSORS.weeklyIncome(club); }catch(e){}
   }
 
   return revenue;
@@ -846,14 +857,29 @@ function _applyWeeklyEconomy(){
   const cost = _weeklyCareerCosts();
   C.club.budget += rev - cost;
 
+  // Part sponsors (calculée à part pour l'afficher distinctement).
+  let sponsorRev = 0;
+  if(typeof SPONSORS!=='undefined'){ try{ sponsorRev = SPONSORS.weeklyIncome(C.club); }catch(e){} }
+
   if(!isPro){
     const nb = (C.players||[]).length + (C.bench||[]).length;
     const licRev = nb * costs.license;
     if(licRev > 0) _addFinanceLog('Licences ('+nb+'x'+costs.license+')', licRev);
-    const munRev = rev - licRev;
+    const munRev = rev - licRev - sponsorRev;
     if(munRev > 0) _addFinanceLog('Subvention municipale', Math.round(munRev));
   } else {
-    _addFinanceLog('Revenus (billetterie + sponsors)', rev);
+    _addFinanceLog('Billetterie', Math.round(rev - sponsorRev));
+  }
+  if(sponsorRev > 0) _addFinanceLog('Sponsors', sponsorRev);
+
+  // Décompte de la durée des contrats sponsors + notification d'expiration.
+  if(typeof SPONSORS!=='undefined'){
+    try{
+      const expired = SPONSORS.tickWeek(C.club);
+      (expired||[]).forEach(function(c){
+        logEvent('📄 Le contrat sponsor « '+c.name+' » ('+(SPONSORS.slotDef(c.slot).label)+') a expiré.','#f0c028');
+      });
+    }catch(e){}
   }
 
   const fixedCost = Math.round(costs.weeklyBase * 0.4);
