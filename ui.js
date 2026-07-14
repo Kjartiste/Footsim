@@ -1537,7 +1537,7 @@ function _topUpBenchFromReserves(ti){
   T.reserves = T.reserves || [];
   // Cible de banc selon le format (assez de rechange pour ne pas manquer de
   // joueurs même après plusieurs sorties), commune aux DEUX équipes.
-  const target = window.gameMode==='11v11' ? 9 : window.gameMode==='5v5' ? 5 : 7;
+  const target = window.gameMode==='11v11' ? 7 : window.gameMode==='5v5' ? 5 : 5;
   // 1) Monter les réservistes existants sur le banc.
   while(T.bench.length < target && T.reserves.length > 0){
     const p = T.reserves.shift();
