@@ -7308,11 +7308,11 @@ function _renderDirectorOverview(){
       h += '</div>';
       h += '</div>';
     } else {
-      if(fix){
-        const isHome = fix.homeIsPlayer;
-        const opp = isHome ? fix.awayName : fix.homeName;
+      if(nextFix){
+        const isHome = nextFix.homeIsPlayer;
+        const opp = isHome ? nextFix.awayName : nextFix.homeName;
         h += '<div style="background:linear-gradient(135deg,'+accentCol+'22,var(--panel));border:2px solid '+accentCol+';border-radius:10px;padding:14px;margin-bottom:12px">';
-        h += '<div style="font-size:12px;font-weight:900;color:'+accentCol+';margin-bottom:6px">⚽ Match aujourd\'hui — J'+fix.week+'</div>';
+        h += '<div style="font-size:12px;font-weight:900;color:'+accentCol+';margin-bottom:6px">⚽ Match aujourd\'hui — J'+nextFix.week+'</div>';
         h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:10px">'+(isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+' '+(isHome?'🏠':'✈️')+'</div>';
         h += '<div style="display:flex;gap:8px">';
         h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
