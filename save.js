@@ -1307,6 +1307,11 @@ function _matchOnDateKey(dateKey){
   if(C.dayPlans && C.dayPlans[dateKey] && C.dayPlans[dateKey].type==='friendly' && C.dayPlans[dateKey].oppName){
     return { friendly:true, dateKey:dateKey };
   }
+  // Barrage de district (Valoria) : match JOUABLE du joueur programmé ce jour-là.
+  if(C.playoffs && C.playoffs.active && !C.playoffs.done && Array.isArray(C.playoffs.matches)){
+    const pm = C.playoffs.matches[C.playoffs.idx];
+    if(pm && !pm.played && pm.dateKey===dateKey) return { playoff:true, dateKey:dateKey };
+  }
   return null;
 }
 function _resolveDayPlan(dateKey){
@@ -1563,46 +1568,94 @@ function _cupTeamStrength(divLevel){
   const map = { d1:0.92, d2:0.82, d3:0.72, r1:0.60, r2:0.48, r3:0.36, dh:0.26 };
   return map[divLevel] || 0.4;
 }
+// Renvoie le vivier d'équipes d'une nation pour la coupe, au format commun
+// { name, color, badge, level, tier }. Chaque nation a sa propre table.
+function _cupTeamPool(nation){
+  if(nation==='pilier' && typeof PILIER_TEAMS!=='undefined'){
+    return PILIER_TEAMS.map(function(t){
+      return { name:t.name, color:t.color, badge:t.badge||null,
+               level:t.level||'dh', division:t.division, tier:t.tier };
+    });
+  }
+  if(nation==='valoria' && typeof VALORIA_TEAMS!=='undefined'){
+    // Valoria : le palier (pro/regional/district) sert de niveau de force.
+    const lvlOfTier = { pro:'d1', regional:'r1', district:'dh' };
+    return VALORIA_TEAMS.map(function(t){
+      return { name:t.name, color:t.color, badge:t.badge||null,
+               level: lvlOfTier[t.tier] || 'r2', division:t.division, tier:t.tier };
+    });
+  }
+  return [];
+}
+
+// Coupe nationale — GÉNÉRIQUE (toutes nations).
+// Avant, cette fonction sortait immédiatement si la nation n'était pas 'pilier' :
+// les carrières en Valoria/Panthalassa/Rorang n'avaient donc AUCUNE coupe.
 function _generateNationalCup(){
   const C = careerV2;
-  if(!C || C.nation!=='pilier' || typeof PILIER_TEAMS==='undefined') return;
+  if(!C || !C.club) return;
+  const nation = C.nation || 'panthalassa';
 
-  // La coupe dépend du BLOC du club joueur :
-  //   Pro (gtd,zenith)        → Coupe des Étoiles (40 clubs pro)
-  //   Célestes (cel1..cel4)   → Coupe de la Ligue Céleste (80 clubs régionaux)
-  //   Fondations (fond1..4)   → Coupe des Fondations (80 clubs amateurs)
-  const myDivId = C.club.pilierDivId || (typeof _pilierDivOfLevel==='function' ? _pilierDivOfLevel(C.club.level) : null);
-  const block = (typeof _pilierBlockOf==='function' && myDivId) ? _pilierBlockOf(myDivId) : 'fondation';
-  const blockDivs = (typeof PILIER_BLOCKS!=='undefined' && PILIER_BLOCKS[block]) ? PILIER_BLOCKS[block] : [];
-  const cupInfo = {
-    pro:       { name:'Coupe des Étoiles',        icon:'⭐' },
-    celeste:   { name:'Coupe de la Ligue Céleste', icon:'✨' },
-    fondation: { name:'Coupe des Fondations',      icon:'⚒️' },
-  }[block] || { name:'Coupe des Fondations', icon:'⚒️' };
+  let field = null, cupInfo = null, block = null;
 
-  // Participants : tous les clubs des divisions du bloc.
-  let pool = PILIER_TEAMS.filter(t=>blockDivs.includes(t.division) && t.name!==C.club.name);
+  if(nation === 'pilier' && typeof PILIER_TEAMS!=='undefined'){
+    // ── PILIER : la coupe dépend du BLOC du club joueur ────────────────
+    //   Pro (gtd,zenith)        → Coupe des Étoiles
+    //   Célestes (cel1..cel4)   → Coupe de la Ligue Céleste
+    //   Fondations (fond1..4)   → Coupe des Fondations
+    const myDivId = C.club.pilierDivId || (typeof _pilierDivOfLevel==='function' ? _pilierDivOfLevel(C.club.level) : null);
+    block = (typeof _pilierBlockOf==='function' && myDivId) ? _pilierBlockOf(myDivId) : 'fondation';
+    const blockDivs = (typeof PILIER_BLOCKS!=='undefined' && PILIER_BLOCKS[block]) ? PILIER_BLOCKS[block] : [];
+    cupInfo = {
+      pro:       { name:'Coupe des Étoiles',         icon:'⭐' },
+      celeste:   { name:'Coupe de la Ligue Céleste', icon:'✨' },
+      fondation: { name:'Coupe des Fondations',      icon:'⚒️' },
+    }[block] || { name:'Coupe des Fondations', icon:'⚒️' };
+    field = _cupTeamPool('pilier').filter(function(t){
+      return blockDivs.indexOf(t.division)>=0 && t.name!==C.club.name;
+    });
+  } else {
+    // ── AUTRES NATIONS : coupe nationale OUVERTE À TOUS ────────────────
+    // On lit le nom de la coupe dans la définition de la nation (WORLDS) et on
+    // convoque tous les clubs de la nation, toutes divisions confondues — c'est
+    // l'intérêt d'une coupe : un club de district peut croiser un club pro.
+    let cupName = 'Coupe nationale', cupIcon = '🏆';
+    try{
+      const nat = (typeof WORLDS!=='undefined' && WORLDS.get) ? WORLDS.get(nation) : null;
+      const knockout = nat && (nat.cups||[]).find(function(c){ return c.type==='knockout' || c.open_to==='all'; });
+      if(knockout && knockout.name) cupName = knockout.name;
+    }catch(e){}
+    cupInfo = { name:cupName, icon:cupIcon };
+    field = _cupTeamPool(nation).filter(function(t){ return t.name!==C.club.name; });
+  }
+
+  // Pas de vivier d'équipes pour cette nation → pas de coupe (silencieux).
+  if(!field || field.length < 3) return;
+
   // Mélange.
-  for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
-  // Taille en puissance de 2 : 32 pour un grand bloc (80 clubs), 32 pour pro (40).
-  const SIZE = pool.length >= 31 ? 32 : 16;
-  const field = [{ name:C.club.name, color:C.club.color, badge:C.club.badge||null, level:C.club.level, isPlayer:true }]
-    .concat(pool.slice(0, SIZE-1).map(t=>({ name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh', isPlayer:false })));
-  // Noms de tours selon la taille.
-  const roundNames = SIZE===32 ? ['32es','16es','8es','Quarts','Demies','Finale'] : ['16es','8es','Quarts','Demies','Finale'];
-  // Semaines des tours de coupe. Elles sont exprimées en SEMAINES DE CHAMPIONNAT
-  // (la journée N tombe le samedi de la semaine N ; les tours de coupe se jouent
-  // le mercredi de la même semaine). On décale les tours pour qu'ils démarrent
-  // APRÈS que le championnat soit lancé (jamais en semaine 1-2, encore moins en
-  // présaison) et qu'ils s'espacent jusqu'à la fin de saison.
-  const weeks = SIZE===32 ? [4,7,10,13,16,19] : [5,8,11,14,17];
+  for(let i=field.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [field[i],field[j]]=[field[j],field[i]]; }
+
+  // Taille en puissance de 2, selon le vivier disponible.
+  const SIZE = field.length >= 31 ? 32 : field.length >= 15 ? 16 : 8;
+  const teams = [{ name:C.club.name, color:C.club.color, badge:C.club.badge||null, level:C.club.level, isPlayer:true }]
+    .concat(field.slice(0, SIZE-1).map(function(t){
+      return { name:t.name, color:t.color, badge:t.badge||null, level:t.level||'dh', isPlayer:false };
+    }));
+
+  const roundNames = SIZE===32 ? ['32es','16es','8es','Quarts','Demies','Finale']
+                   : SIZE===16 ? ['16es','8es','Quarts','Demies','Finale']
+                   :             ['Quarts','Demies','Finale'];
+  // Semaines des tours de coupe, exprimées en SEMAINES DE CHAMPIONNAT (le tour
+  // se joue le mercredi). On démarre après le lancement du championnat.
+  const weeks = SIZE===32 ? [4,7,10,13,16,19] : SIZE===16 ? [5,8,11,14,17] : [6,10,14];
+
   C.cup = {
-    name: cupInfo.name, icon: cupInfo.icon, block,
-    field, round: 0, roundNames, weeks,
-    bracket: _cupPairUp(field),
+    name: cupInfo.name, icon: cupInfo.icon, block: block,
+    field: teams, round: 0, roundNames, weeks,
+    bracket: _cupPairUp(teams),
     eliminated: false, winner: null, playerOut: false,
   };
-  logEvent(cupInfo.icon+' '+C.cup.name+' : ton club entre en lice ('+field.length+' équipes) !', C.club.color||'#f0c028');
+  logEvent(cupInfo.icon+' '+C.cup.name+' : ton club entre en lice ('+teams.length+' équipes) !', C.club.color||'#f0c028');
 }
 function _cupPairUp(teams){
   // Apparie la liste en paires successives pour le tour courant.

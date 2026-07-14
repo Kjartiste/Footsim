@@ -7375,6 +7375,20 @@ function _renderDirectorOverview(){
       h += '<button class="btn" onclick="simCareerMatchDirector()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
       h += '</div>';
       h += '</div>';
+    } else if(C._pendingMatch.playoff){
+      const po = C.playoffs;
+      const pm = po && Array.isArray(po.matches) ? po.matches[po.idx] : null;
+      const opp = pm ? pm.oppName : '(adversaire)';
+      const leg = po ? (po.idx+1) : 1;
+      h += '<div style="background:linear-gradient(135deg,#f0c02822,var(--panel));border:2px solid #f0c028;border-radius:10px;padding:14px;margin-bottom:12px">';
+      h += '<div style="font-size:12px;font-weight:900;color:#f0c028;margin-bottom:6px">🏟️ Barrage de district — match '+leg+'/3 !</div>';
+      h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:6px">'+(pm&&pm.isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+'</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">'+(po?po.poolLabel:'')+' — les 2 premiers de la poule montent en '+_valDivName('valcourt_r3')+'.</div>';
+      h += '<div style="display:flex;gap:8px">';
+      h += '<button class="btn btng" onclick="playCareerPlayoffMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
+      h += '<button class="btn" onclick="simCareerPlayoffMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
+      h += '</div>';
+      h += '</div>';
     } else if(C._pendingMatch.friendly){
       const plan = C.dayPlans && C.dayPlans[C._pendingMatch.dateKey];
       const opp = plan && plan.oppName ? plan.oppName : '(adversaire)';
@@ -7451,6 +7465,12 @@ function _renderDirectorOverview(){
     // Voir l'effectif complet du prochain adversaire.
     const oppId = isHome ? nextFix.away : nextFix.home;
     h += '<button onclick="_viewOpponentSquad(\''+oppId+'\')" style="width:100%;margin-top:8px;font-size:10px;padding:7px;border-radius:7px;cursor:pointer;border:1px solid var(--b1);background:var(--dark);color:var(--muted)">🔍 Voir l\'effectif de '+opp+'</button>';
+  } else if(C.playoffs && C.playoffs.active && !C.playoffs.done){
+    const po = C.playoffs;
+    const nm = po.matches[po.idx];
+    h += '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">🏟️ Barrages de district en cours ('+po.poolLabel+') — match '+(po.idx+1)+'/3.</div>';
+    if(nm) h += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Prochain : vs '+nm.oppName+' — '+_fmtDateFrLong(nm.date)+'</div>';
+    h += '<div style="font-size:9px;color:var(--muted)">Avancez jour par jour jusqu\'au match (📅 onglet Calendrier).</div>';
   } else {
     h += '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">🏁 Saison terminée !</div>';
     h += '<button class="btn btng" onclick="endCareerSeasonDirector()" style="width:100%;font-size:12px;padding:8px">Saison suivante →</button>';
@@ -9041,6 +9061,7 @@ function _advanceOneDay(){
   const pending = _matchOnDateKey(todayKey);
   if(pending){
     if(pending.cup) C._pendingMatch = {cup:true};
+    else if(pending.playoff) C._pendingMatch = {playoff:true};
     else if(pending.friendly) C._pendingMatch = {friendly:true, dateKey:pending.dateKey};
     else C._pendingMatch = {fixtureId:pending.id};
     saveCareerV2();
@@ -9810,9 +9831,159 @@ function _levelRankBetter(a, b){
   }catch(e){ return false; }
 }
 
+// ── BARRAGE DE DISTRICT (Valoria) — match JOUABLE ───────────────────────────
+// Construit l'équipe du joueur + l'adversaire réel de la poule (à SON niveau
+// de division) et lance le match sur le terrain, exactement comme un tour de
+// coupe. Le résultat est ensuite enregistré par _recordCareerV2PlayoffMatchResult.
+function playCareerPlayoffMatch(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const po = C.playoffs;
+  if(!po || !po.active || po.done){ logEvent('Aucun barrage à jouer.','#e02030'); return; }
+  const m = po.matches[po.idx];
+  if(!m || m.played){ logEvent('Aucun barrage en attente.','#e02030'); return; }
+
+  const nation = C.nation || 'valoria';
+  const region = C.club.region;
+  const oppLevel = m.oppLevel || C.club.level || 'dh';
+
+  const mode = window.gameMode || '7v7';
+  const XI_POS = mode==='11v11' ? ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT']
+               : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
+               :                  ['GB','DC','DD','DG','MC','MC','ATT'];
+  const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
+                  : mode==='5v5'   ? ['GB','DC','MC','ATT','DC']
+                  :                  ['GB','MC','ATT','DC','MC'];
+  const xiSize = XI_POS.length, benchSize = BENCH_POS.length;
+
+  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
+    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
+  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; }).sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; }).sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const starters = [];
+  if(gkPool[0]) starters.push(gkPool[0]);
+  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
+  const leftoverGk  = gkPool.slice(1);
+  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
+  const matchBench = [];
+  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
+  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
+  const usedIds = starters.concat(matchBench);
+  const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
+  starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
+  matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
+  try{ _applyStaffMatchdayBonus(C.club, starters, matchBench); }catch(e){}
+
+  teams[0] = {
+    name: C.club.name, color: C.club.color || '#e02030', img: C.club.img || '',
+    strat: C.club.strat || '321',
+    players: starters, bench: matchBench,
+    reserves: surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
+  };
+
+  let aiSquad;
+  try{
+    aiSquad = WORLDS.generateSquad(nation, region, {
+      positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel,
+    });
+  }catch(e){
+    console.error('playoff ai squad:', e);
+    logEvent('⚠️ Impossible de générer l\'adversaire du barrage. Match simulé à la place.','#e0a020');
+    simCareerPlayoffMatch();
+    return;
+  }
+  if(!aiSquad || !(aiSquad.players||[]).length){
+    logEvent('⚠️ Adversaire du barrage invalide. Match simulé à la place.','#e0a020');
+    simCareerPlayoffMatch();
+    return;
+  }
+
+  teams[1] = {
+    name: m.oppName, color: '#1878e8', img: '', badge: null,
+    strat: '321', players: aiSquad.players, bench: aiSquad.bench, reserves: [],
+  };
+
+  applyFormationRoles(0);
+  applyFormationRoles(1);
+
+  window._careerPlayoffPlaying = { matchIndex: po.idx };
+
+  nav('match');
+  resetMatch();
+  G.leagueMode = true; // route endMatch() vers _recordCareerV2PlayoffMatchResult
+  G._humanTeams = [true, false];
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
+  syncHUD(); renderTB(0); renderTB(1);
+  showPreMatch(null);
+}
+
+// Version rapide (bouton "⚡ Simuler") : résout le match du joueur par force
+// + aléa au lieu de le jouer sur le terrain, puis enregistre le résultat par
+// le même chemin que le match joué.
+function simCareerPlayoffMatch(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const po = C.playoffs;
+  if(!po || !po.active || po.done){ logEvent('Aucun barrage à simuler.','#e02030'); return; }
+  const m = po.matches[po.idx];
+  if(!m || m.played){ logEvent('Aucun barrage en attente.','#e02030'); return; }
+
+  const myPlayers = C.players || [];
+  const myStr = myPlayers.reduce(function(s,p){
+    return s + ((p.s&&p.s.sht||10)+(p.s&&p.s.spd||10)+(p.s&&p.s.tec||10))/3;
+  }, 0) / Math.max(1, myPlayers.length);
+  const oppStr = m.oppStrength || myStr;
+  const isHome = !!m.isHome;
+  const myGoals = _poissonGoals((myStr/Math.max(1,oppStr)) * (isHome?1.1:0.9) * 0.8);
+  const oppGoals = _poissonGoals((oppStr/Math.max(1,myStr)) * (isHome?0.9:1.1) * 0.8);
+
+  _recordPlayoffLegResult(myGoals, oppGoals);
+  saveCareerV2();
+  renderCareerV2();
+}
+
+// Cœur commun : enregistre le score d'un match de barrage (joué ou simulé),
+// avance au match suivant, et finalise la poule au bout des 3 matchs.
+function _recordPlayoffLegResult(myG, oppG){
+  const C = careerV2; if(!C || !C.playoffs) return;
+  const po = C.playoffs;
+  const m = po.matches[po.idx];
+  if(!m) return;
+  m.played = true; m.scoreMe = myG; m.scoreOpp = oppG;
+
+  const res = myG > oppG ? '✅ Victoire' : myG === oppG ? '🟡 Nul' : '❌ Défaite';
+  const col = myG > oppG ? '#18c860' : myG === oppG ? '#f0c028' : '#e06060';
+  logEvent(res+' (barrage) ! '+C.club.name+' '+myG+'-'+oppG+' '+m.oppName, col);
+
+  po.idx++;
+  if(po.idx >= po.matches.length){
+    try{ _valoriaFinalizeDistrictPlayoffs(C); }catch(e){ console.error('finalize playoffs:',e); }
+    if(po.promoted){ logEvent('🎉 Barrages de district remportés ! ('+po.detail+')', C.club.color||'#f0c028'); }
+    else { logEvent('⚔️ Barrages de district terminés : '+po.detail+'.', C.club.color||'#f0c028'); }
+  }
+  if(C._pendingMatch) C._pendingMatch = null;
+}
+
+// Appelé par endMatch() (visual.js) quand le match joué était un barrage.
+function _recordCareerV2PlayoffMatchResult(){
+  if(!careerV2 || !window._careerPlayoffPlaying) return;
+  const s0 = G.scores[0]; // notre score (team 0 = toujours le joueur ici)
+  const s1 = G.scores[1]; // adversaire
+  _recordPlayoffLegResult(s0, s1);
+  window._careerPlayoffPlaying = null;
+  saveCareerV2();
+}
+
 function endCareerSeasonDirector(){
   if(!careerV2) return;
   const C = careerV2;
+  // Des barrages de district sont en cours et pas encore terminés : il faut
+  // d'abord les jouer jusqu'au bout avant de pouvoir clôturer la saison.
+  if(C.playoffs && C.playoffs.active && !C.playoffs.done){
+    logEvent('Terminez d\'abord les barrages de district avant de continuer.','#e0a020');
+    renderCareerV2();
+    return;
+  }
   // Mémorise le niveau AVANT résolution (promo/relégation le modifient) pour
   // évaluer les objectifs des sponsors en fin de fonction.
   window._levelBeforeSeasonEnd = C.club && C.club.level;
@@ -9828,6 +9999,18 @@ function endCareerSeasonDirector(){
   if((C.nation==='valoria') && typeof valoriaResolvePlayerSeason==='function' && C.club && C.club.level){
     try{
       const res = valoriaResolvePlayerSeason(C, myPos, total);
+      if(res && res.needsPlayoffs){
+        // Qualifié pour les barrages de district : on les génère (JOUABLES,
+        // moteur de match, dates réelles) et on suspend la fin de saison
+        // jusqu'à ce qu'ils soient joués — plus de tirage au sort.
+        const lvl = valoriaNormalizeLevel(C.club.level, _valRegionName(C.club.region));
+        try{ valoriaSetupDistrictPlayoffs(C, lvl, myPos); }catch(e2){ console.error('valoriaSetupDistrictPlayoffs:',e2); }
+        window._levelBeforeSeasonEnd = null;
+        logEvent('🏟️ Qualifié pour les barrages de district ! Ils se joueront dans les prochaines semaines.', C.club.color||'#f0c028');
+        saveCareerV2();
+        renderCareerV2();
+        return;
+      }
       if(res){
         if(res.newLevel && res.newLevel!==C.club.level){ C.club.level = res.newLevel; }
         if(res.message) logEvent(res.message, C.club.color||'#f0c028');

@@ -61,7 +61,223 @@ function valoriaDistrictPlayoffs(){
   return topA.concat(topB); // 4 équipes promues en R3
 }
 
-// Résout la promotion R1 → Pro selon la règle d'équité.
+// Play-offs de district AVEC le club du joueur dans le tableau.
+// Reproduit le vrai format : 8 qualifiés (top 2 des 4 districts) → 2 poules de
+// 4 (répartition en serpentin par force) → les 2 premiers de chaque poule
+// montent en R3. Le joueur remplace le qualifié de SON district à SA position.
+// Renvoie { promoted:bool, detail:string }.
+function valoriaSimulateDistrictPlayoffs(C, myDiv, myPos){
+  // ── Force du club joueur, CALIBRÉE sur l'échelle de la simulation ──────
+  // Les effectifs du joueur sont notés sur ~40-75 (moyenne de stats), alors que
+  // la simulation situe un club de district autour de 52 (_valTierStrength).
+  // Comparer les deux directement rendait le joueur quasi imbattable. On
+  // convertit donc sa force en un ÉCART par rapport à la moyenne de son propre
+  // district, ce qui garde les deux échelles cohérentes.
+  const rivalsMine = simulateValoriaDivision(myDiv);
+  const districtAvg = rivalsMine.length
+    ? rivalsMine.reduce(function(s,t){ return s+t.strength; },0)/rivalsMine.length
+    : _valTierStrength('district');
+
+  let myRaw = null;
+  try{
+    const squad = (C.players||[]).concat(C.bench||[]);
+    if(squad.length){
+      let sum=0, n=0;
+      squad.forEach(function(p){
+        const s=p&&p.s; if(!s) return;
+        sum += ((s.tec||50)+(s.spd||50)+(s.sht||50)+(s.def||50)+(s.stam||50)+(s.res||50))/6; n++;
+      });
+      if(n) myRaw = sum/n;
+    }
+  }catch(e){}
+
+  // Sans effectif exploitable, on se cale sur la position obtenue : finir 1er
+  // ou 2e d'un district implique d'être au-dessus de la moyenne locale.
+  let myStrength;
+  if(myRaw==null){
+    myStrength = districtAvg + (myPos===1 ? 4 : 2.5);
+  } else {
+    // Qualifier au play-off prouve déjà que le club domine son district : on
+    // part donc légèrement AU-DESSUS de la moyenne locale, puis la qualité de
+    // l'effectif fait l'écart (bornée pour éviter les extrêmes).
+    const delta = Math.max(-6, Math.min(9, (myRaw - 52) * 0.5));
+    myStrength = districtAvg + 3.5 + delta;
+  }
+  // Bonus de dynamique : finir 1er de son district vaut mieux que 2e.
+  myStrength += (myPos===1 ? 1.5 : 0);
+
+  // Les 8 qualifiés : top 2 de chaque district (simulés), sauf le district du
+  // joueur où l'on injecte le joueur à sa place réelle.
+  const qualified = [];
+  ['valcourt_district1','valcourt_district2','valcourt_district3','valcourt_district4'].forEach(function(d){
+    const s = simulateValoriaDivision(d);
+    for(let i=0;i<2;i++){
+      if(d===myDiv && (i+1)===myPos){
+        qualified.push({ name:(C.club&&C.club.name)||'Mon club', strength:myStrength, isPlayer:true });
+      } else if(s[i]){
+        qualified.push({ name:s[i].name, strength:s[i].strength, isPlayer:false });
+      }
+    }
+  });
+  // Filet : si le joueur n'a pas été injecté (district hors liste), on l'ajoute.
+  if(!qualified.some(function(q){ return q.isPlayer; })){
+    qualified.push({ name:(C.club&&C.club.name)||'Mon club', strength:myStrength, isPlayer:true });
+  }
+
+  // Répartition serpentin en 2 poules de 4 selon la force.
+  const sorted = qualified.slice().sort(function(a,b){ return b.strength-a.strength; });
+  const poolA = [sorted[0],sorted[3],sorted[4],sorted[7]].filter(Boolean);
+  const poolB = [sorted[1],sorted[2],sorted[5],sorted[6]].filter(Boolean);
+  const myPool = poolA.some(function(t){return t.isPlayer;}) ? poolA : poolB;
+  const poolLbl = (myPool===poolA) ? 'poule A' : 'poule B';
+
+  // Mini-championnat : chaque équipe affronte les autres de sa poule. Résultat
+  // pondéré par la force + aléa (une poule n'est jamais jouée d'avance).
+  const pts = {};
+  myPool.forEach(function(t){ pts[t.name]=0; });
+  for(let i=0;i<myPool.length;i++){
+    for(let j=i+1;j<myPool.length;j++){
+      const a=myPool[i], b=myPool[j];
+      const diff=(a.strength-b.strength)/12;                 // avantage relatif
+      const r=Math.random()*2-1 + diff;                      // aléa + force
+      if(r>0.35)      pts[a.name]+=3;
+      else if(r<-0.35) pts[b.name]+=3;
+      else { pts[a.name]+=1; pts[b.name]+=1; }               // nul
+    }
+  }
+  const table = myPool.slice().sort(function(a,b){
+    return (pts[b.name]-pts[a.name]) || (b.strength-a.strength);
+  });
+  const rank = table.findIndex(function(t){ return t.isPlayer; }) + 1;
+  const promoted = rank>0 && rank<=2;   // les 2 premiers de chaque poule montent
+  const detail = poolLbl+', '+rank+(rank===1?'er':'e')+' avec '+(pts[(C.club&&C.club.name)||'Mon club']||0)+' pts';
+  return { promoted:promoted, detail:detail, rank:rank, pool:poolLbl };
+}
+// ─────────────────────────────────────────────────────────────────────────
+// BARRAGES DE DISTRICT — VERSION JOUABLE
+// ─────────────────────────────────────────────────────────────────────────
+// Construit C.playoffs : le joueur affrontera RÉELLEMENT (moteur de match,
+// 3 dates programmées) les 3 autres équipes de sa poule. Les 3 matchs qui ne
+// le concernent pas (entre les autres équipes de sa poule) sont réglés tout
+// de suite par force + aléa, exactement comme les confrontations de coupe qui
+// n'impliquent pas le joueur. Le classement final — et donc la promotion —
+// dépend ainsi vraiment de ce que le joueur fait sur le terrain.
+function valoriaSetupDistrictPlayoffs(C, myDiv, myPos){
+  if(!C) return;
+  const rivalsMine = simulateValoriaDivision(myDiv);
+  const districtAvg = rivalsMine.length
+    ? rivalsMine.reduce(function(s,t){ return s+t.strength; },0)/rivalsMine.length
+    : _valTierStrength('district');
+
+  let myRaw = null;
+  try{
+    const squad = (C.players||[]).concat(C.bench||[]);
+    if(squad.length){
+      let sum=0, n=0;
+      squad.forEach(function(p){
+        const s=p&&p.s; if(!s) return;
+        sum += ((s.tec||50)+(s.spd||50)+(s.sht||50)+(s.def||50)+(s.stam||50)+(s.res||50))/6; n++;
+      });
+      if(n) myRaw = sum/n;
+    }
+  }catch(e){}
+
+  let myStrength;
+  if(myRaw==null){
+    myStrength = districtAvg + (myPos===1 ? 4 : 2.5);
+  } else {
+    const delta = Math.max(-6, Math.min(9, (myRaw - 52) * 0.5));
+    myStrength = districtAvg + 3.5 + delta;
+  }
+  myStrength += (myPos===1 ? 1.5 : 0);
+
+  // Les 8 qualifiés : top 2 de chaque district (simulés), sauf le district du
+  // joueur où l'on injecte le joueur à sa place réelle.
+  const qualified = [];
+  ['valcourt_district1','valcourt_district2','valcourt_district3','valcourt_district4'].forEach(function(d){
+    const s = simulateValoriaDivision(d);
+    for(let i=0;i<2;i++){
+      if(d===myDiv && (i+1)===myPos){
+        qualified.push({ name:(C.club&&C.club.name)||'Mon club', strength:myStrength, isPlayer:true, level:myDiv });
+      } else if(s[i]){
+        qualified.push({ name:s[i].name, strength:s[i].strength, isPlayer:false, level:d });
+      }
+    }
+  });
+  if(!qualified.some(function(q){ return q.isPlayer; })){
+    qualified.push({ name:(C.club&&C.club.name)||'Mon club', strength:myStrength, isPlayer:true, level:myDiv });
+  }
+
+  // Répartition serpentin en 2 poules de 4 selon la force (même logique que
+  // la version simulée, pour rester cohérent).
+  const sorted = qualified.slice().sort(function(a,b){ return b.strength-a.strength; });
+  const poolA = [sorted[0],sorted[3],sorted[4],sorted[7]].filter(Boolean);
+  const poolB = [sorted[1],sorted[2],sorted[5],sorted[6]].filter(Boolean);
+  const myPool = poolA.some(function(t){return t.isPlayer;}) ? poolA : poolB;
+  const poolLbl = (myPool===poolA) ? 'poule A' : 'poule B';
+  const others = myPool.filter(function(t){ return !t.isPlayer; }); // 3 adversaires réels du joueur
+
+  // ── Résultats des 3 matchs ENTRE LES AUTRES équipes de la poule (ils ne
+  // concernent pas le joueur) : réglés immédiatement par force + aléa.
+  const pts = {}; myPool.forEach(function(t){ pts[t.name]=0; });
+  for(let i=0;i<others.length;i++){
+    for(let j=i+1;j<others.length;j++){
+      const a=others[i], b=others[j];
+      const diff=(a.strength-b.strength)/12;
+      const r=Math.random()*2-1 + diff;
+      if(r>0.35)       pts[a.name]+=3;
+      else if(r<-0.35) pts[b.name]+=3;
+      else { pts[a.name]+=1; pts[b.name]+=1; }
+    }
+  }
+
+  // ── Calendrier des 3 matchs JOUABLES du joueur : un mercredi toutes les
+  // semaines à partir de la fin du championnat (C.date).
+  const base = C.date || {year:1,month:8,day:1};
+  const matches = others.map(function(opp, idx){
+    const d = _addDays(base, (idx+1)*7);
+    return {
+      oppName: opp.name, oppStrength: opp.strength, oppLevel: opp.level,
+      dateKey: _dateKey(d), date: d,
+      isHome: (idx%2===0), // alterne domicile/extérieur
+      played:false, scoreMe:null, scoreOpp:null,
+    };
+  });
+
+  C.playoffs = {
+    type:'district', active:true, done:false, promoted:false, detail:null,
+    myDiv: myDiv, myPos: myPos, poolLabel: poolLbl,
+    myName: (C.club&&C.club.name)||'Mon club',
+    matches: matches, idx: 0,
+    otherPts: pts, // points déjà acquis par les 3 autres équipes de la poule
+  };
+}
+
+// Finalise les barrages de district une fois les 3 matchs du joueur joués :
+// calcule le classement de la poule (points + différence de buts pour le
+// joueur) et détermine la promotion (2 premiers de la poule montent).
+function _valoriaFinalizeDistrictPlayoffs(C){
+  const po = C.playoffs; if(!po) return;
+  let myPts=0, myGf=0, myGa=0;
+  po.matches.forEach(function(m){
+    if(!m.played) return;
+    myGf += m.scoreMe||0; myGa += m.scoreOpp||0;
+    if(m.scoreMe>m.scoreOpp) myPts+=3;
+    else if(m.scoreMe===m.scoreOpp) myPts+=1;
+  });
+  const table = po.matches.map(function(m){ return { name:m.oppName, pts:po.otherPts[m.oppName]||0 }; });
+  // Dédoublonne (chaque adversaire n'apparaît qu'une fois).
+  const seen={}; const oppTable=[];
+  table.forEach(function(t){ if(!seen[t.name]){ seen[t.name]=true; oppTable.push(t); } });
+  oppTable.push({ name:po.myName, pts:myPts, gd:myGf-myGa, isPlayer:true });
+  oppTable.sort(function(a,b){ return (b.pts-a.pts) || ((b.gd||0)-(a.gd||0)); });
+  const rank = oppTable.findIndex(function(t){ return t.isPlayer; }) + 1;
+  po.promoted = rank>0 && rank<=2;
+  po.detail = po.poolLabel+', '+rank+(rank===1?'er':'e')+' avec '+myPts+' pts ('+(myGf-myGa>=0?'+':'')+(myGf-myGa)+')';
+  po.done = true;
+  po.active = false;
+}
+
 // proStandings : classement final de la Pro (trié, dernier = relégué).
 function valoriaR1toPro(proStandings){
   const last=proStandings[proStandings.length-1];
@@ -132,13 +348,26 @@ function valoriaResolvePlayerSeason(C, myPos, total){
     else msg='Maintien en Brumefer R2 (position '+myPos+').';
   }
   else if(lvl && lvl.startsWith('valcourt_district')){
-    // Play-offs : top 2 du district → play-offs → 4 montent en R3.
+    // ── BARRAGES DE DISTRICT — VERSION JOUABLE ─────────────────────────
+    // Format réel : top 2 de chacun des 4 districts → 8 qualifiés → 2 poules
+    // de 4 → les 2 premiers de chaque poule montent en R3 (4 promus).
+    // Le joueur qualifié doit désormais JOUER ses 3 matchs de poule (moteur
+    // de match, dates réelles) : plus de tirage au sort. Si les barrages ont
+    // déjà été joués (C.playoffs.done), on applique directement le résultat
+    // acquis sur le terrain ; sinon on signale à l'appelant qu'il faut
+    // d'abord les lancer (needsPlayoffs).
     if(myPos<=2){
-      // Le joueur atteint les play-offs ; on simule sa réussite avec une chance
-      // proportionnelle à sa position (1er a plus de chances que 2e).
-      const win = Math.random() < (myPos===1?0.6:0.4);
-      if(win){ newLevel='valcourt_r3'; msg='🎉 Play-offs remportés — PROMU en '+_valDivName('valcourt_r3')+' !'; }
-      else msg='Play-offs de district atteints, mais éliminé. Maintien.';
+      if(C.playoffs && C.playoffs.done){
+        if(C.playoffs.promoted){
+          newLevel = 'valcourt_r3';
+          msg = '🎉 Barrages de district remportés (' + C.playoffs.detail + ') — PROMU en ' + _valDivName('valcourt_r3') + ' !';
+        } else {
+          msg = '⚔️ Barrages de district : ' + C.playoffs.detail + '. Maintien en ' + _valDivName(lvl) + '.';
+        }
+        C.playoffs = null;
+      } else {
+        return { needsPlayoffs:true };
+      }
     } else {
       msg='Maintien en '+_valDivName(lvl)+' (position '+myPos+').';
     }
@@ -182,6 +411,7 @@ function valoriaNormalizeLevel(level, region){
 if(typeof window!=='undefined'){
   Object.assign(window,{
     VALORIA_LEVELS, simulateValoriaDivision, valoriaDistrictPlayoffs,
+    valoriaSimulateDistrictPlayoffs, valoriaSetupDistrictPlayoffs, _valoriaFinalizeDistrictPlayoffs,
     valoriaR1toPro, valoriaResolvePlayerSeason, valoriaNormalizeLevel, _valRegionName, _valDivName,
   });
 }

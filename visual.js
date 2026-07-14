@@ -1911,6 +1911,11 @@ function endMatch(){
       showEndMatchRecap();
       return;
     }
+    if(window._careerPlayoffPlaying){
+      _recordCareerV2PlayoffMatchResult();
+      showEndMatchRecap();
+      return;
+    }
     if(window._careerFriendlyPlaying){
       _recordCareerV2FriendlyResult();
       showEndMatchRecap();
