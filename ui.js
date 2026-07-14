@@ -1509,12 +1509,42 @@ function _prepareTeamsForMode(){
     // 7v7 : garantir 7 titulaires (utile après un passage par le 5v5)
     [0,1].forEach(function(ti){ _ensureTeamSize7v7(ti); });
   }
+  // Verser les RÉSERVISTES sur le banc pour qu'ils puissent entrer en jeu.
+  // Sans ça, un petit club (banc quasi vide) pouvait se retrouver en
+  // sous-nombre après quelques blessures/expulsions alors qu'il avait des
+  // réservistes disponibles. On garantit un banc suffisamment fourni.
+  [0,1].forEach(function(ti){ _topUpBenchFromReserves(ti); });
   // Générer les stats détaillées (mode Complet) et garantir les champs de
   // mouvement sur tous les joueurs (y compris ceux générés en complément).
   if(typeof ensureAllS2==='function'){ try{ ensureAllS2(); }catch(e){} }
   if(typeof ensureAllProfiles==='function'){ try{ ensureAllProfiles(); }catch(e){} }
   if(typeof ensureTeamRaces==='function'){ try{ [0,1].forEach(function(ti){ if(teams[ti]) ensureTeamRaces(teams[ti]); }); }catch(e){} }
   [0,1].forEach(function(ti){ (teams[ti].players||[]).forEach(_ensureMotionFields); });
+}
+
+// Complète le banc d'une équipe en y faisant monter ses RÉSERVISTES tant qu'il
+// n'atteint pas une taille cible. Les réservistes (T.reserves) ne pouvaient
+// jamais entrer sur le terrain (voir resetMatch) ; en les plaçant sur le banc,
+// ils deviennent des remplaçants utilisables (manuellement, blessure, ou coach
+// IA) — ce qui évite de finir un match à 6 contre 7.
+function _topUpBenchFromReserves(ti){
+  const T = teams[ti];
+  if(!T) return;
+  T.bench = T.bench || [];
+  T.reserves = T.reserves || [];
+  // Cible de banc selon le format (assez de rechange pour ne pas manquer de
+  // joueurs même après plusieurs sorties).
+  const target = window.gameMode==='11v11' ? 9 : window.gameMode==='5v5' ? 5 : 7;
+  while(T.bench.length < target && T.reserves.length > 0){
+    const p = T.reserves.shift();
+    if(!p) break;
+    p.onBench = true;
+    p.subbedOut = false;
+    if(p.hp==null) p.hp = 100;
+    if(p.mp==null) p.mp = 100;
+    if(p.injLevel==null) p.injLevel = 0;
+    T.bench.push(p);
+  }
 }
 
 // Garantit qu'un joueur possède tous les champs de position/mouvement, pour
@@ -1806,9 +1836,14 @@ function syncHUD(){
     }
     const nameEl=document.getElementById('hn'+i);
     if(nameEl){
+      // Suffixe « 🤖 IA » si cette équipe est pilotée par le coach IA (adversaire).
+      const aiManaged = Array.isArray(G._humanTeams) && G._humanTeams[+i]===false;
+      const suffix = aiManaged ? ' 🤖' : '';
       const span=nameEl.querySelector('span');
-      if(span){[...nameEl.childNodes].forEach(n=>{if(n.nodeType===3)n.remove();});nameEl.appendChild(document.createTextNode(T.name));}
-      else nameEl.textContent=T.name;
+      if(span){[...nameEl.childNodes].forEach(n=>{if(n.nodeType===3)n.remove();});nameEl.appendChild(document.createTextNode(T.name+suffix));}
+      else nameEl.textContent=T.name+suffix;
+      if(aiManaged) nameEl.title='Équipe gérée par le coach IA (mentalité et changements automatiques)';
+      else nameEl.removeAttribute('title');
     }
     const scoreEl=document.getElementById('hs'+i);
     if(scoreEl)scoreEl.style.color=T.color;

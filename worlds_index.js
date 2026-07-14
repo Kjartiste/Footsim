@@ -100,6 +100,15 @@ const WORLDS = {
 
     // Calculer les stats avec modificateurs de région + niveau
     const mods = region.statMods || {};
+    // ── PLANCHER PHYSIQUE (endurance / résistance) ────────────────────────
+    // Les stats TECHNIQUES (tir, tec, def...) peuvent légitimement s'effondrer
+    // en bas de pyramide : un amateur joue « moins bien ». Mais l'ENDURANCE et
+    // la RÉSISTANCE sont surtout physiques : un amateur n'est pas 5× plus vite
+    // épuisé qu'un pro. Sans plancher, un joueur de district (stam ~10-20) voit
+    // sa jauge de forme fondre en quelques minutes (le drain de forme dépend de
+    // 1.1 - stam/99). On garantit donc un minimum d'endurance/résistance jouable
+    // à tous les niveaux, tout en laissant les pros conserver l'avantage.
+    const _physFloor = { stam: 48, res: 40 };
     const stat = (key) => {
       // On part de la fourchette du niveau DÉCALÉE selon le statut du joueur
       const levelMin = effMin;
@@ -109,9 +118,17 @@ const WORLDS = {
       const variance = mods.stat_variance ? (Math.random()-.5) * (mods.stat_variance/20) : 0;
       // Certaines stats ont un bonus/malus selon le poste
       const posBonus = _statPosBonus(key, pos);
-      return Math.max(1, Math.min(99,
-        Math.round(levelMin + Math.random()*(levelMax - levelMin) + mod + variance + posBonus + (Math.random()-.5)*5)
-      ));
+      let v = Math.round(levelMin + Math.random()*(levelMax - levelMin) + mod + variance + posBonus + (Math.random()-.5)*5);
+      // Plancher physique : on remonte stam/res vers un minimum jouable. Le
+      // plancher est légèrement modulé par le statut (un réserviste reste un
+      // peu en dessous d'un titulaire) et reçoit une petite variation pour ne
+      // pas figer tout le monde exactement sur la même valeur.
+      if(_physFloor[key] != null){
+        const tierAdj = squadTier==='reserve' ? -6 : squadTier==='bench' ? -3 : 0;
+        const floor = _physFloor[key] + tierAdj + Math.round((Math.random()-.5)*8);
+        if(v < floor) v = floor;
+      }
+      return Math.max(1, Math.min(99, v));
     };
 
     // Sorts : plus le joueur est bon (niveau élevé + statut de titulaire), plus

@@ -74,6 +74,11 @@ function _mgrDesiredMentality(ti){
   const mn=_mgrMinute();
   const late = mn>=70;
   const veryLate = mn>=82;
+  // Plan d'entame : tant que le score est nul et qu'on n'est pas en fin de
+  // match, on conserve le plan de départ (bloc bas / pressing / équilibré)
+  // plutôt que de retomber en neutre. Le contexte (mené/en tête) prend ensuite
+  // le dessus dès qu'un but est marqué.
+  const kickoffPlan = (Array.isArray(G._mgrPlan) ? G._mgrPlan[ti] : null) || null;
 
   // Mené : on pousse. Plus on est mené et tard, plus on est agressif.
   if(gd<=-2 && late) return 'attack';
@@ -82,18 +87,18 @@ function _mgrDesiredMentality(ti){
     if(late)     return 'attack';
     return 'press';           // mené tôt : on presse pour récupérer vite
   }
-  // À égalité : équilibré, avec un pressing léger en fin de match pour tenter
-  // d'arracher la victoire.
+  // À égalité : on garde le plan d'entame, avec un pressing en fin de match
+  // pour tenter d'arracher la victoire.
   if(gd===0){
     if(veryLate) return 'press';
-    return null;              // neutre
+    return kickoffPlan;       // conserve l'intention de départ
   }
   // En tête : on gère. Plus l'avance est courte et le temps avancé, plus on
   // ferme le jeu.
   if(gd===1){
     if(veryLate) return 'defend';
     if(late)     return 'defend';
-    return null;              // avance d'un but tôt : on reste normal
+    return kickoffPlan;       // avance d'un but tôt : on garde le plan
   }
   // gd>=2 : large avance → bloc bas en fin de match, sinon normal (on ne se
   // découvre pas inutilement mais on n'a pas besoin de sur-défendre tôt).
@@ -245,6 +250,53 @@ function _mgrMaybeSub(ti){
   }catch(e){ console.error('manager sub:', e); }
 }
 
+// Force moyenne d'une équipe (OVR des titulaires) pour caler le plan d'entame.
+function _mgrTeamStrength(ti){
+  const ps=(teams[ti]&&teams[ti].players)||[];
+  if(!ps.length) return 50;
+  let s=0,n=0;
+  ps.forEach(p=>{ const v=_mgrOvr(p); if(v){ s+=v; n++; } });
+  return n ? s/n : 50;
+}
+
+// Plan de match d'ENTRÉE (posé au coup d'envoi, score 0-0) : un coach n'attend
+// pas d'être mené pour avoir une idée. Une équipe nettement plus faible que son
+// adversaire humain resserre les rangs (défense/contre) ; une équipe plus forte
+// met un pressing haut d'entrée ; sinon, jeu équilibré.
+function _mgrKickoffPlan(ti){
+  const mine=_mgrTeamStrength(ti);
+  const opp =_mgrTeamStrength(1-ti);
+  const diff=mine-opp;
+  if(diff <= -8) return 'defend';   // largement dominé : bloc bas + contres
+  if(diff <= -3) return null;       // un peu plus faible : équilibré prudent
+  if(diff >=  8) return 'press';    // largement supérieur : on étouffe d'entrée
+  return null;                      // équilibré
+}
+const _MGR_PLAN_LABEL = {
+  defend:'aborde le match en bloc bas, prêt à contrer',
+  press:'attaque le match avec un pressing haut',
+  attack:'entre plein pot',
+  null:'aligne un plan équilibré',
+};
+
+// Pose le plan d'entame une seule fois, au premier tick du match.
+function _mgrApplyKickoffPlan(ti){
+  if(!G._mgrPlanSet) G._mgrPlanSet=[false,false];
+  if(G._mgrPlanSet[ti]) return;
+  G._mgrPlanSet[ti]=true;
+  const plan=_mgrKickoffPlan(ti);
+  if(!G._mgrPlan) G._mgrPlan=[null,null];
+  G._mgrPlan[ti]=plan;             // mémoriser l'intention d'entame pour la suite
+  if(G.tacMode) G.tacMode[ti]=plan;
+  // Mémoriser pour que _mgrApplyMentality ne re-loggue pas ce même état ensuite.
+  if(!G._mgrLastMode) G._mgrLastMode=[undefined,undefined];
+  G._mgrLastMode[ti]=plan;
+  const name=(teams[ti]&&teams[ti].name)||'L\'adversaire';
+  const col=(teams[ti]&&teams[ti].color)||'#8090a0';
+  try{ logEvent('🤖 '+name+' est dirigé par le coach IA — il '+(_MGR_PLAN_LABEL[plan]||_MGR_PLAN_LABEL[null])+'.', col); }catch(e){}
+  try{ if(typeof _tacTi!=='undefined' && _tacTi===ti && typeof updateTacBtnColors==='function') updateTacBtnColors(); }catch(e){}
+}
+
 // ── POINT D'ENTRÉE (appelé ~1×/minute simulée depuis la boucle) ───────────
 // Ne lève jamais : une erreur du coach IA ne doit pas casser le match.
 function managerAiTick(){
@@ -255,6 +307,7 @@ function managerAiTick(){
     const hum=_mgrHumanTeams();
     for(let ti=0; ti<2; ti++){
       if(hum[ti]) continue;            // équipe humaine : le coach IA n'y touche pas
+      _mgrApplyKickoffPlan(ti);        // plan d'entame (une fois, au coup d'envoi)
       _mgrApplyMentality(ti);          // ajuste la mentalité au score/temps
       _mgrMaybeSub(ti);                // éventuel changement tactique
     }
@@ -268,6 +321,8 @@ function resetManagerAi(){
     G._mgrLastMode=[undefined,undefined];
     G._mgrSubAt=[-99,-99];
     G._mgrSubCount=[0,0];
+    G._mgrPlanSet=[false,false];
+    G._mgrPlan=[null,null];
   }catch(e){}
 }
 
