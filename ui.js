@@ -7146,10 +7146,20 @@ function _renderDirectorOverview(){
   // ── Bandeau match du jour en attente ─────────────────────────────────
   if(C._pendingMatch){
     if(C._pendingMatch.cup){
+      // Adversaire du tour courant (si connu) pour l'afficher.
+      let cupOpp = null;
+      if(C.cup && Array.isArray(C.cup.bracket)){
+        const mm = C.cup.bracket.find(function(x){ return !x.played && ((x.a&&x.a.isPlayer)||(x.b&&x.b.isPlayer)); });
+        if(mm){ const o=(mm.a&&mm.a.isPlayer)?mm.b:mm.a; cupOpp = o?o.name:'(exempt)'; }
+      }
       h += '<div style="background:linear-gradient(135deg,#f0c02822,var(--panel));border:2px solid #f0c028;border-radius:10px;padding:14px;margin-bottom:12px">';
       h += '<div style="font-size:12px;font-weight:900;color:#f0c028;margin-bottom:6px">🏆 Tour de coupe aujourd\'hui !</div>';
-      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Le tirage inclut votre club. Le tour doit être simulé avant de continuer.</div>';
-      h += '<button class="btn btng" onclick="simCareerMatchDirector()" style="width:100%;font-size:12px;padding:10px;font-weight:900">⚡ Simuler le tour de coupe</button>';
+      h += '<div style="font-size:12px;color:var(--fg);margin-bottom:4px">'+(C.cup?C.cup.name:'Coupe')+(cupOpp?(' — vs <b>'+cupOpp+'</b>'):'')+'</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Jouez le match sur le terrain ou simulez le tour.</div>';
+      h += '<div style="display:flex;gap:8px">';
+      h += '<button class="btn btng" onclick="playCareerCupMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
+      h += '<button class="btn" onclick="simCareerMatchDirector()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
+      h += '</div>';
       h += '</div>';
     } else {
       const fix = (C.fixtures||[]).find(function(f){ return f.id===C._pendingMatch.fixtureId; });
@@ -7244,7 +7254,7 @@ function _renderDirectorOverview(){
       const cupDateStr = typeof _cupWeekDate==='function' ? _fmtDateFrLong(_cupWeekDate(nextWk)) : ('semaine '+nextWk);
       h += '<div style="font-size:13px;font-weight:700;color:var(--fg);margin-bottom:4px">Tour : '+rn+'</div>';
       if(oppName) h += '<div style="font-size:12px;color:var(--muted)">Prochain adversaire : <b style="color:var(--fg)">'+oppName+'</b></div>';
-      h += '<div style="font-size:10px;color:var(--muted);margin-top:6px">🗓️ '+cupDateStr+' — le match se joue automatiquement à cette date.</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-top:6px">🗓️ '+cupDateStr+' — à cette date, vous pourrez jouer ou simuler le tour.</div>';
     }
     h += '</div>';
   }
@@ -8453,6 +8463,174 @@ function _recordCareerV2MatchResult(){
   window._careerFixPlaying = null;
   // Le match du jour est réglé : on peut désormais avancer au jour suivant.
   if(C._pendingMatch) C._pendingMatch = null;
+  saveCareerV2();
+}
+
+// ── JOUER un tour de coupe (match du joueur sur le terrain) ────────────────
+// Charge l'adversaire de coupe (potentiellement d'une AUTRE division que le
+// club joueur) au bon niveau, lance le match interactif, et mémorise la paire
+// du bracket à résoudre à la fin. Corrige deux bugs :
+//   1) la coupe n'était jamais jouable (seul « Simuler » existait) ;
+//   2) l'adversaire était généré au niveau du joueur → incohérences/plantages
+//      silencieux quand il venait d'une autre division. On lit son vrai level.
+function playCareerCupMatch(){
+  if(!careerV2) return;
+  const C = careerV2;
+  const cup = C.cup;
+  if(!cup || cup.winner || cup.playerOut){ logEvent('Aucun tour de coupe à jouer.','#e02030'); return; }
+  const bracket = cup.bracket || [];
+  // Trouver la confrontation du joueur, encore à jouer, dans le tour courant.
+  const m = bracket.find(function(x){ return !x.played && ((x.a&&x.a.isPlayer)||(x.b&&x.b.isPlayer)); });
+  if(!m){ logEvent('Aucun match de coupe en attente pour votre club.','#e02030'); return; }
+
+  const me  = (m.a&&m.a.isPlayer) ? m.a : m.b;
+  const opp = (m.a&&m.a.isPlayer) ? m.b : m.a;
+
+  // Tour exempt (bye) : pas d'adversaire → on résout directement sans terrain.
+  if(!opp){
+    _resolveCareerCupPlayerPair(m, null, null);
+    if(C._pendingMatch) C._pendingMatch = null;
+    saveCareerV2();
+    renderCareerV2();
+    return;
+  }
+
+  const nation = C.nation || 'panthalassa';
+  const region = C.club.region;
+  // Niveau RÉEL de l'adversaire : celui stocké dans le bracket (sa division),
+  // pas celui du club joueur. Fallback prudent sur le niveau du joueur.
+  const oppLevel = opp.level || C.club.level || 'dh';
+
+  const mode = window.gameMode || '7v7';
+  const XI_POS = mode==='11v11' ? ['GB','DD','DC','DC','DG','MC','MC','MC','MC','ATT','ATT']
+               : mode==='5v5'   ? ['GB','DC','MOG','MOD','ATT']
+               :                  ['GB','DC','DD','DG','MC','MC','ATT'];
+  const BENCH_POS = mode==='11v11' ? ['GB','DC','MC','MC','ATT','DD','DG']
+                  : mode==='5v5'   ? ['GB','DC','MC','ATT','DC']
+                  :                  ['GB','MC','ATT','DC','MC'];
+  const xiSize = XI_POS.length, benchSize = BENCH_POS.length;
+
+  // Équipe du joueur (mêmes règles que le championnat).
+  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
+    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
+  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; }).sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; }).sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
+  const starters = [];
+  if(gkPool[0]) starters.push(gkPool[0]);
+  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
+  const leftoverGk  = gkPool.slice(1);
+  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
+  const matchBench = [];
+  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
+  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
+  const usedIds = starters.concat(matchBench);
+  const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
+  starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
+  matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
+
+  const isHome = !!(m.a && m.a.isPlayer); // convention : m.a joue à domicile
+  teams[0] = {
+    name: C.club.name, color: C.club.color || '#e02030', img: C.club.img || '',
+    strat: C.club.strat || '321',
+    players: starters, bench: matchBench,
+    reserves: surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
+  };
+
+  // Adversaire généré à SON niveau de division (fix bug 2).
+  let aiSquad;
+  try{
+    aiSquad = WORLDS.generateSquad(nation, region, {
+      positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel,
+    });
+  }catch(e){
+    console.error('cup ai squad:', e);
+    logEvent('⚠️ Impossible de générer l\'adversaire de coupe. Match simulé à la place.','#e0a020');
+    // Repli sûr : on simule ce tour plutôt que de planter silencieusement.
+    try{ _advanceNationalCup(true); }catch(e2){ console.error('cup fallback:',e2); }
+    if(C._pendingMatch) C._pendingMatch = null;
+    saveCareerV2(); renderCareerV2();
+    return;
+  }
+  if(!aiSquad || !(aiSquad.players||[]).length){
+    logEvent('⚠️ Adversaire de coupe invalide. Match simulé à la place.','#e0a020');
+    try{ _advanceNationalCup(true); }catch(e2){ console.error('cup fallback:',e2); }
+    if(C._pendingMatch) C._pendingMatch = null;
+    saveCareerV2(); renderCareerV2();
+    return;
+  }
+
+  teams[1] = {
+    name: opp.name, color: opp.color || '#1878e8', img: '', badge: opp.badge || null,
+    strat: '321', players: aiSquad.players, bench: aiSquad.bench, reserves: [],
+  };
+
+  applyFormationRoles(0);
+  applyFormationRoles(1);
+
+  // Mémoriser la paire de coupe à résoudre après le match.
+  window._careerCupPlaying = { match: m, isHome: isHome };
+  G.leagueMode = true; // route endMatch() vers _recordCareerV2CupMatchResult
+
+  showPreMatch(null);
+  nav('match');
+}
+
+// Résout la paire de coupe du joueur (scores myG/oppG déjà connus), applique
+// primes/élimination puis fait avancer le reste du tour et le bracket.
+function _resolveCareerCupPlayerPair(m, myG, oppG){
+  const C = careerV2; const cup = C.cup; if(!cup) return;
+  const roundIdx = cup.round;
+  const me  = (m.a&&m.a.isPlayer) ? m.a : m.b;
+  const opp = (m.a&&m.a.isPlayer) ? m.b : m.a;
+
+  if(!opp){
+    // Bye : qualification directe.
+    m.played = true; m.winner = me;
+    const prime = 4000 + roundIdx*3000;
+    C.club.budget += prime;
+    careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — exempt, qualification directe ! Prime '+fmtG(prime), '#18c860');
+  } else {
+    // Renseigner le score dans le bon sens (m.a = home).
+    const aIsPlayer = !!(m.a && m.a.isPlayer);
+    let ga = aIsPlayer ? myG : oppG;
+    let gb = aIsPlayer ? oppG : myG;
+    if(ga===gb){ // pas de nul en coupe : léger avantage au joueur pour la séance de tirs
+      if(Math.random() < 0.5) { aIsPlayer?ga++:gb++; } else { aIsPlayer?gb++:ga++; }
+    }
+    m.ga = ga; m.gb = gb; m.played = true;
+    m.winner = (ga>gb) ? m.a : m.b;
+    const playerWon = m.winner && m.winner.isPlayer;
+    if(playerWon){
+      const prime = 4000 + roundIdx*3000;
+      C.club.budget += prime;
+      careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+oppG+' vs '+opp.name+' ! Prime '+fmtG(prime), '#18c860');
+    } else {
+      cup.playerOut = true;
+      careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — élimination '+myG+'-'+oppG+' vs '+opp.name+'.', '#e06060');
+    }
+  }
+
+  // Résoudre les AUTRES matchs du tour (simulés) puis avancer le bracket.
+  const survivors = [];
+  cup.bracket.forEach(function(x){
+    if(x.played){ if(x.winner) survivors.push(x.winner); return; }
+    const res = _cupSimMatch(x.a, x.b);
+    if(res.winner){ x.winner=res.winner; x.ga=res.ga; x.gb=res.gb; x.played=true; survivors.push(res.winner); }
+  });
+  cup.round++;
+  _finalizeCupRound(C, cup, survivors);
+}
+
+function _recordCareerV2CupMatchResult(){
+  if(!careerV2 || !window._careerCupPlaying) return;
+  const ref = window._careerCupPlaying;
+  window._careerCupPlaying = null;
+  const s0 = G.scores[0]; // joueur (team 0)
+  const s1 = G.scores[1]; // adversaire (team 1)
+  try{
+    _resolveCareerCupPlayerPair(ref.match, s0, s1);
+  }catch(e){ console.error('cup record:', e); }
+  if(careerV2._pendingMatch) careerV2._pendingMatch = null;
   saveCareerV2();
 }
 
