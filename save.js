@@ -227,6 +227,12 @@ function _migrateTraining(){
       TRAINING.migrateCareer(careerV2);
     }
   }catch(e){ console.error('training migration:', e); }
+  // Normalise l'objet staff (ancien format string → membres complets).
+  try{
+    if(careerV2 && careerV2.club && typeof STAFF!=='undefined'){
+      STAFF.ensureStaff(careerV2.club);
+    }
+  }catch(e){ console.error('staff migration:', e); }
 }
 
 // ── ÉQUIPES RÉSERVES AFFILIÉES (générique) ────────────────────────────────
@@ -480,12 +486,9 @@ function startCareerDirector(regionId, clubId, nationId){
       infra: Object.assign({ stadium:0, training:0, formation:0, medical:0, scout:0 }, prof.infra),
       sponsor: null,
       stadium_capacity: prof.cap || (500 + region.population * 100),
-      staff: prof.staff ? {
-        manager:{name:'Entraîneur en poste', rating:3},
-        scout:{name:'Recruteur', rating:3},
-        physio:{name:'Préparateur physique', rating:3},
-        coach:{name:'Adjoint', rating:3},
-      } : { manager:null, scout:null, physio:null, coach:null },
+      staff: prof.staff && typeof STAFF!=='undefined'
+        ? STAFF.defaultStaff(startLevel, nationId, regionId)
+        : {},
       board_objectives: [],
       history: [],
     },
@@ -735,6 +738,9 @@ function _weeklyCareerCosts(){
     total += lvl * Math.round(costs.weeklyBase * 0.08);
   });
 
+  // Salaires du staff (manager / coach / physio / recruteur).
+  if(typeof STAFF!=='undefined') total += STAFF.weeklyWages(C.club);
+
   // Frais de match si un match du club tombe dans les 6 jours autour
   // d'aujourd'hui (basé sur la date réelle, pas le numéro de journée — les
   // trêves internationales font diverger les deux au fil de la saison).
@@ -753,7 +759,9 @@ function _generateFreeAgents(){
   const nation = C.nation || 'panthalassa';
   const region = C.club.region;
   const level  = C.club.level;
-  const nb = 5 + Math.floor(Math.random() * 4); // 5-8 joueurs libres
+  // Un bon recruteur (staff.js) élargit et améliore le vivier d'agents libres.
+  const scoutBoost = (typeof STAFF!=='undefined') ? STAFF.freeAgentBoost(C.club) : 0;
+  const nb = 5 + Math.floor(Math.random() * 4) + (scoutBoost>=6?2:scoutBoost>=2?1:0); // 5-8 (+1/+2)
 
   const positions = ['GB','DC','DD','DG','MC','MC','ATT','MC','ATT','DC'];
   const regionObj = WORLDS.getRegion(nation, region);
@@ -765,7 +773,14 @@ function _generateFreeAgents(){
     var pos = positions[Math.floor(Math.random()*positions.length)];
     var name = names[ni++] || ('Joueur '+(i+1));
     var p = WORLDS.generatePlayer(nation, region, pos, name, level);
-    if(p) careerV2.freeAgents.push(p);
+    if(!p) continue;
+    // Le recruteur repère de meilleurs profils : petit bonus aux stats clés.
+    if(scoutBoost > 0 && p.s){
+      ['spd','sht','tec','def','pas'].forEach(function(k){
+        if(typeof p.s[k]==='number') p.s[k] = Math.min(99, p.s[k] + Math.round(scoutBoost*(0.4+Math.random()*0.6)));
+      });
+    }
+    careerV2.freeAgents.push(p);
   }
 }
 

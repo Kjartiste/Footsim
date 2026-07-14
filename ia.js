@@ -980,8 +980,8 @@ function aiDecide(dt=0.016){
       // "Direct" + bonus de synergie pouvait faire grimper ast.atk au-delà
       // de 2.5-3 (aucun plafond global), ce qui, combiné à l'exposant 2.0
       // ci-dessous, rendait le coup franc quasi automatique.
-      const _fkAtkMul=Math.min(1.5,Math.max(0.7,ast.atk));
-      const _fkDefMul=Math.min(1.5,Math.max(0.7,dst.def));
+      const _fkAtkMul=Math.min(1.5,Math.max(0.7,ast.atk))*((teams[ati]&&teams[ati]._setpAtk)||1);
+      const _fkDefMul=Math.min(1.5,Math.max(0.7,dst.def))*((teams[dti]&&teams[dti]._setpDef)||1);
       const atkS=((sh.s.sht+(sh._hm||0))+sh.s.tec*.70+irng(-10,10))*_fkAtkMul*fatMul(sh);
       const defS=((gk?gk.s.def*fatMul(gk):50+irng(-8,8))+wallDef)*_fkDefMul*1.08;
       kickTo(oppGoalX,PCY+rng(-5.5,5.5),2.2);

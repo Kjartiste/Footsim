@@ -322,14 +322,20 @@ const TRAINING = (function(){
 
   // ── Qualité d'une séance pour un joueur (0..1+) ─────────────────────────
   // Combine niveau du centre, staff, et fraîcheur du joueur.
-  function sessionQuality(club, player){
+  function sessionQuality(club, player, session){
     const p = CFG().progression || {};
     const infra = (club && club.infra) || {};
     let q = 0.6;
     q += (infra.training || 0) * (p.centreQualityPerLevel || 0);
     const staff = (club && club.staff) || {};
-    const staffRating = ((staff.physio && staff.physio.rating) || 0) + ((staff.coach && staff.coach.rating) || 0);
+    const staffRating = ((staff.physio && staff.physio.rating) || 0);
     q += staffRating * (p.staffQualityPerRating || 0);
+    // Encadrement technique (staff.js) : bonus global de l'adjoint + bonus
+    // de l'entraîneur SPÉCIALISÉ correspondant à la famille de la séance.
+    if(typeof STAFF!=='undefined'){
+      q *= STAFF.trainingQualityMul(club);
+      if(session && session.family) q *= STAFF.familyTrainingMul(club, session.family);
+    }
     // Joueur trop fatigué → séance de moins bonne qualité pour lui.
     const fm = (player && player._fm) != null ? player._fm : 0;
     if(fm < (p.fatiguePenaltyForm || -4)) q *= (p.fatiguePenaltyMult || 0.5);
@@ -424,7 +430,7 @@ const TRAINING = (function(){
     if(session.cohesion){ player._coh = _clamp((player._coh||0) + session.cohesion,   0, 100); }
 
     // ── Progression d'attributs ───────────────────────────────────────────
-    const q = sessionQuality(club, player);        // qualité 0.1..1.6
+    const q = sessionQuality(club, player, session);        // qualité 0.1..1.6
     const young = (player.age != null && player.age < (P.youthAgeThreshold||23));
     const attrs = (session.attrs||[]).filter(function(k){ return player.s && typeof player.s[k]==='number'; });
     attrs.forEach(function(k){
@@ -445,6 +451,8 @@ const TRAINING = (function(){
     if((player._fm||0) < (P.fatiguePenaltyForm||-4)) injRisk *= 1.8;
     const med = ((club&&club.infra&&club.infra.medical)||0);
     injRisk *= Math.max(0.4, 1 - med*0.10);
+    // Kiné / physio (staff.js) : réduit encore le risque de blessure.
+    if(typeof STAFF!=='undefined') injRisk *= STAFF.injuryRiskMul(club);
     if(player.injLevel === 0 && Math.random() < injRisk){
       player.injLevel = 1; player.injT = 2 + Math.floor(Math.random()*4);
       eff.injured = true;
@@ -464,9 +472,13 @@ const TRAINING = (function(){
     if(!day || day.type === 'rest'){
       squad.forEach(function(p){
         if(!p) return;
-        p._fm = _clamp((p._fm||0) + (cfg.fatigue.passiveRecovery||0.3), cfg.fatigue.formMin, cfg.fatigue.formMax);
+        // Préparateur physique (staff.js) : récupération de forme optimisée.
+        const _rec = (cfg.fatigue.passiveRecovery||0.3) + ((typeof STAFF!=='undefined') ? STAFF.fitnessRecovery(club) : 0);
+        p._fm = _clamp((p._fm||0) + _rec, cfg.fatigue.formMin, cfg.fatigue.formMax);
         if(cfg.fatigue.cohesionDecay) p._coh = _clamp((p._coh||50) - cfg.fatigue.cohesionDecay, 0, 100);
-        if(p.injLevel>0 && p.injT>0){ p.injT = Math.max(0, p.injT-1); if(p.injT===0) p.injLevel=0; }
+        // Convalescence : 1 jour de base + bonus physio (staff.js).
+        const _heal = 1 + ((typeof STAFF!=='undefined') ? STAFF.healBonus(club) : 0);
+        if(p.injLevel>0 && p.injT>0){ p.injT = Math.max(0, p.injT-_heal); if(p.injT===0) p.injLevel=0; }
       });
       return null;
     }

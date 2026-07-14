@@ -2042,6 +2042,31 @@ function updateCompoPitch(){
   });
 }
 
+// Phase de formation éditée dans l'onglet Tactique par équipe :
+// 'def' = sans ballon (formation de base) / 'atk' = avec ballon.
+const _tacFormPhase = {0:'def', 1:'def'};
+function tacSetFormPhase(ti, phase){
+  _tacFormPhase[ti] = phase;
+  try{ renderTactics(); }catch(e){}
+}
+// Applique le choix de formation dans l'onglet Tactique en tenant compte
+// de la phase (avec / sans ballon). Réutilise la même logique de double
+// formation que l'écran de mi-temps : remettre la formation "avec ballon"
+// identique à "sans ballon" désactive la double formation.
+function tacSetStrat(ti, sid){
+  const is11 = window.gameMode==='11v11', is5 = window.gameMode==='5v5';
+  const defAttr = is11 ? 'strat11' : is5 ? 'strat5' : 'strat';
+  const atkAttr = is11 ? 'strat11Atk' : is5 ? 'strat5Atk' : 'stratAtk';
+  const phase = _tacFormPhase[ti] || 'def';
+  if(phase==='atk'){
+    teams[ti][atkAttr] = (sid===teams[ti][defAttr]) ? null : sid;
+  } else {
+    teams[ti][defAttr] = sid;
+  }
+  _afterFormationChange(ti);
+  try{ renderTactics(); }catch(e){}
+}
+
 function renderTactics(){
   const is11 = window.gameMode === '11v11';
   const is5 = window.gameMode === '5v5';
@@ -2051,12 +2076,17 @@ function renderTactics(){
 
   [0,1].forEach(ti=>{
     const T=teams[ti];
-    const curStrat = is11 ? (T.strat11||'442') : (is5 ? (T.strat5||'121') : (T.strat||'321'));
-    const stratAttr = is11 ? 'strat11' : (is5 ? 'strat5' : 'strat');
+    const defAttr = is11 ? 'strat11' : (is5 ? 'strat5' : 'strat');
+    const atkAttr = is11 ? 'strat11Atk' : (is5 ? 'strat5Atk' : 'stratAtk');
+    const defId = is11 ? (T.strat11||'442') : (is5 ? (T.strat5||'121') : (T.strat||'321'));
+    const atkId = T[atkAttr];
+    const phase = _tacFormPhase[ti] || 'def';
+    // Formation "sélectionnée" pour l'affichage selon la phase éditée.
+    const curStrat = phase==='atk' ? (atkId||defId) : defId;
+    const hasDual = atkId && atkId!==defId;
+
     const stratItems = stratList.map(s=>`
-      <div class="sc${curStrat===s.id?' sel':''}" onclick="
-        teams[${ti}].${stratAttr}='${s.id}';
-        _afterFormationChange(${ti})">
+      <div class="sc${curStrat===s.id?' sel':''}" onclick="tacSetStrat(${ti},'${s.id}')">
         <div style="display:flex;align-items:center;gap:5px">
           <div style="width:7px;height:7px;border-radius:50%;background:${s.col}"></div>
           <div class="st">${s.n}</div>
@@ -2068,6 +2098,15 @@ function renderTactics(){
         </div>
       </div>`).join('');
 
+    const defName = (stratList.find(s=>s.id===defId)||{}).n || defId;
+    const atkName = (stratList.find(s=>s.id===(atkId||defId))||{}).n || defName;
+
+    const phaseToggle = `
+      <div style="display:flex;gap:5px;margin-bottom:6px">
+        <button onclick="tacSetFormPhase(${ti},'def')" style="flex:1;font-size:9px;padding:4px 6px;border-radius:6px;border:1px solid var(--b1);cursor:pointer;font-weight:700;background:${phase==='def'?'var(--gold)':'var(--dark)'};color:${phase==='def'?'#000':'var(--muted)'}">🛡️ Sans ballon<br><span style="font-size:8px;font-weight:600">${defName}</span></button>
+        <button onclick="tacSetFormPhase(${ti},'atk')" style="flex:1;font-size:9px;padding:4px 6px;border-radius:6px;border:1px solid var(--b1);cursor:pointer;font-weight:700;background:${phase==='atk'?'#e02030':'var(--dark)'};color:${phase==='atk'?'#fff':'var(--muted)'}">⚽ Avec ballon<br><span style="font-size:8px;font-weight:600">${hasDual?atkName:'= sans ballon'}</span></button>
+      </div>`;
+
     document.getElementById(`tac${ti}`).innerHTML=`
     <div class="team-blk" style="margin-bottom:8px">
       <div class="team-hd"><div class="tdot2" style="background:${T.color}"></div>
@@ -2075,12 +2114,15 @@ function renderTactics(){
         <div style="font-size:9px;color:${modeCol};margin-left:auto;font-weight:700">${modeLbl}</div>
       </div>
       <div style="padding:6px">
+        ${phaseToggle}
         <div style="font-size:9px;color:var(--muted);background:var(--panel);border:1px solid var(--b1);border-radius:6px;padding:5px 7px;margin-bottom:6px;line-height:1.4">
-          ${is11
-            ? 'ℹ️ Formation 11v11 — les coordonnées de chaque slot sont fixes. Choisissez votre schéma tactique.'
+          ${phase==='atk'
+            ? '⚽ Dispositif adopté quand ton équipe a le ballon. Choisis la <b>même</b> formation que « sans ballon » pour désactiver la double formation.'
+            : is11
+            ? 'ℹ️ Dispositif 11v11 par défaut (sans ballon). Tu peux définir un dispositif différent <b>avec ballon</b> via l\'onglet ci-dessus.'
             : is5
-            ? 'ℹ️ Formation 5v5 (foot à 5) — 1 gardien + 4 joueurs de champ. Choisissez votre schéma tactique.'
-            : 'ℹ️ La stratégie règle le pressing/largeur/profondeur. Le <b>placement</b> vient du <b>Poste</b> individuel.'}
+            ? 'ℹ️ Dispositif 5v5 (foot à 5) — 1 gardien + 4 joueurs de champ. Formation avec/sans ballon disponible.'
+            : 'ℹ️ La stratégie règle le pressing/largeur/profondeur. Formation avec/sans ballon disponible.'}
         </div>
         ${stratItems}
       </div>
@@ -7967,26 +8009,134 @@ function _renderDirectorInfraLegacy(){
   return h;
 }
 
+function _stars(n){ return '★★★★★'.slice(0,n) + '☆☆☆☆☆'.slice(0,5-n); }
+
 function _renderDirectorStaff(){
   const C = careerV2; const club = C.club;
+  if(typeof STAFF!=='undefined') STAFF.ensureStaff(club);
   const staff = club.staff || {};
-  const roles = [
-    {key:'manager', label:'🧑 Manager'},
-    {key:'scout', label:'🔭 Scout'},
-    {key:'physio', label:'🏥 Physio'},
-    {key:'coach', label:'📋 Coach adjoint'},
+  const R = (typeof STAFF!=='undefined') ? STAFF.ROLES : {};
+  const depts = (typeof STAFF!=='undefined' && STAFF.DEPARTMENTS) ? STAFF.DEPARTMENTS : [
+    { key:'all', label:'Staff', icon:'👔', roles:Object.keys(R) }
   ];
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:10px">👔 Staff</div>';
-  roles.forEach(function(item){
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:var(--panel);border-radius:6px;margin-bottom:6px">';
-    h += '<div><div style="font-size:10px;font-weight:700">'+item.label+'</div>';
-    h += '<div style="font-size:9px;color:'+(staff[item.key]?'#18c860':'#e06060')+'">'+(staff[item.key]||'⚠️ Poste vacant')+'</div></div>';
-    h += '<button class="btn" onclick="hireStaff(\''+item.key+'\')" style="font-size:9px;padding:2px 8px">'+(staff[item.key]?'Remplacer':'Recruter')+'</button>';
+
+  const totalWage = (typeof STAFF!=='undefined') ? STAFF.weeklyWages(club) : 0;
+  const filled = (typeof STAFF!=='undefined') ? STAFF.filledCount(club) : 0;
+  const totalPosts = (typeof STAFF!=='undefined') ? STAFF.ROLE_ORDER.length : Object.keys(R).length;
+
+  let h = '';
+  // ── Bandeau synthèse ────────────────────────────────────────────
+  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between">';
+  h += '<div style="font-size:11px;font-weight:900;color:var(--gold)">👔 Organigramme du club</div>';
+  h += '<div style="font-size:9px;color:var(--muted)">'+filled+'/'+totalPosts+' postes · <b style="color:#f0c028">'+_fmtMoney(totalWage)+'</b>/sem.</div>';
+  h += '</div>';
+  h += '<div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.4">Chaque membre a un niveau (★). Les entraîneurs spécialisés accélèrent la progression dans leur domaine, l\'analyste vidéo prépare les matchs, le staff médical gère forme et blessures.</div>';
+  h += '</div>';
+
+  depts.forEach(function(dept){
+    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+    h += '<div style="font-size:10px;font-weight:800;color:var(--fg);margin-bottom:8px;letter-spacing:.4px">'+(dept.icon||'')+' '+dept.label.toUpperCase()+'</div>';
+    (dept.roles||[]).forEach(function(key){
+      const role = R[key] || {label:key, icon:'👤', desc:''};
+      const s = staff[key];
+      h += '<div style="padding:8px;background:var(--panel);border-radius:6px;margin-bottom:6px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+      h += '<div style="min-width:0"><div style="font-size:10px;font-weight:700">'+role.icon+' '+role.label+'</div>';
+      if(s){
+        const tier = (typeof STAFF!=='undefined') ? STAFF.tierOf(s.rating) : {label:'',colorHi:'#18c860'};
+        h += '<div style="font-size:9px;color:var(--fg)">'+s.name+' — <span style="color:'+tier.colorHi+';font-weight:700">'+_stars(s.rating)+'</span> <span style="color:var(--muted)">'+(s.tier||tier.label)+'</span></div>';
+        h += '<div style="font-size:8px;color:var(--muted)">Salaire '+_fmtMoney(s.wage||0)+'/sem.</div>';
+      } else {
+        h += '<div style="font-size:9px;color:#e06060">⚠️ Poste vacant</div>';
+      }
+      h += '</div>';
+      h += '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">';
+      h += '<button class="btn" onclick="hireStaff(\''+key+'\')" style="font-size:9px;padding:2px 8px">'+(s?'Remplacer':'Recruter')+'</button>';
+      if(s) h += '<button class="btn" onclick="fireStaff(\''+key+'\')" style="font-size:9px;padding:2px 8px;background:transparent;border:1px solid #e06060;color:#e06060">Licencier</button>';
+      h += '</div>';
+      h += '</div>';
+      h += '<div style="font-size:8px;color:var(--muted);margin-top:5px;line-height:1.35">'+role.desc+'</div>';
+      h += '</div>';
+    });
     h += '</div>';
   });
-  h += '</div>';
   return h;
+}
+
+// ── Panneau de recrutement : liste de candidats pour un poste ───────────
+function hireStaff(role){
+  if(typeof STAFF==='undefined' || !careerV2){ logEvent('Staff indisponible.','#e02030'); return; }
+  const club = careerV2.club;
+  const cands = STAFF.candidatesFor(club, role);
+  const roleInfo = STAFF.ROLES[role] || {label:role, icon:'👤'};
+  let h = '<div style="max-width:420px">';
+  h += '<div style="font-size:12px;font-weight:900;color:var(--gold);margin-bottom:4px">'+roleInfo.icon+' Recruter — '+roleInfo.label+'</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:10px">Budget : <b style="color:'+(club.budget<0?'#e06060':'#18c860')+'">'+_fmtMoney(club.budget)+'</b> · une prime de recrutement est prélevée à la signature, puis un salaire hebdomadaire.</div>';
+  cands.forEach(function(c, i){
+    const tier = STAFF.tierOf(c.rating);
+    const canAfford = club.budget >= c.hireFee;
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;background:var(--panel);border:1px solid var(--b1);border-radius:6px;margin-bottom:6px">';
+    h += '<div><div style="font-size:10px;font-weight:700">'+c.name+' <span style="color:'+tier.colorHi+'">'+_stars(c.rating)+'</span></div>';
+    h += '<div style="font-size:8px;color:var(--muted)">'+tier.label+' · Prime '+_fmtMoney(c.hireFee)+' · Salaire '+_fmtMoney(c.wage)+'/sem.</div></div>';
+    h += '<button class="btn" '+(canAfford?'':'disabled')+' onclick="_confirmHireStaff(\''+role+'\','+i+')" style="font-size:9px;padding:3px 10px;'+(canAfford?'':'opacity:.4;cursor:not-allowed')+'">Signer</button>';
+    h += '</div>';
+  });
+  h += '<button class="btn" onclick="closeModal()" style="font-size:9px;padding:3px 10px;margin-top:4px;width:100%">Annuler</button>';
+  h += '</div>';
+  // Stocke les candidats pour la confirmation.
+  window._staffCands = { role:role, list:cands };
+  _openStaffModal(h);
+}
+
+// Ouvre une modale légère (réutilise l'overlay générique si présent, sinon
+// crée un overlay minimal). On reste défensif pour ne dépendre d'aucune UI.
+function _openStaffModal(inner){
+  let ov = document.getElementById('_staffModal');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = '_staffModal';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+    ov.onclick = function(e){ if(e.target===ov) closeModal(); };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:10px;padding:16px;max-height:80vh;overflow:auto">'+inner+'</div>';
+  ov.style.display = 'flex';
+}
+function closeModal(){
+  const ov = document.getElementById('_staffModal');
+  if(ov) ov.style.display = 'none';
+}
+
+function _confirmHireStaff(role, idx){
+  if(typeof STAFF==='undefined' || !careerV2) return;
+  const club = careerV2.club;
+  const data = window._staffCands;
+  if(!data || data.role!==role || !data.list[idx]){ closeModal(); return; }
+  const c = data.list[idx];
+  if(club.budget < c.hireFee){ logEvent('❌ Budget insuffisant pour la prime de recrutement.','#e02030'); return; }
+  const prev = club.staff && club.staff[role];
+  STAFF.ensureStaff(club);
+  club.budget -= c.hireFee;
+  club.staff[role] = { role:role, name:c.name, rating:c.rating, tier:STAFF.tierOf(c.rating).label, wage:c.wage };
+  try{ _addFinanceLog('Recrutement staff : '+c.name+' ('+(STAFF.ROLES[role]||{}).label+')', -c.hireFee); }catch(e){}
+  club.weekly_costs = (typeof _weeklyCareerCosts==='function') ? _weeklyCareerCosts() : club.weekly_costs;
+  logEvent('✅ '+c.name+' rejoint le staff ('+STAFF.tierOf(c.rating).label+') — prime '+_fmtMoney(c.hireFee)+(prev?', l\'ancien titulaire est remercié.':'.'),'#18c860');
+  closeModal();
+  saveCareerV2();
+  renderCareerDirectorTab('staff');
+}
+
+function fireStaff(role){
+  if(typeof STAFF==='undefined' || !careerV2) return;
+  const club = careerV2.club;
+  if(!club.staff || !club.staff[role]){ return; }
+  const name = club.staff[role].name;
+  club.staff[role] = null;
+  club.weekly_costs = (typeof _weeklyCareerCosts==='function') ? _weeklyCareerCosts() : club.weekly_costs;
+  logEvent('👋 '+name+' a été remercié. Poste vacant.','#f0c028');
+  saveCareerV2();
+  renderCareerDirectorTab('staff');
 }
 
 // ── Calendrier mensuel jour par jour ────────────────────────────────────
@@ -8772,8 +8922,9 @@ function _triggerRegionEvent(){
     logEvent('⚠️ Une proposition suspecte est arrivée dans votre bureau...','#e06020');
   }
 
-  // Pépite (Nérïa)
-  if(region.traits?.gem_chance && Math.random() < 0.03){
+  // Pépite (Nérïa) — un bon recruteur (staff.js) multiplie les chances.
+  const _gemMul = (typeof STAFF!=='undefined' && careerV2) ? STAFF.gemChanceMul(careerV2.club) : 1;
+  if(region.traits?.gem_chance && Math.random() < 0.03 * _gemMul){
     const gemName = ['Mystara','Arcania','Crystana','Runalia','Sigilia'][Math.floor(Math.random()*5)];
     const gem = mkGemPlayer(gemName, 'ATT');
     careerV2.pending_events.push({
@@ -8841,6 +8992,31 @@ function rejectManagerJob(i){
 }
 
 
+// Applique le bonus staff (staff.js) au moral/cohésion/concentration des
+// joueurs alignés au coup d'envoi : manager + adjoint (moral/cohésion) et
+// analyste vidéo (petit boost de forme = concentration de 1re mi-temps).
+function _applyStaffMatchdayBonus(club, starters, matchBench){
+  if(typeof STAFF==='undefined' || !club) return;
+  // Coups de pied arrêtés : le coach spécialisé règle l'efficacité offensive
+  // (>1) et défensive (<1) de l'équipe du joueur (team 0). Lu par ia.js.
+  try{
+    if(teams && teams[0]){
+      teams[0]._setpAtk = STAFF.setPieceAttackMul(club);
+      teams[0]._setpDef = STAFF.setPieceDefenseMul(club);
+    }
+  }catch(e){}
+  const mB = STAFF.matchMoraleBonus(club);
+  const cB = STAFF.matchCohesionBonus(club);
+  const aB = STAFF.analystMatchBonus(club);
+  if(mB<=0 && cB<=0 && aB<=0) return;
+  (starters||[]).concat(matchBench||[]).forEach(function(p){
+    if(!p) return;
+    p._hm  = Math.max(-10, Math.min(10, (p._hm||0) + mB));
+    p._coh = Math.max(0,  Math.min(100,(p._coh!=null?p._coh:50) + cB));
+    if(aB>0) p._fm = Math.max(-10, Math.min(10, (p._fm||0) + aB));
+  });
+}
+
 // ── Match en carrière Dirigeant ───────────────────────────────────────
 function playCareerMatchV2(){
   if(!careerV2) return;
@@ -8906,6 +9082,7 @@ function playCareerMatchV2(){
   // empêchait tout changement manuel avec lui.
   starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
   matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
+  try{ _applyStaffMatchdayBonus(C.club, starters, matchBench); }catch(e){}
 
   teams[0] = {
     name:    C.club.name,
@@ -9042,6 +9219,7 @@ function playCareerFriendlyMatch(){
   const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
   starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
   matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
+  try{ _applyStaffMatchdayBonus(C.club, starters, matchBench); }catch(e){}
 
   teams[0] = {
     name: C.club.name, color: C.club.color||'#e02030', img: C.club.img||'',
@@ -9108,10 +9286,13 @@ function simCareerFriendlyMatch(){
 function _applyFriendlyOutcome(gf, ga, oppName){
   const C = careerV2; if(!C) return;
   const win = gf>ga, draw = gf===ga;
+  const _mDrop = (typeof STAFF!=='undefined') ? STAFF.moraleDropMul(C.club) : 1;
   const squad = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]);
   squad.forEach(function(p){
     if(!p) return;
-    p._hm = Math.max(-10, Math.min(10, (p._hm||0) + (win?1.0:draw?0.3:-0.4)));
+    let dm = win?1.0:draw?0.3:-0.4;
+    if(dm < 0) dm *= _mDrop; // préparateur mental : atténue les baisses de moral
+    p._hm = Math.max(-10, Math.min(10, (p._hm||0) + dm));
     p._fm = Math.min(10, (p._fm||0) + 0.4); // un match entretient la forme
     if(Math.random()<0.008 && (p.injLevel||0)===0){ p.injLevel=1; p.injT=1+Math.floor(Math.random()*2); }
   });
@@ -9190,6 +9371,7 @@ function playCareerCupMatch(){
   const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
   starters.forEach(function(p){ if(p){ p.onBench=false; p.subbedOut=false; } });
   matchBench.forEach(function(p){ if(p){ p.onBench=true; p.subbedOut=false; } });
+  try{ _applyStaffMatchdayBonus(C.club, starters, matchBench); }catch(e){}
 
   const isHome = !!(m.a && m.a.isPlayer); // convention : m.a joue à domicile
   teams[0] = {
