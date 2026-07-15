@@ -613,6 +613,19 @@ function renderSettings(){
     </div>
     <input id="save-import-input" type="file" accept="application/json,.json" style="display:none" onchange="importSaveFile(this)">
   `);
+  const textSizeNow = document.documentElement.getAttribute('data-textsize') || 'normal';
+  const tsBtn = (val, label) => `<button onclick="setTextSize('${val}')" style="flex:1;padding:11px 6px;border-radius:10px;cursor:pointer;border:2px solid ${textSizeNow===val?'var(--gold)':'var(--b1)'};background:${textSizeNow===val?'rgba(240,192,40,.14)':'var(--dark)'};color:${textSizeNow===val?'var(--gold)':'var(--muted)'};font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;font-size:12px">${label}</button>`;
+  const textSizeCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Taille du texte</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Grossit toute l'interface (texte, boutons, icônes) si c'est trop petit à ton goût.
+    </div>
+    <div style="display:flex;gap:8px">
+      ${tsBtn('normal','Normal')}
+      ${tsBtn('grand','Grand')}
+      ${tsBtn('tresgrand','Très grand')}
+    </div>
+  `);
   const themeNow = document.documentElement.getAttribute('data-theme') || 'dark';
   const themeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Thème</div>
@@ -627,6 +640,7 @@ function renderSettings(){
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
     ${themeCard}
+    ${textSizeCard}
     ${modeCard}
     ${camCard}
     ${saveCard}
@@ -645,6 +659,26 @@ function setTheme(t){
   try{
     const t = localStorage.getItem('footsim_theme');
     if(t==='light' || t==='dark') document.documentElement.setAttribute('data-theme', t);
+  }catch(e){}
+})();
+
+// Bascule la taille de l'interface (normal / grand / très grand) et la mémorise.
+// S'applique via un zoom CSS sur <html> (voir index.html) : tout grossit
+// proportionnellement (texte, boutons, icônes) sans casser la mise en page.
+function setTextSize(sz){
+  sz = (sz==='grand' || sz==='tresgrand') ? sz : 'normal';
+  if(sz==='normal') document.documentElement.removeAttribute('data-textsize');
+  else document.documentElement.setAttribute('data-textsize', sz);
+  try{ localStorage.setItem('footsim_textsize', sz); }catch(e){}
+  if(typeof renderSettings==='function') renderSettings();
+}
+// Restaure la taille choisie au démarrage (le HTML a "grand" par défaut).
+(function _restoreTextSize(){
+  try{
+    const sz = localStorage.getItem('footsim_textsize');
+    if(sz==='grand' || sz==='tresgrand') document.documentElement.setAttribute('data-textsize', sz);
+    else if(sz==='normal') document.documentElement.removeAttribute('data-textsize');
+    // sinon (aucune préférence enregistrée) : on garde le "grand" par défaut du HTML.
   }catch(e){}
 })();
 
