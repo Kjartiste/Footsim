@@ -972,17 +972,19 @@ function _agePlayerStats(p){
   else if(age <= profile.declineEnd)      delta = -(0.5 + Math.random()*1.5);
   else                                    delta = -(1.5 + Math.random()*2.5);
 
-  // ── Plafond de potentiel ──────────────────────────────────────────────
+  // ── Plafond souple de potentiel ───────────────────────────────────────
   // Sans ça, un joueur en phase de progression grimpe indéfiniment — ce qui
   // est particulièrement visible chez les races sans déclin (démons, anges,
   // vampires, fées : peakEnd/declineEnd = Infinity), qui atteindraient 99
-  // partout. `_potential` devient donc un plafond souple : plus le joueur en
-  // approche, plus sa progression ralentit ; au-delà, il stagne.
+  // partout. `_potential` freine donc la progression naturelle à l'approche du
+  // talent, sans jamais l'interdire complètement (le mur dur est réservé à
+  // rien du tout : c'est l'entraînement ciblé, pas l'âge, qui doit permettre
+  // de dépasser son talent — cf. training.js).
   if(delta > 0 && p._potential){
     const cur = _squadOvr(p);
     const room = p._potential - cur;
-    if(room <= 0)      delta = 0;                       // potentiel atteint : palier
-    else if(room < 10) delta *= Math.max(0.1, room/10); // approche : ça freine
+    if(room <= 0)      delta *= 0.15;                   // au-delà du talent : très lent
+    else if(room < 10) delta *= Math.max(0.15, room/10); // approche : ça freine
   }
 
   if(delta === 0) return;

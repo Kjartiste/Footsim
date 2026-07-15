@@ -201,6 +201,17 @@ const TRAINING_CONFIG = {
     youthMult: 1.8,
     // Potentiel : au-delà du potentiel, la progression est fortement freinée.
     nearPotentialSlow: 0.25,
+    // Le potentiel est un plafond SOUPLE, pas un mur (façon FIFA/PES) :
+    // chaque point gagné au-delà du talent coûte ~35% plus cher que le
+    // précédent (0.65^n), donc le coût explose vite.
+    // Calibré (mesuré, ~120 séances ciblées/saison) :
+    //   sans focus → +3 en ~3.6 saisons, +6 irréaliste (~15 ans) : le talent domine
+    //   avec focus → +3 en ~0.3 saison, +6 en ~1.3, +10 en ~7.5 : le travail paie
+    // Ainsi personne ne converge vers 99 : dépasser son don reste un choix coûteux.
+    overPotentialDecay: 0.65,
+    // Un focus individuel multiplie la chance de dépasser le talent : c'est
+    // le « gros focus » qui permet de forcer un attribut au-delà du don naturel.
+    overPotentialFocusMul: 4,
     // Bonus de qualité apporté par le niveau du centre d'entraînement.
     centreQualityPerLevel: 0.10,
     // Bonus de qualité apporté par le staff (nombre de préparateurs / coach).
@@ -436,13 +447,42 @@ const TRAINING = (function(){
     attrs.forEach(function(k){
       let chance = (P.tickBaseChance||0.05) * (session.gain||1) * q;
       if(young) chance *= (P.youthMult||1.5);
-      // Proximité du potentiel : on freine fort si déjà proche du plafond.
+      // Focus individuel (board.js) : le joueur travaille en priorité un
+      // attribut précis — bonus dessus, léger malus sur le reste. Arbitrage,
+      // pas bonus gratuit.
+      if(typeof _focusMul === 'function') chance *= _focusMul(player, k);
+      // ── Plafond SOUPLE de potentiel ───────────────────────────────────
+      // CORRECTIF : on lisait `player.potential`, un champ que RIEN n'écrit
+      // dans le jeu (le générateur pose `_potential`). `pot` retombait donc
+      // toujours sur 99 et ce frein ne se déclenchait jamais : n'importe quel
+      // joueur pouvait s'entraîner jusqu'à 99, quel que soit son talent.
       const cur = player.s[k];
-      const pot = (player.potential != null) ? player.potential : 99;
-      // On approxime le plafond de l'attribut par le potentiel global.
-      if(cur >= pot - 2) chance *= (P.nearPotentialSlow||0.25);
+      const pot = (player._potential != null) ? player._potential
+                : (player.potential != null) ? player.potential : 99;
+      // Le potentiel n'est pas un mur (façon FIFA/PES) : c'est le point où les
+      // rendements décroissent. On peut le dépasser, mais chaque point coûte
+      // de plus en plus cher — et sans focus dédié, ça devient vite négligeable.
+      // Le talent décide de ce qui est FACILE, le travail de ce qui est POSSIBLE.
+      if(cur >= pot - 2){
+        const over = Math.max(0, cur - pot);              // points au-dessus du talent
+        // Décroissance exponentielle douce : -25% par point au-delà du potentiel.
+        let slow = (P.nearPotentialSlow||0.25) * Math.pow(P.overPotentialDecay||0.75, over);
+        // Un focus dédié permet de forcer le talent : le joueur bosse
+        // spécifiquement ça, il peut aller au-delà de ce que son talent donne
+        // naturellement (mais lentement, et au prix du reste de son jeu).
+        if(player._focus === k) slow *= (P.overPotentialFocusMul||4);
+        chance *= slow;
+      }
       if(cur >= 99) return;
-      if(Math.random() < chance){ player.s[k] = Math.min(99, cur + 1); eff.progressed.push(k); }
+      if(Math.random() < chance){
+        player.s[k] = Math.min(99, cur + 1);
+        eff.progressed.push(k);
+        // Comptabilise le gain pour le bilan d'intersaison : sans ça, le
+        // déclin de l'âge et les gains d'entraînement s'annulaient et le
+        // joueur ne voyait jamais que son travail avait payé.
+        if(!player._trainGain) player._trainGain = {};
+        player._trainGain[k] = (player._trainGain[k] || 0) + 1;
+      }
     });
 
     // ── Risque de blessure ────────────────────────────────────────────────

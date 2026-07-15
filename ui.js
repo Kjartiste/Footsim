@@ -6467,6 +6467,12 @@ function renderCareerV2(){
   // Générer les données manquantes (carrière ancienne ou migration)
   if(careerV2.type === 'director'){
     let needSave = false;
+    // Migration : `_potential` n'existait que sur les jeunes du centre. Sans
+    // plafond, l'entraînement montait n'importe qui à 99. On backfille les
+    // carrières existantes (idempotent : ne touche jamais un potentiel posé).
+    try{
+      if(typeof _backfillPotentials==='function' && _backfillPotentials() > 0) needSave = true;
+    }catch(e){ console.error('backfill potentials:',e); }
     if(!careerV2.fixtures || careerV2.fixtures.length === 0){ _generateSeasonFixtures(); needSave=true; }
     if(!careerV2.freeAgents || careerV2.freeAgents.length === 0){ _generateFreeAgents(); needSave=true; }
     if(!careerV2.youthPool){ careerV2.youthPool = []; _generateYouthIntake(); needSave=true; }
@@ -7865,6 +7871,9 @@ function _renderPlayerCardOverlay(p){
   // Stats
   h+='<div style="font-size:10px;font-weight:800;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Statistiques</div>';
   ['tec','spd','sht','def','stam','res'].forEach(k=>h+=bar(k));
+  // Focus d'entraînement individuel (board.js) : oriente la progression de ce
+  // joueur en particulier, en complément du style de coach (global à l'équipe).
+  try{ if(typeof _renderFocusSelector==='function') h+=_renderFocusSelector(p); }catch(e){ console.error('focus selector:',e); }
   // Sorts
   h+='<div style="font-size:10px;font-weight:800;color:var(--gold);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px">Sorts ('+spells.length+')</div>';
   if(spells.length){ h+='<div style="display:flex;flex-wrap:wrap;gap:5px">'; spells.forEach(sp=>h+='<span style="font-size:10px;padding:3px 9px;border-radius:12px;background:rgba(160,128,224,.15);border:1px solid #a080e0;color:#c0a0e0">✦ '+sp+'</span>'); h+='</div>'; }

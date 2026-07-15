@@ -936,6 +936,17 @@ function _evolvePlayerSquad(){
       const before = _squadOvr(p);
       p.age = (p.age || 20) + 1;
 
+      // Gains d'entraînement accumulés pendant la saison (training.js), à
+      // afficher séparément du vieillissement : les deux se compensent
+      // souvent, et n'afficher que le net rendait le travail invisible.
+      let trained = 0;
+      if(p._trainGain){
+        const nAttrs = Object.keys(p.s || {}).length || 1;
+        const ticks = Object.values(p._trainGain).reduce(function(a, b){ return a + b; }, 0);
+        trained = ticks / nAttrs; // en points d'overall
+        delete p._trainGain;      // remis à zéro pour la saison à venir
+      }
+
       // Retraite : mêmes seuils par race que l'IA. Contrairement à l'IA, on ne
       // remplace PAS le partant : c'est à vous de recruter (le trou dans
       // l'effectif est le coût du temps qui passe).
@@ -948,11 +959,15 @@ function _evolvePlayerSquad(){
         continue;
       }
 
+      _ensurePotential(p);
       _agePlayerStats(p);
       const after = _squadOvr(p);
       const d = after - before;
-      if(d >= 2)      report.progressed.push({ name: p.name, age: p.age, from: before, to: after });
-      else if(d <= -2) report.declined.push({ name: p.name, age: p.age, from: before, to: after });
+      const row = { name: p.name, age: p.age, from: before, to: after,
+                    trained: Math.round(trained * 10) / 10 };
+      if(d >= 2)       report.progressed.push(row);
+      else if(d <= -2) report.declined.push(row);
+      else if(trained >= 1) report.progressed.push(row); // travail visible même si net ≈ 0
     }
   });
 
@@ -1067,21 +1082,37 @@ function _renderSquadReportCard(){
     h += '<div style="font-size:8px;color:var(--muted);line-height:1.5">Votre effectif était descendu sous 11 joueurs : le club a signé ' +
       r.emergency.join(', ') + ' en catastrophe. Ce sont des bouche-trous — recrutez vous-même pour faire mieux.</div>';
   }
+  // Ligne détaillée : sépare l'effet de l'ÂGE de celui de l'ENTRAÎNEMENT.
+  // Les deux se compensent souvent (un trentenaire perd ~1.2/attribut mais en
+  // regagne autant à l'entraînement) : n'afficher que le net donnait
+  // l'impression que les joueurs évoluaient tout seuls.
+  const _row = function(x, col){
+    const net = x.to - x.from;
+    const trained = x.trained || 0;
+    const aged = Math.round((net - trained) * 10) / 10; // part imputable à l'âge
+    let d = '<div style="padding:3px 0;border-bottom:1px solid var(--b1)">';
+    d += '<div style="display:flex;justify-content:space-between;font-size:9px">';
+    d += '<span>' + x.name + ' <span style="color:var(--muted)">· ' + x.age + ' ans</span></span>';
+    d += '<span style="color:' + col + '">' + x.from + ' → <b>' + x.to + '</b></span></div>';
+    if(trained > 0 || Math.abs(aged) >= 0.5){
+      d += '<div style="font-size:8px;color:var(--muted);margin-top:1px">';
+      const bits = [];
+      if(Math.abs(aged) >= 0.5) bits.push('<span style="color:' + (aged >= 0 ? '#18c860' : '#e08040') + '">âge ' + (aged > 0 ? '+' : '') + aged + '</span>');
+      if(trained > 0)           bits.push('<span style="color:#00bcd4">entraînement +' + trained + '</span>');
+      d += bits.join(' · ') + '</div>';
+    }
+    d += '</div>';
+    return d;
+  };
+
   if(r.progressed.length){
     h += '<div style="font-size:9px;color:#18c860;font-weight:700;margin:8px 0 3px">📈 En progrès (' + r.progressed.length + ')</div>';
-    r.progressed.slice(0, 5).forEach(function(x){
-      h += '<div style="display:flex;justify-content:space-between;font-size:9px;padding:2px 0;border-bottom:1px solid var(--b1)">';
-      h += '<span>' + x.name + ' <span style="color:var(--muted)">· ' + x.age + ' ans</span></span>';
-      h += '<span style="color:#18c860">' + x.from + ' → <b>' + x.to + '</b></span></div>';
-    });
+    r.progressed.slice(0, 5).forEach(function(x){ h += _row(x, '#18c860'); });
   }
   if(r.declined.length){
     h += '<div style="font-size:9px;color:#e08040;font-weight:700;margin:8px 0 3px">📉 En déclin (' + r.declined.length + ')</div>';
-    r.declined.slice(0, 5).forEach(function(x){
-      h += '<div style="display:flex;justify-content:space-between;font-size:9px;padding:2px 0;border-bottom:1px solid var(--b1)">';
-      h += '<span>' + x.name + ' <span style="color:var(--muted)">· ' + x.age + ' ans</span></span>';
-      h += '<span style="color:#e08040">' + x.from + ' → <b>' + x.to + '</b></span></div>';
-    });
+    r.declined.slice(0, 5).forEach(function(x){ h += _row(x, '#e08040'); });
+    h += '<div style="font-size:8px;color:var(--muted);margin-top:3px">💡 L\'entraînement freine le déclin sans l\'annuler — un centre de formation de meilleur niveau aide.</div>';
   }
   if(r.youth.length){
     h += '<div style="font-size:9px;color:#9c27b0;font-weight:700;margin:8px 0 3px">🌱 Centre de formation (' + r.youth.length + ')</div>';
@@ -1150,4 +1181,154 @@ function _boardCheckObjectives(stats){
       C.club.board_objectives = _generateBoardObjectives(C.club);
     }
   }catch(e){ console.error('regen board objectives:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// POTENTIEL & ENTRAÎNEMENT — correctifs + focus individuel
+// ═══════════════════════════════════════════════════════════
+// Trois problèmes traités ici :
+//
+// 1) BUG DE CHAMP : training.js lit `player.potential`, alors que tout le
+//    reste du jeu écrit `player._potential`. Le champ n'existant jamais, le
+//    frein « proche du potentiel » retombait sur 99 → n'importe quel joueur
+//    pouvait s'entraîner jusqu'à 99, quel que soit son talent. Le potentiel
+//    d'une pépite ne voulait plus rien dire.
+//
+// 2) POTENTIEL ABSENT : `_potential` n'était posé QUE sur les jeunes du centre
+//    (_generateYouthIntake). Les joueurs de l'effectif de départ, les agents
+//    libres et les recrues n'en avaient aucun — corriger (1) seul leur aurait
+//    donc laissé un plafond de 99. On backfille un potentiel cohérent.
+//
+// 3) LISIBILITÉ : le déclin de l'âge et les gains d'entraînement s'annulaient
+//    presque exactement, et le bilan n'affichait que le net. Le joueur ne
+//    voyait jamais que son entraînement avait compensé le vieillissement.
+//    On sépare désormais les deux effets (cf. _evolvePlayerSquad).
+
+// Potentiel d'un joueur, calculé à la demande et mémorisé. Sert de plafond à
+// la progression (entraînement + vieillissement).
+function _ensurePotential(p){
+  if(!p || !p.s) return 99;
+  if(typeof p._potential === 'number') return p._potential;
+
+  const ovr = _squadOvr(p);
+  const age = p.age || 24;
+  // Un joueur déjà âgé a « fini » sa progression : son potentiel est proche de
+  // son niveau actuel. Un jeune garde une marge, d'autant plus grande qu'il est
+  // jeune (c'est le pari du recrutement).
+  let margin;
+  if(age <= 18)      margin = 18 + Math.random() * 22;  // 18-40 de marge
+  else if(age <= 21) margin = 12 + Math.random() * 18;
+  else if(age <= 24) margin = 6  + Math.random() * 12;
+  else if(age <= 27) margin = 2  + Math.random() * 7;
+  else               margin = Math.random() * 3;        // quasi fini
+
+  p._potential = Math.max(ovr, Math.min(99, Math.round(ovr + margin)));
+  return p._potential;
+}
+
+// Applique le correctif à tout l'effectif (idempotent : ne recalcule jamais un
+// potentiel déjà posé). Appelé à l'ouverture de la carrière → les sauvegardes
+// existantes sont migrées sans rien casser.
+function _backfillPotentials(){
+  const C = careerV2;
+  if(!C) return 0;
+  let n = 0;
+  ['players', 'bench', 'reserves', 'youthPool', 'freeAgents'].forEach(function(grp){
+    (C[grp] || []).forEach(function(p){
+      if(p && p.s && typeof p._potential !== 'number'){ _ensurePotential(p); n++; }
+    });
+  });
+  return n;
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// FOCUS D'ENTRAÎNEMENT INDIVIDUEL
+// ═══════════════════════════════════════════════════════════
+// Le style de coach (TRAINING_CONFIG.coachStyles) oriente déjà l'IA au niveau
+// de l'ÉQUIPE. Il manquait le niveau INDIVIDUEL : dire « ce joueur travaille sa
+// finition ». Le focus donne un bonus de progression sur l'attribut choisi, et
+// une légère pénalité sur les autres (on ne peut pas tout travailler à la
+// fois — c'est un arbitrage, pas un bonus gratuit).
+
+const FOCUS = {
+  BONUS:   2.2,   // multiplicateur de chance sur l'attribut ciblé
+  MALUS:   0.75,  // sur les autres attributs
+  OPTIONS: [
+    { key:'sht',  label:'Finition',   icon:'🎯' },
+    { key:'spd',  label:'Vitesse',    icon:'⚡' },
+    { key:'def',  label:'Défense',    icon:'🛡' },
+    { key:'stam', label:'Endurance',  icon:'🫀' },
+    { key:'tec',  label:'Technique',  icon:'✨' },
+    { key:'pas',  label:'Passe',      icon:'➤'  },
+    { key:'res',  label:'Mental',     icon:'🧠' },
+  ],
+};
+
+function _focusLabel(key){
+  const o = FOCUS.OPTIONS.find(function(x){ return x.key === key; });
+  return o ? (o.icon + ' ' + o.label) : '—';
+}
+
+// Applique le focus d'un joueur au multiplicateur de chance d'un attribut.
+// Appelé depuis training.js (applySessionToPlayer).
+function _focusMul(player, attrKey){
+  if(!player || !player._focus) return 1;
+  if(!player.s || typeof player.s[attrKey] !== 'number') return 1;
+  return (player._focus === attrKey) ? FOCUS.BONUS : FOCUS.MALUS;
+}
+
+// Définit / retire le focus d'un joueur (UI).
+function setPlayerFocus(playerName, attrKey){
+  const C = careerV2;
+  if(!C) return;
+  const all = (C.players || []).concat(C.bench || [], C.reserves || []);
+  const p = all.find(function(x){ return x.name === playerName; });
+  if(!p) return;
+  if(!attrKey || p._focus === attrKey){
+    delete p._focus;
+    try{ logEvent('🎓 ' + p.name + ' revient à un entraînement général.', '#888'); }catch(e){}
+  } else {
+    p._focus = attrKey;
+    try{ logEvent('🎓 ' + p.name + ' travaille désormais : ' + _focusLabel(attrKey), '#00bcd4'); }catch(e){}
+  }
+  saveCareerV2();
+  try{ renderCareerDirectorTab('squad'); }catch(e){}
+}
+
+// Sélecteur de focus pour la fiche joueur.
+function _renderFocusSelector(p){
+  if(!p || !p.s) return '';
+  const cur = p._focus || '';
+  const pot = _ensurePotential(p);
+  const ovr = _squadOvr(p);
+  const room = pot - ovr;
+
+  let h = '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--b1)">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">';
+  h += '<span style="font-size:9px;font-weight:700;color:var(--gold)">🎓 Focus d\'entraînement</span>';
+  h += '<span style="font-size:8px;color:var(--muted)">Potentiel <b style="color:' +
+    (room > 10 ? '#18c860' : room > 3 ? '#f0c028' : '#888') + '">' + pot + '</b>' +
+    (room > 0 ? ' · marge +' + room : ' · atteint') + '</span>';
+  h += '</div>';
+
+  if(room <= 0){
+    h += '<div style="font-size:8px;color:var(--muted);margin-bottom:5px">Ce joueur a atteint son potentiel : l\'entraînement ne le fera plus progresser.</div>';
+  }
+
+  h += '<div style="display:flex;flex-wrap:wrap;gap:3px">';
+  FOCUS.OPTIONS.forEach(function(o){
+    if(typeof p.s[o.key] !== 'number') return;
+    const on = cur === o.key;
+    h += '<button class="btn' + (on ? ' btng' : '') + '" onclick="setPlayerFocus(\'' +
+      String(p.name).replace(/'/g, "\\'") + '\',\'' + o.key + '\')" ' +
+      'style="font-size:8px;padding:2px 6px' + (on ? '' : ';opacity:.75') + '" ' +
+      'title="' + o.label + ' — actuel ' + p.s[o.key] + '">' + o.icon + ' ' + p.s[o.key] + '</button>';
+  });
+  h += '</div>';
+  h += '<div style="font-size:8px;color:var(--muted);margin-top:4px">' +
+    (cur ? 'Travaille <b style="color:#00bcd4">' + _focusLabel(cur) + '</b> — progresse plus vite sur cet attribut, un peu moins sur les autres.'
+         : 'Aucun focus : progression équilibrée. Cliquez un attribut pour le prioriser.') + '</div>';
+  h += '</div>';
+  return h;
 }
