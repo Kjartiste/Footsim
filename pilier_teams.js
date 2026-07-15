@@ -387,8 +387,71 @@ function pilierResolveBarrage(playoff, playerWins){
   return { promoted:false, message:'⚔️ Barrage perdu ('+playerWins+'/'+playoff.winsNeeded+' victoires). Vous restez dans votre bloc.' };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// BARRAGE D'ACCESSION — VERSION JOUABLE
+// ─────────────────────────────────────────────────────────────────────────
+// Avant : le nombre de victoires du barrage était tiré à pile ou face
+// (Math.random() < 0.5) sans que le joueur ne joue le moindre ballon. On
+// génère maintenant un vrai adversaire (le dernier de la division visée) et
+// une série JOUABLE en 5 manches maximum (le premier à 3 victoires monte),
+// exactement comme un tour de coupe.
+function _pilierHash(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
+function _pilierTierStrength(tier){
+  return tier==='pro'?72 : tier==='regional'?61 : 52;
+}
+// Choisit un adversaire plausible pour le barrage : le dernier (le plus
+// faible, par force simulée) de la division visée.
+function _pilierBarrageOpponent(targetDiv){
+  const teams = pilierTeamsByDivision(targetDiv);
+  if(!teams.length) return { name:'Club inconnu', strength:_pilierTierStrength('regional'), color:'#888', badge:null };
+  const ranked = teams.map(function(t){
+    const seed = Math.abs(_pilierHash(t.name))%100;
+    const base = _pilierTierStrength(PILIER_DIVISIONS[targetDiv].tier) + (seed/100*12-6);
+    return { name:t.name, color:t.color, badge:t.badge||null, strength: base };
+  }).sort(function(a,b){ return a.strength-b.strength; }); // le plus faible en tête = "dernier"
+  return ranked[0];
+}
+// Construit C.barrage : un adversaire réel + jusqu'à 5 matchs JOUABLES
+// programmés en série (le premier à 3 victoires l'emporte).
+function pilierSetupBarrage(C, playoff){
+  if(!C || !playoff) return;
+  const opp = _pilierBarrageOpponent(playoff.targetDiv);
+  const base = C.date || {year:1,month:8,day:1};
+  const games = [];
+  for(let i=0;i<5;i++){
+    const d = _addDays(base, (i+1)*7);
+    games.push({
+      dateKey: _dateKey(d), date: d,
+      isHome: (i%2===0),
+      played:false, scoreMe:null, scoreOpp:null,
+    });
+  }
+  C.barrage = {
+    active:true, done:false, promoted:false, message:null,
+    targetDiv: playoff.targetDiv, targetDivName: PILIER_DIVISIONS[playoff.targetDiv].name,
+    winsNeeded: playoff.winsNeeded||3,
+    oppName: opp.name, oppStrength: opp.strength, oppColor: opp.color, oppBadge: opp.badge,
+    oppLevel: PILIER_DIVISIONS[playoff.targetDiv].level,
+    games: games, idx: 0, wins:0, losses:0,
+  };
+}
+// Finalise le barrage dès que le sort est joué (3 victoires ou 3 défaites) :
+// applique pilierResolveBarrage et fige le résultat dans C.barrage.
+function _pilierFinalizeBarrageIfDecided(C){
+  const br = C.barrage; if(!br || br.done) return false;
+  if(br.wins < br.winsNeeded && br.losses < br.winsNeeded) return false;
+  const res = pilierResolveBarrage({ targetDiv:br.targetDiv, winsNeeded:br.winsNeeded }, br.wins);
+  br.done = true; br.active = false;
+  br.promoted = !!res.promoted;
+  br.message = res.message;
+  if(res.promoted){ br.newLevel = res.newLevel; br.newDivId = res.newDivId; }
+  return true;
+}
+
 if(typeof window!=='undefined'){
   window.PILIER_BLOCKS = PILIER_BLOCKS;
   window.pilierResolveSeason = pilierResolveSeason;
   window.pilierResolveBarrage = pilierResolveBarrage;
+  window.pilierSetupBarrage = pilierSetupBarrage;
+  window._pilierFinalizeBarrageIfDecided = _pilierFinalizeBarrageIfDecided;
 }

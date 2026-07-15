@@ -1916,6 +1916,11 @@ function endMatch(){
       showEndMatchRecap();
       return;
     }
+    if(window._careerBarragePlaying){
+      _recordCareerV2BarrageMatchResult();
+      showEndMatchRecap();
+      return;
+    }
     if(window._careerFriendlyPlaying){
       _recordCareerV2FriendlyResult();
       showEndMatchRecap();

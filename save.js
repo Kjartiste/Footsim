@@ -1312,6 +1312,11 @@ function _matchOnDateKey(dateKey){
     const pm = C.playoffs.matches[C.playoffs.idx];
     if(pm && !pm.played && pm.dateKey===dateKey) return { playoff:true, dateKey:dateKey };
   }
+  // Barrage d'accession (Pilier) : match JOUABLE du joueur programmé ce jour-là.
+  if(C.barrage && C.barrage.active && !C.barrage.done && Array.isArray(C.barrage.games)){
+    const bg = C.barrage.games[C.barrage.idx];
+    if(bg && !bg.played && bg.dateKey===dateKey) return { barrage:true, dateKey:dateKey };
+  }
   return null;
 }
 function _resolveDayPlan(dateKey){
