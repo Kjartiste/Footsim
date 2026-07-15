@@ -504,14 +504,17 @@ const INK_COL='#12161c';
 
 // ═══════════════════════════════════════════════════════════
 // THÈME DE STADE / TERRAIN
-// 4 styles sélectionnables (avant-match, réglages, carrière > infra) :
+// 7 styles sélectionnables (avant-match, réglages, carrière > infra) :
 //  - classic   : terrain sobre d'origine, sans tribunes ni panneaux.
 //  - modern    : tribunes texturées, panneaux LED, projecteurs.
 //  - synthetic : pelouse synthétique (bandes tondues bien droites, vert vif).
 //  - snow      : terrain enneigé, lignes assombries pour rester lisibles,
 //                + chute de neige/vent en overlay (voir drawSnow()).
+//  - greek     : ambiance grèce antique, tons marbre/or, panneaux terracotta.
+//  - forest    : clairière très boisée, verts profonds, panneaux bois.
+//  - bamboo    : bambouseraie, bandes vert/jaune façon tiges de bambou.
 // ═══════════════════════════════════════════════════════════
-const STADIUM_THEMES=['classic','modern','synthetic','snow'];
+const STADIUM_THEMES=['classic','modern','synthetic','snow','greek','forest','bamboo'];
 function stadiumTheme(){
   const t=window._stadiumTheme;
   return STADIUM_THEMES.includes(t)?t:'modern';
@@ -557,6 +560,36 @@ function _stadiumPalette(theme){
       stripes:false, snowGround:true, border:true,
       boardCols:['#8ecae6','#ffffff','#219ebc','#adb5bd','#e0f7ff'],
       crowdShades:['#3a4552','#48566a','#2e3742','#55637a'], crowdBg:'#1b232c', floodlight:'rgba(210,230,255,.12)' };
+  }
+  if(theme==='greek'){
+    // Grèce antique : pelouse à peine dorée par un soleil couchant, lignes
+    // marbre blanc, panneaux terracotta/or façon colonnades et amphores.
+    return { bg:'#1c1608', a:'#3c6b2e', b:'#4a7d38', line:'rgba(250,244,224,.9)',
+      net:'rgba(250,244,224,.85)', netFaint:'rgba(250,244,224,.14)', faint:'rgba(250,244,224,.32)',
+      stripes:false, snowGround:false, border:true,
+      boardCols:['#c9a05a','#e8d9b0','#a8542f','#8c6b3f','#f0e4c0'],
+      crowdShades:['#3a2f1e','#4a3c26','#2e2517','#57472c'], crowdBg:'#140f08',
+      floodlight:'rgba(255,214,140,.14)' };
+  }
+  if(theme==='forest'){
+    // Clairière très boisée : verts profonds et humides, panneaux façon bois
+    // brut, lumière tamisée vert-jaune comme filtrée par les frondaisons.
+    return { bg:'#08150c', a:'#0f3d1e', b:'#154d26', line:'rgba(214,232,210,.55)',
+      net:'rgba(214,232,210,.75)', netFaint:'rgba(214,232,210,.12)', faint:'rgba(214,232,210,.28)',
+      stripes:false, snowGround:false, border:true,
+      boardCols:['#4b3621','#2e4d24','#6b4a2c','#3a5c2f','#5c4128'],
+      crowdShades:['#12200f','#1a2b14','#0c1a0a','#223318'], crowdBg:'#081108',
+      floodlight:'rgba(184,224,150,.10)' };
+  }
+  if(theme==='bamboo'){
+    // Bambouseraie : bandes tondues façon tiges alignées, vert vif à jaune
+    // tendre, panneaux clairs bois clair/bambou.
+    return { bg:'#132312', a:'#3fae4a', b:'#c9d94a', line:'rgba(255,255,255,.55)',
+      net:'rgba(255,255,255,.82)', netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
+      stripes:true, snowGround:false, border:true,
+      boardCols:['#e8e0a8','#8fbf3f','#d9c96a','#4f9a3f','#f2edc8'],
+      crowdShades:['#2a3a20','#35472a','#213018','#3e4f2c'], crowdBg:'#101c0e',
+      floodlight:'rgba(230,244,180,.12)' };
   }
   // modern (par défaut)
   return { bg:'#0f2a0f', a:'#1c5f1c', b:'#217021', line:LINE, net:'rgba(255,255,255,.82)',
