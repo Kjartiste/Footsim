@@ -459,6 +459,12 @@ function _getBodySprite(col){
   return oc;
 }
 function resize(){
+  // Gel pendant l'enregistrement vidéo (record.js) : voir commentaire sur
+  // window._recLocked dans frame(). On bloque ici la fonction elle-même,
+  // pas seulement son appelant dans frame(), pour couvrir aussi le
+  // window.addEventListener('resize', resize) de save.js et l'appel de
+  // setGameMode() dans data.js.
+  if(window._recLocked) return;
   const wrap=document.getElementById('canvas-wrap');
   cvs.width=wrap.offsetWidth;
   cvs.height=wrap.offsetHeight;
@@ -1589,7 +1595,10 @@ function frame(ts){
   if(_resizeCheckT>=0.25){
     _resizeCheckT=0;
     const wrap=document.getElementById('canvas-wrap');
-    if(wrap && (cvs.width!==wrap.offsetWidth||cvs.height!==wrap.offsetHeight))resize();
+    // Pendant un enregistrement (record.js), on gèle volontairement la taille
+    // du canvas : un resize en cours d'enregistrement changerait la résolution
+    // de la vidéo capturée par MediaRecorder et la corromprait.
+    if(wrap && !window._recLocked && (cvs.width!==wrap.offsetWidth||cvs.height!==wrap.offsetHeight))resize();
   }
 
   if(G.running&&G.phase!=='HALFTIME'&&G.phase!=='END'){
