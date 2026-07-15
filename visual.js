@@ -10,6 +10,27 @@ function spawnGoal(gx,gy,col,ati){
   G.ptcl.push({t:'lbl',x:PCX,y:PCY-5,tx:'BUT !',col:'#f0c028',l:120,m:120,sz:4.5});
   const teamName=ati!==undefined?teams[ati]?.name:(teams[G.atkTi]?.name||'');
   G.ptcl.push({t:'lbl',x:PCX,y:PCY+1,tx:teamName,col,l:100,m:100,sz:2.2});
+  // ── SPEEDLINES (façon manga) ────────────────────────────────────────────
+  // Rafale de traits radiants qui jaillissent du point de but, façon
+  // "impact frame" manga, pour marquer le split-second du but. Très courtes
+  // (l petit) : elles claquent puis disparaissent, contrairement aux
+  // confettis qui, eux, retombent lentement.
+  const nLines=22;
+  for(let i=0;i<nLines;i++){
+    const ang=(i/nLines)*Math.PI*2+rng(-.12,.12);
+    G.ptcl.push({t:'speedline',x:gx,y:gy,vx:0,vy:0,ang,inner:rng(2,4),len:rng(16,26),
+      lw:rng(.18,.4),col:pick(['#fff','#f0c028',col]),l:16,m:16});
+  }
+  // ── CONFETTIS ────────────────────────────────────────────────────────────
+  // Pluie de confettis colorés depuis le haut du terrain, qui retombent
+  // naturellement (gravité générique du moteur de particules) en tournant.
+  for(let i=0;i<55;i++){
+    G.ptcl.push({t:'confetti',x:PCX+rng(-9,9),y:PCY-9+rng(-3,3),
+      vx:rng(-1.3,1.3),vy:rng(-2.6,-1.0),
+      col:pick(['#f0c028','#e63946','#2a9d8f','#ffffff','#457b9d',col]),
+      w:rng(.35,.7),h:rng(.16,.3),rot0:rng(0,Math.PI*2),spin:rng(-.3,.3),
+      l:150,m:150});
+  }
   // ── TEMPS FORT : secousse d'écran + flash coloré ───────────────────────
   triggerShake('HEAVY');        // preset intensité forte
   triggerFlash(col, 0.32, 420); // couleur de l'équipe, opacité pic, durée
@@ -477,6 +498,9 @@ function resize(){
 }
 
 const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
+// Couleur d'encrage manga (identique à --ink de theme.css) utilisée pour les
+// contours des joueurs, afin que le canvas reste cohérent avec le reste de l'UI.
+const INK_COL='#12161c';
 
 // ═══════════════════════════════════════════════════════════
 // TERRAIN PRÉ-RENDU (perf + beauté)
@@ -558,6 +582,69 @@ function _buildPitchCache(){
     c.beginPath();c.arc(wx(cx),wy(cy),ws(1),a1,a2);c.strokeStyle='rgba(255,255,255,.3)';c.lineWidth=ws(.15);c.stroke();
   });
   c.restore();
+
+  // ── AMBIANCE DE STADE (bordure autour du terrain) ───────────────────────
+  // La marge entre le terrain et le bord du canvas (variable selon le ratio
+  // d'aspect de l'écran) accueillait juste le fond uni '#0f2a0f'. On y ajoute
+  // un panneau publicitaire périphérique façon LED de stade + une texture de
+  // foule discrète + des projecteurs dans les coins hauts, pour ancrer la
+  // scène dans un vrai stade. Tout est pré-calculé ici, donc gratuit à
+  // l'exécution (un seul blit par frame comme le reste du terrain).
+  (function drawStadiumBorder(){
+    const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
+    const leftM=px0, rightM=oc.width-px1, topM=py0, bottomM=oc.height-py1;
+
+    // Bande de foule (texture de points ternes) dans les marges suffisamment
+    // grandes pour être lisibles — sinon on laisse juste le fond uni.
+    const crowdBand=(x,y,w,h,vertical)=>{
+      if(w<6||h<6)return;
+      c.save();
+      c.fillStyle='#0a0e14';c.fillRect(x,y,w,h);
+      const n=Math.min(140, Math.floor((w*h)/18));
+      for(let i=0;i<n;i++){
+        const rx=x+Math.random()*w, ry=y+Math.random()*h;
+        const shade=pick(['#1c222c','#242b38','#161b24','#2c3444']);
+        c.fillStyle=shade;
+        const rr=rng(.6,1.6);
+        c.beginPath();c.arc(rx,ry,rr,0,Math.PI*2);c.fill();
+      }
+      c.restore();
+    };
+    crowdBand(0,0,leftM,oc.height,true);
+    crowdBand(px1,0,rightM,oc.height,true);
+    crowdBand(0,0,oc.width,topM,false);
+    crowdBand(0,py1,oc.width,bottomM,false);
+
+    // Panneaux LED publicitaires : fine bande colorée collée au pourtour du
+    // terrain (toujours visible même quand la marge est petite).
+    const boardT=Math.max(3,Math.min(7,Math.min(leftM,topM,3)+3));
+    const boardCols=['#e63946','#f0c028','#2a9d8f','#457b9d','#ffffff'];
+    const drawBoard=(x,y,w,h,horiz)=>{
+      if(w<=0||h<=0)return;
+      const n=Math.max(1,Math.round((horiz?w:h)/26));
+      const step=(horiz?w:h)/n;
+      for(let i=0;i<n;i++){
+        c.fillStyle=boardCols[i%boardCols.length];
+        if(horiz) c.fillRect(x+i*step,y,step-1,h);
+        else c.fillRect(x,y+i*step,w,step-1);
+      }
+    };
+    // Haut/bas du terrain (bande horizontale juste au-dessus/en dessous des lignes)
+    drawBoard(Math.max(0,px0-2), Math.max(0,py0-boardT), (px1-px0)+4, boardT, true);
+    drawBoard(Math.max(0,px0-2), py1, (px1-px0)+4, Math.min(boardT,bottomM), true);
+
+    // Projecteurs de stade : lueur chaude discrète depuis les coins hauts.
+    c.save();
+    c.globalCompositeOperation='lighter';
+    [[0,0],[oc.width,0]].forEach(([fx,fy])=>{
+      const rad=Math.max(oc.width,oc.height)*.4;
+      const fg=c.createRadialGradient(fx,fy,0,fx,fy,rad);
+      fg.addColorStop(0,'rgba(255,241,201,.10)');
+      fg.addColorStop(1,'rgba(255,241,201,0)');
+      c.fillStyle=fg;c.fillRect(0,0,oc.width,oc.height);
+    });
+    c.restore();
+  })();
 
   // ── VIGNETTAGE ─────────────────────────────────────────────────────────
   // Assombrit légèrement les bords → profondeur, et l'œil est guidé vers le
@@ -671,8 +758,12 @@ function drawPlayer(T,p){
     ctx.fillStyle=T.color;
     ctx.beginPath();ctx.arc(px,py+safeBob,r,0,Math.PI*2);ctx.fill();
   }
+  // Contour encré (cohérence avec la direction artistique manga du reste de
+  // l'UI, cf. --ink dans theme.css) + fin liseré clair par-dessus pour le volume.
   ctx.beginPath();ctx.arc(px,py+safeBob,r,0,Math.PI*2);
-  ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=ws(.1);ctx.stroke();
+  ctx.strokeStyle=INK_COL;ctx.lineWidth=ws(.32);ctx.stroke();
+  ctx.beginPath();ctx.arc(px,py+safeBob,r-ws(.14),0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,255,255,.45)';ctx.lineWidth=ws(.09);ctx.stroke();
 
   // Stun
   if(p.stunT>0){
@@ -1095,6 +1186,27 @@ function drawParticles(){
         ctx.beginPath();ctx.arc(sx,sy,psz,0,Math.PI*2);ctx.fill();
         ctx.globalCompositeOperation='source-over';
       }
+    } else if(p.t==='confetti'){
+      const gx=wx(p.x), gy=wy(p.y);
+      if(isFinite(gx)&&isFinite(gy)){
+        const rot=(p.rot0||0)+(p.m-p.l)*(p.spin||.2);
+        const cw=ws(p.w||.5), ch=ws(p.h||.25);
+        ctx.translate(gx,gy);ctx.rotate(rot);
+        ctx.fillStyle=p.col||'#fff';
+        ctx.fillRect(-cw/2,-ch/2,cw,ch);
+      }
+    } else if(p.t==='speedline'){
+      const gx=wx(p.x), gy=wy(p.y);
+      if(isFinite(gx)&&isFinite(gy)){
+        const ang=p.ang||0;
+        const inner=ws(p.inner||3), outer=inner+ws(p.len||20);
+        const x1=gx+Math.cos(ang)*inner, y1=gy+Math.sin(ang)*inner;
+        const x2=gx+Math.cos(ang)*outer, y2=gy+Math.sin(ang)*outer;
+        ctx.globalCompositeOperation='lighter';
+        ctx.strokeStyle=p.col||'#fff';ctx.lineWidth=ws(p.lw||.3)*a;ctx.lineCap='round';
+        ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+        ctx.globalCompositeOperation='source-over';
+      }
     } else if(p.t==='heart'){
       // Pink circle (safe fallback - no emoji)
       const rr=ws((p.sz||.8)*.4)*a;
@@ -1126,6 +1238,31 @@ function drawFlash(){
   if(G.flash<=0)return;
   ctx.save();ctx.globalAlpha=G.flash*.2;
   ctx.fillStyle=G.flashCol;ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.restore();
+}
+
+// ── ÉCLAIRAGE DYNAMIQUE DU BALLON ────────────────────────────────────────
+// Halo chaud qui suit le ballon en permanence (pas seulement le porteur),
+// comme un projecteur de stade discret qui accompagne l'action. S'agrandit
+// légèrement quand le ballon va vite (tir, dégagement) pour souligner les
+// temps forts sans gêner la lisibilité du jeu.
+function drawBallLight(){
+  const b=G.ball;
+  if(!b)return;
+  const bx=wx(b.x), by=wy(b.y);
+  if(!isFinite(bx)||!isFinite(by))return;
+  const spd=Math.hypot(b.vx||0,b.vy||0);
+  const r=ws(9)*(1+Math.min(spd/9,0.55));
+  if(r<=0)return;
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  ctx.globalAlpha=.08+Math.min(spd/40,.05);
+  const grd=ctx.createRadialGradient(bx,by,0,bx,by,r);
+  grd.addColorStop(0,'#fff6d8');
+  grd.addColorStop(.55,'#ffe19a');
+  grd.addColorStop(1,'rgba(255,225,154,0)');
+  ctx.fillStyle=grd;
+  ctx.beginPath();ctx.arc(bx,by,r,0,Math.PI*2);ctx.fill();
   ctx.restore();
 }
 
@@ -1708,6 +1845,7 @@ function frame(ts){
   drawPitch();
   const shaking = (sh.x||sh.y);
   if(shaking){ ctx.save(); ctx.translate(sh.x, sh.y); }
+  drawBallLight();
   drawGlow();
   teams.forEach(T=>T.players.forEach(p=>{if(p)drawPlayer(T,p);}));
   drawBall();
