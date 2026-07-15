@@ -264,8 +264,24 @@
   box-shadow:inset 0 0 0 4px var(--rar), 0 0 18px color-mix(in srgb,var(--rar) 60%,transparent)}
 
 /* ── ENREGISTREMENT VIDÉO DU MATCH (record.js) ───────────────────────── */
+/* Overlay flottant sur le canvas (et non plus un bouton de la ctrl-row de
+   la sidebar : à 260px de large et overflow:hidden sans scroll, un 5ᵉ
+   bouton dans cette ligne passait à la ligne et sortait de la zone
+   visible → bouton invisible/inatteignable). Placé ici, il a toujours de
+   la place et se comporte comme un vrai bouton REC de caméra. */
+#rec-btn{
+  position:absolute;top:10px;right:10px;z-index:20;
+  padding:6px 12px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.35);
+  background:rgba(10,12,16,.55);backdrop-filter:blur(3px);
+  color:#fff;font-family:'Barlow Condensed',sans-serif;
+  font-size:12px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;
+  white-space:nowrap;transition:all .15s;
+}
+#rec-btn:hover{background:rgba(10,12,16,.75);border-color:rgba(255,255,255,.55)}
 #rec-btn.rec-active{
-  border-color:#ff3b3b;color:#ff3b3b;background:rgba(255,59,59,.12);
+  border-color:#ff3b3b;color:#ff3b3b;background:rgba(255,59,59,.16);
   animation:rec-pulse 1.1s ease-in-out infinite;
 }
 @keyframes rec-pulse{

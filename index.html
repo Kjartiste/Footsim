@@ -409,7 +409,6 @@ input[type=range]:focus{outline:none}
       <button class="btn btng" id="mbtn" onclick="handleMatchBtn()" style="flex:1;justify-content:center">▶ Démarrer</button>
       <button class="btn" id="resume-rescue" onclick="forceResumeMatch()" style="padding:6px 8px;display:none;border-color:#69f0ae;color:#69f0ae" title="Reprendre le match en conservant le score">▶▶</button>
       <button class="btn" onclick="resetMatch();showPreMatch()" style="padding:6px 8px" title="Recommencer">↺</button>
-      <button class="btn" id="rec-btn" onclick="toggleMatchRecording()" style="padding:6px 8px" title="Enregistrer le match en vidéo (.mp4)">⏺ REC</button>
       <div id="ai-ctrl-row" style="display:none;width:100%;gap:4px;margin-top:6px;align-items:center">
         <span style="font-size:8px;font-weight:700;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-right:2px">Coach</span>
         <button id="ai-ctrl-0" class="btn" onclick="toggleTeamAi(0)" style="flex:1;font-size:9px;padding:5px 4px" title="Déléguer cette équipe au coach IA">👤 Éq. A</button>
@@ -468,6 +467,7 @@ input[type=range]:focus{outline:none}
 <div id="main">
   <div id="canvas-wrap">
     <canvas id="cvs"></canvas>
+    <button id="rec-btn" onclick="toggleMatchRecording()" title="Enregistrer le match en vidéo (.mp4)">⏺ REC</button>
     <div class="form-overlay">
       <div class="form-tag" id="ftag0" style="color:var(--red);border-color:rgba(224,32,48,.4)">3-2-1</div>
       <div class="form-tag" id="ftag1" style="color:var(--blue);border-color:rgba(24,120,232,.4)">3-2-1</div>
