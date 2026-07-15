@@ -562,6 +562,29 @@ function selectGameMode(mode){
 // ══════════════════════════════════════════════════════════
 // PARAMÈTRES
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// STYLE DE TERRAIN (partagé : réglages / avant-match / carrière > infra)
+// ══════════════════════════════════════════════════════════
+function _stadiumSelectorHTML(){
+  const cur = (typeof stadiumTheme==='function') ? stadiumTheme() : 'modern';
+  const opts=[
+    {id:'classic',   label:'🏟 CLASSIQUE',    sub:'terrain sobre',        col:'var(--gold)'},
+    {id:'modern',    label:'✨ MODERNE',       sub:'tribunes & LED',       col:'#18c860'},
+    {id:'synthetic', label:'🟩 SYNTHÉTIQUE',  sub:'pelouse artificielle', col:'#2a9d8f'},
+    {id:'snow',      label:'❄️ NEIGE',        sub:'hiver & vent',         col:'#8ecae6'},
+  ];
+  let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+  opts.forEach(o=>{
+    const on = cur===o.id;
+    h+='<button onclick="setStadiumTheme(\''+o.id+'\')" style="padding:8px 6px;border-radius:9px;cursor:pointer;border:2px solid '+(on?o.col:'var(--b1)')+';background:'+(on?o.col+'22':'var(--dark)')+';color:'+(on?o.col:'var(--muted)')+';text-align:center">'
+      +'<div style="font-size:12px;font-weight:900;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:.5px">'+o.label+'</div>'
+      +'<div style="font-size:8px;margin-top:2px;opacity:.85">'+o.sub+'</div>'
+      +'</button>';
+  });
+  h+='</div>';
+  return h;
+}
+
 function renderSettings(){
   const out=document.getElementById('settings-out');
   if(!out) return;
@@ -627,6 +650,13 @@ function renderSettings(){
     </div>
   `);
   const themeNow = document.documentElement.getAttribute('data-theme') || 'dark';
+  const stadeCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Style de terrain</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      L'ambiance du terrain pendant les matchs : sobre, avec tribunes et panneaux LED, pelouse synthétique, ou hiver enneigé (avec vent).
+    </div>
+    ${_stadiumSelectorHTML()}
+  `);
   const themeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Thème</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
@@ -640,6 +670,7 @@ function renderSettings(){
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
     ${themeCard}
+    ${stadeCard}
     ${textSizeCard}
     ${modeCard}
     ${camCard}
@@ -1462,6 +1493,12 @@ function showPreMatch(onStart){
       +'⏱️ Jouer une seule mi-temps</label>'
       +'<div style="font-size:8px;color:#666;text-align:center;margin-top:4px;font-style:italic">Score de départ et/ou mi-temps unique (idéal pour rejouer une fin de match).</div>'
       +'</details>';
+
+    // Style de terrain (partagé avec Réglages et Carrière > Infra)
+    h+='<div style="margin:2px 14px 8px">'
+      +'<div style="font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">🏟 Style de terrain</div>'
+      +_stadiumSelectorHTML()
+      +'</div>';
 
     // Option GIF avant le coup d'envoi (pour ne pas louper les moments chauds)
     h+='<label style="display:flex;align-items:center;gap:7px;justify-content:center;padding:2px 14px 8px;font-size:11px;color:var(--muted);cursor:pointer">'
@@ -8309,7 +8346,9 @@ function _renderDirectorInfra(){
         + cell('Affluence moyenne', fill+'%', fill>=70?'#18c860':fill>=50?'#f0c028':'#e06060')
         + cell('Revenus matchday', _fmtMoney(matchRev)+'/match')
         + cell('État pelouse', pelouse, lvl>=4?'#18c860':lvl>=2?'#f0c028':'#e06060')
-        + '</div>';
+        + '</div>'
+        + '<div style="font-size:8px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin:8px 0 5px">🏟 Ambiance le jour du match</div>'
+        + (typeof _stadiumSelectorHTML==='function' ? _stadiumSelectorHTML() : '');
     } else if(key==='training'){
       stats = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
         + cell('Gain stats/séance', '+'+(lvl*4)+'%', lvl>=3?'#18c860':'#f0c028')

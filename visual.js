@@ -503,6 +503,69 @@ const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
 const INK_COL='#12161c';
 
 // ═══════════════════════════════════════════════════════════
+// THÈME DE STADE / TERRAIN
+// 4 styles sélectionnables (avant-match, réglages, carrière > infra) :
+//  - classic   : terrain sobre d'origine, sans tribunes ni panneaux.
+//  - modern    : tribunes texturées, panneaux LED, projecteurs.
+//  - synthetic : pelouse synthétique (bandes tondues bien droites, vert vif).
+//  - snow      : terrain enneigé, lignes assombries pour rester lisibles,
+//                + chute de neige/vent en overlay (voir drawSnow()).
+// ═══════════════════════════════════════════════════════════
+const STADIUM_THEMES=['classic','modern','synthetic','snow'];
+function stadiumTheme(){
+  const t=window._stadiumTheme;
+  return STADIUM_THEMES.includes(t)?t:'modern';
+}
+function setStadiumTheme(t){
+  if(!STADIUM_THEMES.includes(t))return;
+  window._stadiumTheme=t;
+  try{ localStorage.setItem('footsim_stadium', t); }catch(e){}
+  _pitchCache=null; // force la reconstruction du terrain avec le nouveau style
+  // Re-render les écrans qui affichent le sélecteur, s'ils sont ouverts.
+  if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
+  if(typeof _renderDirectorInfra==='function' && (document.getElementById('career-director-content')?.innerHTML||'').indexOf('Infrastructures')>=0){
+    try{ renderCareerDirectorTab('infra'); }catch(e){}
+  }
+  if(document.getElementById('prematch-modal')?.classList.contains('on') && typeof showPreMatch==='function'){
+    try{ showPreMatch(window._prematchOnStart); }catch(e){}
+  }
+}
+(function _restoreStadiumTheme(){
+  try{
+    const t=localStorage.getItem('footsim_stadium');
+    if(STADIUM_THEMES.includes(t)) window._stadiumTheme=t;
+  }catch(e){}
+})();
+
+function _stadiumPalette(theme){
+  const BASE_BOARDS=['#e63946','#f0c028','#2a9d8f','#457b9d','#ffffff'];
+  const BASE_CROWD=['#1c222c','#242b38','#161b24','#2c3444'];
+  if(theme==='classic'){
+    return { bg:'#0f2a0f', a:'#1c5f1c', b:'#217021', line:LINE, net:'rgba(255,255,255,.82)',
+      netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
+      stripes:false, snowGround:false, border:false };
+  }
+  if(theme==='synthetic'){
+    return { bg:'#0f2418', a:'#1f9d3c', b:'#24b347', line:'rgba(255,255,255,.5)', net:'rgba(255,255,255,.82)',
+      netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
+      stripes:true, snowGround:false, border:true,
+      boardCols:BASE_BOARDS, crowdShades:BASE_CROWD, crowdBg:'#0a0e14', floodlight:'rgba(255,241,201,.10)' };
+  }
+  if(theme==='snow'){
+    return { bg:'#c9d6de', a:'#eef3f6', b:'#e6edf1', wornColor:'#4f7a56', line:'rgba(22,32,45,.55)',
+      net:'rgba(30,40,55,.78)', netFaint:'rgba(30,40,55,.16)', faint:'rgba(30,40,55,.32)',
+      stripes:false, snowGround:true, border:true,
+      boardCols:['#8ecae6','#ffffff','#219ebc','#adb5bd','#e0f7ff'],
+      crowdShades:['#3a4552','#48566a','#2e3742','#55637a'], crowdBg:'#1b232c', floodlight:'rgba(210,230,255,.12)' };
+  }
+  // modern (par défaut)
+  return { bg:'#0f2a0f', a:'#1c5f1c', b:'#217021', line:LINE, net:'rgba(255,255,255,.82)',
+    netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
+    stripes:false, snowGround:false, border:true,
+    boardCols:BASE_BOARDS, crowdShades:BASE_CROWD, crowdBg:'#0a0e14', floodlight:'rgba(255,241,201,.10)' };
+}
+
+// ═══════════════════════════════════════════════════════════
 // TERRAIN PRÉ-RENDU (perf + beauté)
 // Le terrain est statique : au lieu de le redessiner à chaque frame (bandes,
 // lignes, arcs, filets…), on le peint UNE fois sur un canvas hors-écran puis
@@ -517,22 +580,49 @@ function _buildPitchCache(){
   const oc=document.createElement('canvas');
   oc.width=cvs.width; oc.height=cvs.height;
   const c=oc.getContext('2d');
+  const pal=_stadiumPalette(stadiumTheme());
+  const LINE=pal.line; // masque le const module-level pour ce build
 
   // Fond profond
-  c.fillStyle='#0f2a0f';
+  c.fillStyle=pal.bg;
   c.fillRect(0,0,oc.width,oc.height);
 
-  // ── TONTE EN DAMIER (façon stade) ──────────────────────────────────────
-  // Alternance de carrés clairs/foncés dans les deux sens plutôt que de
-  // simples bandes : rend la pelouse bien plus « vraie ». Teintes douces pour
-  // rester subtil et ne pas fatiguer l'œil.
-  const cols=10, rows=7;
-  const cw=WW/cols, chh=WH/rows;
-  for(let ix=0; ix<cols; ix++){
-    for(let iy=0; iy<rows; iy++){
-      const even=(ix+iy)%2===0;
-      c.fillStyle= even ? '#1c5f1c' : '#217021';
-      c.fillRect(wx(ix*cw), wy(iy*chh), ws(cw)+1, ws(chh)+1);
+  // ── SURFACE (damier naturel / bandes synthétiques / neige) ──────────────
+  if(pal.stripes){
+    // Pelouse synthétique : bandes tondues bien droites façon terrain synthé,
+    // plus saturées et régulières qu'une vraie pelouse.
+    const stripeCount=12, sw=WW/stripeCount;
+    for(let i=0;i<stripeCount;i++){
+      c.fillStyle= i%2===0 ? pal.a : pal.b;
+      c.fillRect(wx(i*sw), wy(0), ws(sw)+1, ws(WH)+1);
+    }
+  } else if(pal.snowGround){
+    // Terrain enneigé : surface pâle quasi uniforme + quelques plaques
+    // d'herbe usée qui perce sous la neige, pour ne pas rester trop plate.
+    c.fillStyle=pal.a; c.fillRect(wx(0),wy(0),ws(WW)+1,ws(WH)+1);
+    for(let i=0;i<16;i++){
+      c.fillStyle=pal.b; c.globalAlpha=.6;
+      c.beginPath();c.ellipse(wx(rng(0,WW)),wy(rng(0,WH)),ws(rng(3,7)),ws(rng(1.2,2.6)),rng(0,Math.PI),0,Math.PI*2);c.fill();
+      c.globalAlpha=1;
+    }
+    for(let i=0;i<9;i++){
+      c.fillStyle=pal.wornColor; c.globalAlpha=.18;
+      c.beginPath();c.ellipse(wx(rng(0,WW)),wy(rng(0,WH)),ws(rng(2,4)),ws(rng(1,2)),rng(0,Math.PI),0,Math.PI*2);c.fill();
+      c.globalAlpha=1;
+    }
+  } else {
+    // ── TONTE EN DAMIER (façon stade) ──────────────────────────────────────
+    // Alternance de carrés clairs/foncés dans les deux sens plutôt que de
+    // simples bandes : rend la pelouse bien plus « vraie ». Teintes douces pour
+    // rester subtil et ne pas fatiguer l'œil.
+    const cols=10, rows=7;
+    const cw=WW/cols, chh=WH/rows;
+    for(let ix=0; ix<cols; ix++){
+      for(let iy=0; iy<rows; iy++){
+        const even=(ix+iy)%2===0;
+        c.fillStyle= even ? pal.a : pal.b;
+        c.fillRect(wx(ix*cw), wy(iy*chh), ws(cw)+1, ws(chh)+1);
+      }
     }
   }
   // Reflet de tonte : léger dégradé vertical qui simule la lumière rasante.
@@ -556,11 +646,11 @@ function _buildPitchCache(){
     c.strokeRect(wx(left?0:WW-PA_W),wy(PCY-PA_H/2),ws(PA_W),ws(PA_H));
     const sbW=4,sbH=14;
     c.strokeRect(wx(left?0:WW-sbW),wy(PCY-sbH/2),ws(sbW),ws(sbH));
-    // But + filet
-    c.save();c.strokeStyle='rgba(255,255,255,.82)';c.lineWidth=ws(.28);
+    // But + filet (couleurs sombres sur neige pour rester lisibles sur le blanc)
+    c.save();c.strokeStyle=pal.net;c.lineWidth=ws(.28);
     const gw=2.4,gh=GY2-GY1;
     c.strokeRect(left?wx(-gw):wx(WW),wy(GY1),ws(gw),ws(gh));
-    c.strokeStyle='rgba(255,255,255,.12)';c.lineWidth=ws(.06);
+    c.strokeStyle=pal.netFaint;c.lineWidth=ws(.06);
     for(let k=0;k<=3;k++){
       const ny=GY1+(gh/3)*k;
       c.beginPath();c.moveTo(left?wx(-gw):wx(WW),wy(ny));c.lineTo(left?wx(0):wx(WW),wy(ny));c.stroke();
@@ -575,56 +665,54 @@ function _buildPitchCache(){
     c.beginPath();
     c.arc(wx(left?PSX:WW-PSX),wy(PCY),ws(7),
       left?-Math.PI*.55:Math.PI*.45, left?Math.PI*.55:Math.PI*1.55);
-    c.strokeStyle='rgba(255,255,255,.3)';c.stroke();
+    c.strokeStyle=pal.faint;c.stroke();
   });
   // Arcs de corner
   [[0,0,0,Math.PI/2],[WW,0,Math.PI/2,Math.PI],[0,WH,-Math.PI/2,0],[WW,WH,Math.PI,-Math.PI/2]].forEach(([cx,cy,a1,a2])=>{
-    c.beginPath();c.arc(wx(cx),wy(cy),ws(1),a1,a2);c.strokeStyle='rgba(255,255,255,.3)';c.lineWidth=ws(.15);c.stroke();
+    c.beginPath();c.arc(wx(cx),wy(cy),ws(1),a1,a2);c.strokeStyle=pal.faint;c.lineWidth=ws(.15);c.stroke();
   });
   c.restore();
 
   // ── AMBIANCE DE STADE (bordure autour du terrain) ───────────────────────
   // La marge entre le terrain et le bord du canvas (variable selon le ratio
-  // d'aspect de l'écran) accueillait juste le fond uni '#0f2a0f'. On y ajoute
-  // un panneau publicitaire périphérique façon LED de stade + une texture de
-  // foule discrète + des projecteurs dans les coins hauts, pour ancrer la
-  // scène dans un vrai stade. Tout est pré-calculé ici, donc gratuit à
-  // l'exécution (un seul blit par frame comme le reste du terrain).
-  (function drawStadiumBorder(){
+  // d'aspect de l'écran) accueille un panneau publicitaire périphérique façon
+  // LED de stade + une texture de foule discrète + des projecteurs dans les
+  // coins hauts, pour ancrer la scène dans un vrai stade. Absent en thème
+  // "classique" (terrain sobre d'origine, sans décor). Tout est pré-calculé
+  // ici, donc gratuit à l'exécution (un seul blit par frame comme le reste).
+  if(pal.border) (function drawStadiumBorder(){
     const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
     const leftM=px0, rightM=oc.width-px1, topM=py0, bottomM=oc.height-py1;
 
     // Bande de foule (texture de points ternes) dans les marges suffisamment
     // grandes pour être lisibles — sinon on laisse juste le fond uni.
-    const crowdBand=(x,y,w,h,vertical)=>{
+    const crowdBand=(x,y,w,h)=>{
       if(w<6||h<6)return;
       c.save();
-      c.fillStyle='#0a0e14';c.fillRect(x,y,w,h);
+      c.fillStyle=pal.crowdBg;c.fillRect(x,y,w,h);
       const n=Math.min(140, Math.floor((w*h)/18));
       for(let i=0;i<n;i++){
         const rx=x+Math.random()*w, ry=y+Math.random()*h;
-        const shade=pick(['#1c222c','#242b38','#161b24','#2c3444']);
-        c.fillStyle=shade;
+        c.fillStyle=pick(pal.crowdShades);
         const rr=rng(.6,1.6);
         c.beginPath();c.arc(rx,ry,rr,0,Math.PI*2);c.fill();
       }
       c.restore();
     };
-    crowdBand(0,0,leftM,oc.height,true);
-    crowdBand(px1,0,rightM,oc.height,true);
-    crowdBand(0,0,oc.width,topM,false);
-    crowdBand(0,py1,oc.width,bottomM,false);
+    crowdBand(0,0,leftM,oc.height);
+    crowdBand(px1,0,rightM,oc.height);
+    crowdBand(0,0,oc.width,topM);
+    crowdBand(0,py1,oc.width,bottomM);
 
     // Panneaux LED publicitaires : fine bande colorée collée au pourtour du
     // terrain (toujours visible même quand la marge est petite).
     const boardT=Math.max(3,Math.min(7,Math.min(leftM,topM,3)+3));
-    const boardCols=['#e63946','#f0c028','#2a9d8f','#457b9d','#ffffff'];
     const drawBoard=(x,y,w,h,horiz)=>{
       if(w<=0||h<=0)return;
       const n=Math.max(1,Math.round((horiz?w:h)/26));
       const step=(horiz?w:h)/n;
       for(let i=0;i<n;i++){
-        c.fillStyle=boardCols[i%boardCols.length];
+        c.fillStyle=pal.boardCols[i%pal.boardCols.length];
         if(horiz) c.fillRect(x+i*step,y,step-1,h);
         else c.fillRect(x,y+i*step,w,step-1);
       }
@@ -633,14 +721,15 @@ function _buildPitchCache(){
     drawBoard(Math.max(0,px0-2), Math.max(0,py0-boardT), (px1-px0)+4, boardT, true);
     drawBoard(Math.max(0,px0-2), py1, (px1-px0)+4, Math.min(boardT,bottomM), true);
 
-    // Projecteurs de stade : lueur chaude discrète depuis les coins hauts.
+    // Projecteurs de stade : lueur discrète depuis les coins hauts (teinte
+    // chaude en temps normal, plus froide/bleutée sous la neige).
     c.save();
     c.globalCompositeOperation='lighter';
     [[0,0],[oc.width,0]].forEach(([fx,fy])=>{
       const rad=Math.max(oc.width,oc.height)*.4;
       const fg=c.createRadialGradient(fx,fy,0,fx,fy,rad);
-      fg.addColorStop(0,'rgba(255,241,201,.10)');
-      fg.addColorStop(1,'rgba(255,241,201,0)');
+      fg.addColorStop(0,pal.floodlight);
+      fg.addColorStop(1,pal.floodlight.replace(/[\d.]+\)$/,'0)'));
       c.fillStyle=fg;c.fillRect(0,0,oc.width,oc.height);
     });
     c.restore();
@@ -658,6 +747,38 @@ function _buildPitchCache(){
   c.fillRect(0,0,oc.width,oc.height);
 
   _pitchCache=oc; _pitchW=oc.width; _pitchH=oc.height;
+}
+
+// ── NEIGE AMBIANTE (thème "snow") ────────────────────────────────────────
+// Chute de neige + vent, dessinée par-dessus le terrain, indépendante du
+// moteur de particules du match (donc active même à l'arrêt/en pause).
+let _snowFlakes=null;
+function _ensureSnowFlakes(){
+  if(_snowFlakes) return;
+  _snowFlakes=[];
+  for(let i=0;i<70;i++){
+    _snowFlakes.push({x:rng(0,WW),y:rng(0,WH),r:rng(.15,.45),sp:rng(.5,1.3),
+      sway:rng(0,Math.PI*2),swaySpd:rng(.6,1.6)});
+  }
+}
+function drawSnow(rawDt){
+  if(stadiumTheme()!=='snow') return;
+  _ensureSnowFlakes();
+  const WIND=0.7; // dérive latérale constante du vent
+  ctx.save();
+  _snowFlakes.forEach(f=>{
+    f.sway+=f.swaySpd*rawDt;
+    f.y+=f.sp*rawDt*9;
+    f.x+=(WIND+Math.sin(f.sway)*.35)*rawDt*9;
+    if(f.y>WH){ f.y=-1; f.x=rng(0,WW); }
+    if(f.x>WW+1) f.x=-1; else if(f.x<-1) f.x=WW+1;
+    const gx=wx(f.x), gy=wy(f.y);
+    if(!isFinite(gx)||!isFinite(gy))return;
+    ctx.globalAlpha=.5+Math.sin(f.sway)*.2;
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(gx,gy,ws(f.r),0,Math.PI*2);ctx.fill();
+  });
+  ctx.restore();
 }
 
 function drawPitch(){
@@ -1854,6 +1975,7 @@ function frame(ts){
   if(zooming) ctx.restore();
   drawGoalFlash(); // flash plein écran, hors transformation
   drawFlash();
+  drawSnow(rawDt);
   _gifCaptureFrame(ts);
 }
 
