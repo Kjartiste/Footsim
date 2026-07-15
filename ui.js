@@ -6462,6 +6462,8 @@ function buildCupTeams(count,savedIdxs,npcSel){
 function renderCareerV2(){
   const el = document.getElementById('career-out'); if(!el) return;
   if(!careerV2){ renderCareerV2Choice(); return; }
+  // Licencié par le board : écran de fin, plus rien d'autre n'est jouable.
+  if(careerV2.sacked && typeof _renderSackedScreen==='function'){ _renderSackedScreen(el); return; }
   // Générer les données manquantes (carrière ancienne ou migration)
   if(careerV2.type === 'director'){
     let needSave = false;
@@ -7450,6 +7452,13 @@ function _renderDirectorOverview(){
 
   let h = '';
 
+  // ── Offre d'un autre club (prioritaire : décision à prendre) ─────────
+  try{ if(typeof _renderJobOfferCard==='function') h += _renderJobOfferCard(); }catch(e){ console.error('job offer card:',e); }
+  // ── Bilan d'intersaison (retraites, progressions, jeunes) ────────────
+  try{ if(typeof _renderSquadReportCard==='function') h += _renderSquadReportCard(); }catch(e){ console.error('squad report:',e); }
+  // ── Confiance du board ───────────────────────────────────────────────
+  try{ if(typeof _renderBoardCard==='function') h += _renderBoardCard(); }catch(e){ console.error('board card:',e); }
+
   // ── Bandeau match du jour en attente ─────────────────────────────────
   if(C._pendingMatch){
     if(C._pendingMatch.cup){
@@ -7944,6 +7953,11 @@ function _renderDirectorMercato(){
 
   let h = '<div style="padding:4px">';
 
+  // ── Offres reçues pour vos joueurs (pro/semi-pro uniquement) ────────
+  if(isPro || isSemiPro){
+    try{ if(typeof _renderIncomingOffersCard==='function') h += _renderIncomingOffersCard(); }catch(e){ console.error('offers card:',e); }
+  }
+
   if(!isPro && !isSemiPro){
     // ── MODE AMATEUR (DH / R3) ──────────────────────────────────────
     h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
@@ -8124,6 +8138,9 @@ function _renderDirectorFinances(){
     });
   }
   h += '</div>';
+  // Dotations (primes de classement / subvention / coupe) — rend le système
+  // lisible avant la fin de saison plutôt qu'après coup.
+  try{ if(typeof _renderPrizesCard==='function') h += _renderPrizesCard(); }catch(e){ console.error('prizes card:',e); }
   return h;
 }
 
@@ -9111,6 +9128,12 @@ function _runWeeklySystems(){
     _checkMercatoWindow();
   }
 
+  // ── Mercato : offres entrantes pour vos joueurs ─────────────────────────
+  // Expiration d'abord (libère la place), puis génération d'une éventuelle
+  // nouvelle offre. Sans effet hors fenêtre de transfert / club amateur.
+  try{ if(typeof _boardExpireOffers==='function') _boardExpireOffers(); }catch(e){ console.error('offers expire:',e); }
+  try{ if(typeof _boardGenerateOffers==='function') _boardGenerateOffers(); }catch(e){ console.error('offers gen:',e); }
+
   _triggerRegionEvent();
   _triggerWeeklyEvent();
 
@@ -9536,6 +9559,8 @@ function _recordCareerV2MatchResult(){
   if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
   else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
   else { C.season_stats.losses++; }
+  // Confiance du board : petite variation à chaque match (silencieuse).
+  try{ if(typeof _boardOnMatch==='function') _boardOnMatch(myG, aiG); }catch(e){ console.error('board match:',e); }
 
   _updateCareerStandings(fix);
   _accumulateSeasonScorers(C);
@@ -9815,8 +9840,8 @@ function _resolveCareerCupPlayerPair(m, myG, oppG){
   if(!opp){
     // Bye : qualification directe.
     m.played = true; m.winner = me;
-    const prime = 4000 + roundIdx*3000;
-    C.club.budget += prime;
+    const prime = _prizeCupRound(roundIdx, cup.roundNames.length, 'national');
+    _prizePay(prime, cup.name+' — '+cup.roundNames[roundIdx]+' (exempt)', '#18c860');
     careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — exempt, qualification directe ! Prime '+fmtG(prime), '#18c860');
   } else {
     // Renseigner le score dans le bon sens (m.a = home).
@@ -9830,8 +9855,8 @@ function _resolveCareerCupPlayerPair(m, myG, oppG){
     m.winner = (ga>gb) ? m.a : m.b;
     const playerWon = m.winner && m.winner.isPlayer;
     if(playerWon){
-      const prime = 4000 + roundIdx*3000;
-      C.club.budget += prime;
+      const prime = _prizeCupRound(roundIdx, cup.roundNames.length, 'national');
+      _prizePay(prime, cup.name+' — '+cup.roundNames[roundIdx]+' remporté', '#18c860');
       careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+oppG+' vs '+opp.name+' ! Prime '+fmtG(prime), '#18c860');
     } else {
       cup.playerOut = true;
@@ -9900,6 +9925,8 @@ function simCareerMatchDirector(){
   if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
   else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
   else { C.season_stats.losses++; }
+  // Confiance du board : petite variation à chaque match (silencieuse).
+  try{ if(typeof _boardOnMatch==='function') _boardOnMatch(myG, aiG); }catch(e){ console.error('board match:',e); }
 
   _updateCareerStandings(fix);
 
@@ -10362,11 +10389,18 @@ function endCareerSeasonDirector(){
   // On évalue chaque contrat sponsor porteur d'un objectif sportif et on verse
   // la prime si l'objectif est atteint. `_levelBeforeSeasonEnd` est capturé au
   // début de la résolution ci-dessus (promotion/relégation modifient le level).
+  // Calculé une fois ici, réutilisé par les sponsors ET le verdict du board.
+  let _seasonPromoted = false, _seasonRelegated = false;
+  try{
+    const _b = window._levelBeforeSeasonEnd;
+    _seasonPromoted = !!(_b && C.club && C.club.level!==_b && _levelRankBetter(C.club.level, _b));
+    _seasonRelegated = !!(_b && C.club && C.club.level!==_b && !_levelRankBetter(C.club.level, _b));
+  }catch(e){}
+
   if(typeof SPONSORS!=='undefined' && C.club && C.club.sponsors){
     try{
-      const before = window._levelBeforeSeasonEnd;
-      const promoted = before && C.club.level!==before && _levelRankBetter(C.club.level, before);
-      const relegated = before && C.club.level!==before && !_levelRankBetter(C.club.level, before);
+      const promoted = _seasonPromoted;
+      const relegated = _seasonRelegated;
       const wins = (C.season_stats && C.season_stats.wins) || 0;
       const stats = { relegated:relegated, promoted:promoted, rank:myPos, wins:wins };
       SPONSORS.active(C.club).forEach(function(c){
@@ -10431,6 +10465,36 @@ function endCareerSeasonDirector(){
     if(C.history.length > 50) C.history.length = 50; // garde-fou anti-croissance infinie
   }catch(e){ console.error('archive season history:', e); }
 
+  // ── DOTATIONS DE FIN DE SAISON ──────────────────────────────────────────
+  // Pro : prime de classement (dégressive du 1er au dernier).
+  // Amateur/semi-pro : subvention annuelle (formation, licenciés, résultats).
+  try{ if(typeof _prizeOnSeasonEnd==='function') _prizeOnSeasonEnd(myPos, total); }catch(e){ console.error('season prizes:', e); }
+
+  // ── VERDICT DU BOARD ────────────────────────────────────────────────────
+  // Évalué APRÈS l'archivage de l'historique (pour que l'écran de licenciement
+  // puisse afficher le bilan complet) mais AVANT la nouvelle saison.
+  try{
+    const cupWon = !!(C.cup && C.cup.winner && C.cup.winner.isPlayer);
+    const ctx = { promoted:_seasonPromoted, relegated:_seasonRelegated,
+                  pos:myPos, total:total, cupWon:cupWon };
+    // Objectif fixé par le board en début de saison : prime + impact sur la
+    // confiance, puis régénération pour la saison à venir.
+    if(typeof _boardCheckObjectives==='function'){
+      _boardCheckObjectives({ promoted:_seasonPromoted, relegated:_seasonRelegated,
+                              rank:myPos, total:total,
+                              wins:(C.season_stats&&C.season_stats.wins)||0 });
+    }
+    if(typeof _boardOnSeasonEnd==='function') _boardOnSeasonEnd(ctx);
+    // Licenciement : on stoppe tout, la carrière s'arrête ici.
+    if(typeof _boardCheckSack==='function' && _boardCheckSack()){
+      saveCareerV2();
+      renderCareerV2();
+      return;
+    }
+    // Sinon, un autre club peut vous approcher.
+    if(typeof _boardMaybeJobOffer==='function') _boardMaybeJobOffer(ctx);
+  }catch(e){ console.error('board season end:', e); }
+
   C.season++; C.week = 1;
   C.date = {year:(C.date&&C.date.year||1)+1, month:8, day:1};
   C.seasonStartDate = null; // ré-ancrée par _generateSeasonFixtures() ci-dessous
@@ -10440,6 +10504,15 @@ function endCareerSeasonDirector(){
   // IA de gestion : les clubs adverses vieillissent, progressent/déclinent et
   // font quelques mouvements de mercato avant que la nouvelle saison démarre.
   try{ _evolveOpponentSquads(); }catch(e){ console.error('evolve opponents:',e); }
+  // VOTRE effectif vit selon les mêmes règles (vieillissement, progression,
+  // déclin, retraites) + progression des jeunes vers leur potentiel. Sans ça,
+  // seule l'IA se régénérait et votre équipe décrochait mécaniquement.
+  try{
+    if(typeof _evolvePlayerSquad==='function'){
+      const _rep = _evolvePlayerSquad();
+      if(typeof _logSquadEvolution==='function') _logSquadEvolution(_rep);
+    }
+  }catch(e){ console.error('evolve player squad:',e); }
   _generateSeasonFixtures();
   _generateFreeAgents();
   _generateYouthIntake();

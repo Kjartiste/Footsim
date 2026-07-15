@@ -971,9 +971,31 @@ function _agePlayerStats(p){
   else if(age <= profile.peakEnd)         delta = (Math.random()-0.4) * 1.5;
   else if(age <= profile.declineEnd)      delta = -(0.5 + Math.random()*1.5);
   else                                    delta = -(1.5 + Math.random()*2.5);
+
+  // ── Plafond de potentiel ──────────────────────────────────────────────
+  // Sans ça, un joueur en phase de progression grimpe indéfiniment — ce qui
+  // est particulièrement visible chez les races sans déclin (démons, anges,
+  // vampires, fées : peakEnd/declineEnd = Infinity), qui atteindraient 99
+  // partout. `_potential` devient donc un plafond souple : plus le joueur en
+  // approche, plus sa progression ralentit ; au-delà, il stagne.
+  if(delta > 0 && p._potential){
+    const cur = _squadOvr(p);
+    const room = p._potential - cur;
+    if(room <= 0)      delta = 0;                       // potentiel atteint : palier
+    else if(room < 10) delta *= Math.max(0.1, room/10); // approche : ça freine
+  }
+
+  if(delta === 0) return;
   Object.keys(p.s).forEach(function(k){
     p.s[k] = Math.max(1, Math.min(99, Math.round(p.s[k] + delta + (Math.random()-0.5)*2)));
   });
+}
+
+// Overall d'un joueur, indépendant de l'UI (save.js est chargé avant ui.js).
+function _squadOvr(p){
+  const s = p && p.s; if(!s) return 0;
+  const v = Object.values(s);
+  return v.length ? Math.round(v.reduce(function(a,b){ return a+b; },0)/v.length) : 0;
 }
 
 // Génère un joueur de remplacement (retraite ou petit mouvement de mercato)
@@ -1546,6 +1568,7 @@ function _advanceLeagueCup(){
       if((m.a&&m.a.isPlayer)||(m.b&&m.b.isPlayer)){
         const win=res.winner.isPlayer;
         careerLog('🏵️ '+lc.name+' ('+lc.roundNames[roundIdx]+') — '+(win?'VICTOIRE !':'élimination.'), win?'#18c860':'#e06060');
+        if(win){ try{ _prizePay(_prizeCupRound(roundIdx, lc.roundNames.length, 'league'), lc.name+' — '+lc.roundNames[roundIdx]+' remporté', '#18c860'); }catch(e){} }
         if(!win) lc.playerOut=true;
       }
     }
@@ -1553,7 +1576,7 @@ function _advanceLeagueCup(){
   lc.round++;
   if(survivors.length<=1){
     lc.winner=survivors[0]||null;
-    if(lc.winner&&lc.winner.isPlayer){ C.club.budget+=15000; C.club.reputation=Math.min(100,(C.club.reputation||0)+5); careerLog('🏵️ VOUS REMPORTEZ LA '+lc.name.toUpperCase()+' ! Prime 🪙15K, réputation +5 !','#f0c028'); }
+    if(lc.winner&&lc.winner.isPlayer){ const lcp=_prizeCupTitle('league'); _prizePay(lcp, '🏵️ Vainqueur de la '+lc.name, '#f0c028'); C.club.reputation=Math.min(100,(C.club.reputation||0)+5); careerLog('🏵️ VOUS REMPORTEZ LA '+lc.name.toUpperCase()+' ! Prime '+fmtG(lcp)+', réputation +5 !','#f0c028'); }
     else if(lc.winner){ careerLog('🏵️ '+lc.name+' remportée par '+lc.winner.name+'.','#f0c028'); }
   } else {
     lc.bracket=_cupPairUp(survivors);
@@ -1708,12 +1731,12 @@ function _advanceNationalCup(force){
       const myG = m.a&&m.a.isPlayer?res.ga:res.gb, opG = m.a&&m.a.isPlayer?res.gb:res.ga;
       if(win && !opp){
         // Tour exempt (bye) : qualification directe, pas d'adversaire ni de score.
-        const prime = 4000 + roundIdx*3000;
-        C.club.budget += prime;
+        const prime = _prizeCupRound(roundIdx, cup.roundNames.length, 'national');
+        _prizePay(prime, cup.name+' — '+cup.roundNames[roundIdx]+' (exempt)', '#18c860');
         careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — exempt, qualification directe ! Prime '+fmtG(prime), '#18c860');
       } else if(win){
-        const prime = 4000 + roundIdx*3000;
-        C.club.budget += prime;
+        const prime = _prizeCupRound(roundIdx, cup.roundNames.length, 'national');
+        _prizePay(prime, cup.name+' — '+cup.roundNames[roundIdx]+' remporté', '#18c860');
         careerLog('🏆 '+cup.name+' ('+cup.roundNames[roundIdx]+') — VICTOIRE '+myG+'-'+opG+' vs '+(opp?opp.name:'?')+' ! Prime '+fmtG(prime), '#18c860');
       } else {
         cup.playerOut=true;
@@ -1732,11 +1755,19 @@ function _finalizeCupRound(C, cup, survivors){
   if(survivors.length<=1){
     cup.winner = survivors[0] || null;
     if(cup.winner && cup.winner.isPlayer){
-      const prize=30000;
-      C.club.budget += prize;
+      const prize=_prizeCupTitle('national');
+      _prizePay(prize, '👑 Vainqueur de la '+cup.name, '#f0c028');
       C.club.reputation = Math.min(100, (C.club.reputation||0)+10);
       careerLog('👑 VOUS REMPORTEZ LA '+cup.name.toUpperCase()+' ! Prime '+fmtG(prize)+', réputation +10 !', '#f0c028');
     } else if(cup.winner){
+      // Finaliste malheureux : le joueur a perdu la finale → prime de finaliste.
+      try{
+        if(cup.playerOut && cup.round>=cup.roundNames.length){
+          const runner=_prizeRound(_prizeBase(C.club.level)*PRIZES.CUP_FINAL_WEEKS);
+          _prizePay(runner, 'Finaliste de la '+cup.name, '#f0c028');
+          C.club.reputation = Math.min(100, (C.club.reputation||0)+4);
+        }
+      }catch(e){ console.error('runner-up prize:',e); }
       careerLog('🏆 '+cup.name+' remportée par '+cup.winner.name+'.', '#f0c028');
     }
   } else {
@@ -1897,7 +1928,7 @@ function _advanceHouseCup(){
     if((hc.rrFixtures||[]).every(function(f){ return f.played; })){
       const sorted = hc.rrStandings.slice().sort(function(x,y){ return y.Pts-x.Pts || (y.GF-y.GA)-(x.GF-x.GA); });
       hc.winner = hc.teams[sorted[0].idx];
-      if(hc.winner.isPlayer){ C.club.budget+=3000; careerLog('🏛 VOUS REMPORTEZ LE CHAMPIONNAT DE LA MAISON '+hc.house.toUpperCase()+' ! Prime 🪙3K.', '#f0c028'); }
+      if(hc.winner.isPlayer){ const hp=_prizeCupTitle('house'); _prizePay(hp, '🏛 Vainqueur du championnat de la Maison '+hc.house, '#f0c028'); careerLog('🏛 VOUS REMPORTEZ LE CHAMPIONNAT DE LA MAISON '+hc.house.toUpperCase()+' ! Prime '+fmtG(hp)+'.', '#f0c028'); }
       else careerLog('🏛 Championnat de la Maison '+hc.house+' remporté par '+hc.winner.name+'.', '#c060e0');
     }
     return;
@@ -1922,7 +1953,7 @@ function _advanceHouseCup(){
   hc.round++;
   if(survivors.length <= 1){
     hc.winner = survivors[0] || null;
-    if(hc.winner && hc.winner.isPlayer){ C.club.budget+=3000; careerLog('🏛 VOUS REMPORTEZ LA COUPE DE LA MAISON '+hc.house.toUpperCase()+' ! Prime 🪙3K.', '#f0c028'); }
+    if(hc.winner && hc.winner.isPlayer){ const hp=_prizeCupTitle('house'); _prizePay(hp, '🏛 Vainqueur de la Coupe de la Maison '+hc.house, '#f0c028'); careerLog('🏛 VOUS REMPORTEZ LA COUPE DE LA MAISON '+hc.house.toUpperCase()+' ! Prime '+fmtG(hp)+'.', '#f0c028'); }
     else if(hc.winner) careerLog('🏛 Coupe de la Maison '+hc.house+' remportée par '+hc.winner.name+'.', '#c060e0');
   } else {
     hc.bracket = _cupPairUp(survivors);
