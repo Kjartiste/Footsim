@@ -572,9 +572,11 @@ function _stadiumSelectorHTML(){
     {id:'modern',    label:'✨ MODERNE',          sub:'tribunes & LED',       col:'#18c860'},
     {id:'synthetic', label:'🟩 SYNTHÉTIQUE',     sub:'pelouse artificielle', col:'#2a9d8f'},
     {id:'snow',      label:'❄️ NEIGE',           sub:'hiver & vent',         col:'#8ecae6'},
-    {id:'greek',     label:'🏛 GRÈCE ANTIQUE',   sub:'marbre & or',          col:'#c9a05a'},
+    {id:'greek',     label:'🏛 GRÈCE ANTIQUE',   sub:'sol en marbre',        col:'#c9a05a'},
     {id:'forest',    label:'🌲 FORÊT',           sub:'clairière boisée',     col:'#2e7d32'},
     {id:'bamboo',    label:'🎋 BAMBOU',          sub:'bambouseraie',         col:'#8fbf3f'},
+    {id:'handball',  label:'🤾 HANDBALL',        sub:'parquet de salle',     col:'#c9975f'},
+    {id:'city',      label:'🏙 CITY-STADE',      sub:'bitume urbain',        col:'#5a6068'},
   ];
   let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
   opts.forEach(o=>{
@@ -656,7 +658,7 @@ function renderSettings(){
   const stadeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Style de terrain</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      L'ambiance du terrain pendant les matchs : sobre, avec tribunes et panneaux LED, pelouse synthétique, hiver enneigé (avec vent), grèce antique, clairière boisée, ou bambouseraie.
+      L'ambiance du terrain pendant les matchs : sobre, avec tribunes et panneaux LED, pelouse synthétique, hiver enneigé (avec vent), sol en marbre façon Grèce antique, clairière boisée, bambouseraie, parquet de handball, ou city-stade en bitume.
     </div>
     ${_stadiumSelectorHTML()}
   `);

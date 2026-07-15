@@ -504,17 +504,20 @@ const INK_COL='#12161c';
 
 // ═══════════════════════════════════════════════════════════
 // THÈME DE STADE / TERRAIN
-// 7 styles sélectionnables (avant-match, réglages, carrière > infra) :
+// 9 styles sélectionnables (avant-match, réglages, carrière > infra) :
 //  - classic   : terrain sobre d'origine, sans tribunes ni panneaux.
 //  - modern    : tribunes texturées, panneaux LED, projecteurs.
 //  - synthetic : pelouse synthétique (bandes tondues bien droites, vert vif).
 //  - snow      : terrain enneigé, lignes assombries pour rester lisibles,
 //                + chute de neige/vent en overlay (voir drawSnow()).
-//  - greek     : ambiance grèce antique, tons marbre/or, panneaux terracotta.
+//  - greek     : sol en marbre façon Grèce antique, veines grises/or, PAS de
+//                pelouse — surface dallée claire.
 //  - forest    : clairière très boisée, verts profonds, panneaux bois.
 //  - bamboo    : bambouseraie, bandes vert/jaune façon tiges de bambou.
+//  - handball  : parquet bois façon salle de handball, lattes claires/foncées.
+//  - city      : city-stade urbain, bitume/béton, marquages au sol colorés.
 // ═══════════════════════════════════════════════════════════
-const STADIUM_THEMES=['classic','modern','synthetic','snow','greek','forest','bamboo'];
+const STADIUM_THEMES=['classic','modern','synthetic','snow','greek','forest','bamboo','handball','city'];
 function stadiumTheme(){
   const t=window._stadiumTheme;
   return STADIUM_THEMES.includes(t)?t:'modern';
@@ -562,11 +565,12 @@ function _stadiumPalette(theme){
       crowdShades:['#3a4552','#48566a','#2e3742','#55637a'], crowdBg:'#1b232c', floodlight:'rgba(210,230,255,.12)' };
   }
   if(theme==='greek'){
-    // Grèce antique : pelouse à peine dorée par un soleil couchant, lignes
-    // marbre blanc, panneaux terracotta/or façon colonnades et amphores.
-    return { bg:'#1c1608', a:'#3c6b2e', b:'#4a7d38', line:'rgba(250,244,224,.9)',
-      net:'rgba(250,244,224,.85)', netFaint:'rgba(250,244,224,.14)', faint:'rgba(250,244,224,.32)',
-      stripes:false, snowGround:false, border:true,
+    // Grèce antique : PAS de pelouse — un sol dallé en marbre clair, veiné
+    // de gris et d'or, façon péristyle antique. Lignes de jeu tracées en
+    // noir/or dessus, panneaux terracotta/or, projecteurs chauds.
+    return { bg:'#1c1608', a:'#e8e2d4', b:'#d8d0bc', line:'rgba(30,26,18,.75)',
+      net:'rgba(30,26,18,.75)', netFaint:'rgba(30,26,18,.14)', faint:'rgba(30,26,18,.35)',
+      stripes:false, snowGround:false, marble:true, veinCol:'rgba(160,140,90,.5)', border:true,
       boardCols:['#c9a05a','#e8d9b0','#a8542f','#8c6b3f','#f0e4c0'],
       crowdShades:['#3a2f1e','#4a3c26','#2e2517','#57472c'], crowdBg:'#140f08',
       floodlight:'rgba(255,214,140,.14)' };
@@ -590,6 +594,26 @@ function _stadiumPalette(theme){
       boardCols:['#e8e0a8','#8fbf3f','#d9c96a','#4f9a3f','#f2edc8'],
       crowdShades:['#2a3a20','#35472a','#213018','#3e4f2c'], crowdBg:'#101c0e',
       floodlight:'rgba(230,244,180,.12)' };
+  }
+  if(theme==='handball'){
+    // Salle de handball : parquet bois clair/foncé en lattes, lignes de jeu
+    // rouge façon vraie salle, panneaux publicitaires classiques indoor.
+    return { bg:'#1a1410', a:'#c9975f', b:'#b8804a', line:'rgba(178,34,34,.85)',
+      net:'rgba(240,240,240,.85)', netFaint:'rgba(240,240,240,.14)', faint:'rgba(30,60,140,.5)',
+      stripes:false, snowGround:false, parquet:true, border:true,
+      boardCols:['#e63946','#1d3557','#f0c028','#ffffff','#2a9d8f'],
+      crowdShades:['#241a12','#2e2216','#1c140d','#37291a'], crowdBg:'#120d09',
+      floodlight:'rgba(255,244,214,.14)' };
+  }
+  if(theme==='city'){
+    // City-stade urbain : bitume/béton craquelé, marquages au sol défraîchis,
+    // grillage et graffitis en panneaux périphériques.
+    return { bg:'#15171a', a:'#5a6068', b:'#4c5158', line:'rgba(240,224,90,.7)',
+      net:'rgba(200,200,200,.7)', netFaint:'rgba(200,200,200,.1)', faint:'rgba(240,224,90,.28)',
+      stripes:false, snowGround:false, city:true, border:true,
+      boardCols:['#e63946','#f0c028','#2a9d8f','#8840e0','#ff8a3d'],
+      crowdShades:['#202226','#2a2c30','#1a1c1f','#34363a'], crowdBg:'#101113',
+      floodlight:'rgba(220,230,255,.10)' };
   }
   // modern (par défaut)
   return { bg:'#0f2a0f', a:'#1c5f1c', b:'#217021', line:LINE, net:'rgba(255,255,255,.82)',
@@ -620,8 +644,81 @@ function _buildPitchCache(){
   c.fillStyle=pal.bg;
   c.fillRect(0,0,oc.width,oc.height);
 
-  // ── SURFACE (damier naturel / bandes synthétiques / neige) ──────────────
-  if(pal.stripes){
+  // ── SURFACE (damier naturel / bandes synthétiques / neige / autres sols) ─
+  if(pal.marble){
+    // Marbre (Grèce antique) : dallage clair en larges dalles carrées avec
+    // léger jointoiement, puis un réseau de veines fines pour casser la
+    // platitude — aucune pelouse, aucune texture verte.
+    c.fillStyle=pal.a; c.fillRect(wx(0),wy(0),ws(WW)+1,ws(WH)+1);
+    const tileN=6, tw=WW/tileN, th=WH/4;
+    for(let ix=0; ix<tileN; ix++){
+      for(let iy=0; iy<4; iy++){
+        if((ix+iy)%2===0){
+          c.fillStyle=pal.b;
+          c.fillRect(wx(ix*tw), wy(iy*th), ws(tw)+1, ws(th)+1);
+        }
+      }
+    }
+    c.save();
+    c.strokeStyle=pal.veinCol||'rgba(160,140,90,.5)'; c.lineWidth=ws(.05);
+    for(let i=0;i<26;i++){
+      let x=rng(0,WW), y=rng(0,WH);
+      c.beginPath();c.moveTo(wx(x),wy(y));
+      const segs=Math.floor(rng(2,4));
+      for(let s=0;s<segs;s++){
+        x+=rng(-6,6); y+=rng(-4,4);
+        c.lineTo(wx(x),wy(y));
+      }
+      c.globalAlpha=rng(.4,.9);
+      c.stroke();
+    }
+    c.globalAlpha=1;
+    c.restore();
+    // Jointoiement des dalles (fines lignes grises entre les carreaux)
+    c.save();
+    c.strokeStyle='rgba(90,80,60,.25)'; c.lineWidth=ws(.04);
+    for(let ix=1; ix<tileN; ix++){ c.beginPath();c.moveTo(wx(ix*tw),wy(0));c.lineTo(wx(ix*tw),wy(WH));c.stroke(); }
+    for(let iy=1; iy<4; iy++){ c.beginPath();c.moveTo(wx(0),wy(iy*th));c.lineTo(wx(WW),wy(iy*th));c.stroke(); }
+    c.restore();
+  } else if(pal.parquet){
+    // Parquet (salle de handball) : lattes de bois horizontales, décalées en
+    // quinconce comme un vrai plancher de salle, alternance de teintes.
+    const rowH=WH/14;
+    for(let iy=0; iy<14; iy++){
+      const offset = (iy%2===0) ? 0 : WW*0.045;
+      const plankW=WW*0.09;
+      let x=-offset;
+      let k=0;
+      while(x<WW){
+        c.fillStyle = k%2===0 ? pal.a : pal.b;
+        c.fillRect(wx(x), wy(iy*rowH), ws(Math.min(plankW,WW-x))+1, ws(rowH)+1);
+        c.strokeStyle='rgba(60,40,20,.25)'; c.lineWidth=ws(.03);
+        c.strokeRect(wx(x), wy(iy*rowH), ws(Math.min(plankW,WW-x)), ws(rowH));
+        x+=plankW; k++;
+      }
+    }
+  } else if(pal.city){
+    // City-stade : bitume/béton gris avec grain fin + quelques fissures et
+    // taches d'usure, aucune texture organique.
+    c.fillStyle=pal.a; c.fillRect(wx(0),wy(0),ws(WW)+1,ws(WH)+1);
+    for(let i=0;i<220;i++){
+      c.fillStyle= Math.random()<0.5 ? pal.b : 'rgba(0,0,0,.12)';
+      c.globalAlpha=rng(.2,.5);
+      const rx=rng(0,WW), ry=rng(0,WH);
+      c.fillRect(wx(rx), wy(ry), ws(rng(.3,1)), ws(rng(.3,1)));
+    }
+    c.globalAlpha=1;
+    c.save();
+    c.strokeStyle='rgba(0,0,0,.3)'; c.lineWidth=ws(.04);
+    for(let i=0;i<6;i++){
+      let x=rng(0,WW), y=rng(0,WH);
+      c.beginPath();c.moveTo(wx(x),wy(y));
+      const segs=Math.floor(rng(3,6));
+      for(let s=0;s<segs;s++){ x+=rng(-8,8); y+=rng(-5,5); c.lineTo(wx(x),wy(y)); }
+      c.stroke();
+    }
+    c.restore();
+  } else if(pal.stripes){
     // Pelouse synthétique : bandes tondues bien droites façon terrain synthé,
     // plus saturées et régulières qu'une vraie pelouse.
     const stripeCount=12, sw=WW/stripeCount;
