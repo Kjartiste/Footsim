@@ -2726,6 +2726,15 @@ function goalScored(scorer,ati,goalX,assister){
   G.flash=1;G.flashCol=teams[scoringTeam].color;
   const assistTxt=assister&&assister!==scorer?` (assist: ${assister.name})`:'';
   logEvent(`⚽ BUT ! ${scorer.name} marque pour ${teams[scoringTeam].name}${assistTxt}`,teams[scoringTeam].color);
+  // Découplé exprès de record.js : un simple événement DOM, écouté ou non
+  // selon qu'un enregistrement est en cours. Si record.js n'est pas chargé
+  // ou n'écoute pas, cette ligne ne fait rigoureusement rien.
+  try{
+    window.dispatchEvent(new CustomEvent('footsim:goal',{detail:{
+      team:scoringTeam, scorer:scorer.name,
+      assister:(assister&&assister!==scorer)?assister.name:null
+    }}));
+  }catch(e){}
   freeB();
   G.running=false;
   G._celebrating=true;
