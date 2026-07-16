@@ -86,17 +86,58 @@
     }
   }
 
+  // `alert()` est silencieusement avalé dans pas mal de contextes (webview
+  // intégrée, prévisualisation en iframe, navigateur in-app) : le clic ne
+  // produit alors STRICTEMENT AUCUN retour visible, ce qui ressemble à un
+  // bouton mort. On affiche donc systématiquement le message dans une
+  // bulle attachée au bouton, en plus (pas à la place) d'un log console.
+  let msgTimeout=null;
+  function showMsg(text){
+    console.warn('[record.js]',text);
+    const btn=document.getElementById('rec-btn');
+    if(!btn) return;
+    let bubble=document.getElementById('rec-msg');
+    if(!bubble){
+      bubble=document.createElement('div');
+      bubble.id='rec-msg';
+      (btn.parentNode||document.body).appendChild(bubble);
+    }
+    bubble.textContent=text;
+    bubble.classList.add('rec-msg-show');
+    clearTimeout(msgTimeout);
+    msgTimeout=setTimeout(()=>bubble.classList.remove('rec-msg-show'),4500);
+  }
+
+  // Détection des capacités, faite une fois pour toutes : si l'enregistrement
+  // n'est de toute façon pas possible sur ce navigateur, le bouton est
+  // grisé dès le chargement plutôt que de laisser l'utilisateur cliquer
+  // dans le vide en pensant que rien ne s'est passé.
+  function checkSupport(){
+    const btn=document.getElementById('rec-btn');
+    if(!btn) return;
+    const cvs=document.getElementById('cvs');
+    let reason=null;
+    if(!cvs) reason='Canvas introuvable.';
+    else if(typeof cvs.captureStream!=='function') reason='Ce navigateur ne prend pas en charge l\'enregistrement du canvas (captureStream indisponible).';
+    else if(!pickMime()) reason='Aucun format vidéo supporté par ce navigateur (MediaRecorder indisponible).';
+    if(reason){
+      btn.disabled=true;
+      btn.classList.add('rec-disabled');
+      btn.title='Enregistrement indisponible : '+reason;
+    }
+  }
+
   function startRecording(){
     if(recorder && recorder.state==='recording') return stopRecording();
     const cvs=document.getElementById('cvs');
-    if(!cvs){ alert('Canvas introuvable.'); return; }
+    if(!cvs){ showMsg('Canvas introuvable.'); return; }
     if(typeof cvs.captureStream!=='function'){
-      alert('Ce navigateur ne prend pas en charge l\'enregistrement du canvas (captureStream indisponible).');
+      showMsg('Ce navigateur ne prend pas en charge l\'enregistrement du canvas (captureStream indisponible).');
       return;
     }
     const choice=pickMime();
     if(!choice){
-      alert('Aucun format vidéo supporté par ce navigateur (MediaRecorder indisponible).');
+      showMsg('Aucun format vidéo supporté par ce navigateur (MediaRecorder indisponible).');
       return;
     }
     outExt=choice.ext;
@@ -111,7 +152,7 @@
       recorder=new MediaRecorder(stream,{mimeType:choice.mime,videoBitsPerSecond:6_000_000});
     }catch(e){
       window._recLocked=false;
-      alert('Impossible de démarrer l\'enregistrement : '+e.message);
+      showMsg('Impossible de démarrer l\'enregistrement : '+e.message);
       return;
     }
     recorder.ondataavailable=e=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
@@ -169,4 +210,11 @@
   window.addEventListener('beforeunload',()=>{
     if(recorder && recorder.state==='recording') recorder.stop();
   });
+
+  // Vérifie les capacités dès que le DOM (donc le bouton #rec-btn) existe.
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',checkSupport);
+  } else {
+    checkSupport();
+  }
 })();

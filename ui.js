@@ -672,10 +672,31 @@ function renderSettings(){
       <button onclick="setTheme('light')" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid ${themeNow==='light'?'var(--gold)':'var(--b1)'};background:${themeNow==='light'?'rgba(240,192,40,.14)':'var(--dark)'};color:${themeNow==='light'?'var(--gold)':'var(--muted)'};font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">☀️ CLAIR</button>
     </div>
   `);
+  const diffNow = difficultyLevel();
+  const diffBtn = (id) => {
+    const d = DIFFICULTY_LEVELS[id];
+    const on = diffNow===id;
+    return `<button onclick="setDifficultyLevel('${id}')" style="flex:1;padding:10px 4px;border-radius:10px;cursor:pointer;border:2px solid ${on?'var(--gold)':'var(--b1)'};background:${on?'rgba(240,192,40,.14)':'var(--dark)'};color:${on?'var(--gold)':'var(--muted)'}">
+      <div style="font-size:12px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;white-space:nowrap">${d.label}</div>
+    </button>`;
+  };
+  const diffCard = card(`
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Difficulté IA</div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      Règle directement la force des adversaires en carrière (championnat, coupes, amicaux, barrages). L'effet est appliqué aux stats adverses — tu le vois tout de suite dans l'OVR affiché à l'avant-match.
+    </div>
+    <div style="display:flex;gap:6px">
+      ${diffBtn('easy')}${diffBtn('normal')}${diffBtn('hard')}${diffBtn('legend')}
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin-top:10px;padding:7px 9px;background:var(--panel);border:1px solid var(--b1);border-radius:6px">
+      ${DIFFICULTY_LEVELS[diffNow].desc}
+    </div>
+  `);
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
     ${themeCard}
     ${stadeCard}
+    ${diffCard}
     ${textSizeCard}
     ${modeCard}
     ${camCard}
@@ -1305,6 +1326,28 @@ function showPreMatch(onStart){
 
     let h='<div style="background:var(--dark,#050e1a);border-radius:14px;overflow:hidden;font-family:sans-serif">';
 
+    // ── Badge Domicile / Extérieur ───────────────────────────────────────
+    // En carrière, un match sur deux se joue chez l'adversaire (calendrier
+    // aller-retour). Sans indication claire, le joueur a l'impression de
+    // toujours jouer à domicile puisque teams[0] reste toujours "son" équipe
+    // en interne. On affiche donc ici le vrai statut du match (fixture
+    // carrière) et on inverse l'ordre d'affichage à l'extérieur pour que
+    // l'équipe qui reçoit soit toujours du côté gauche, comme à la TV.
+    const _fix = window._careerFixPlaying;
+    const isAway = !!(_fix && _fix.homeIsPlayer===false);
+    const isCareerMatch = !!(_fix && (_fix.homeIsPlayer===true || _fix.homeIsPlayer===false));
+    if(isCareerMatch){
+      const awayTxt = isAway ? '✈️ MATCH À L\'EXTÉRIEUR' : '🏠 MATCH À DOMICILE';
+      const awayCol = isAway ? '#f0c028' : '#18c860';
+      const awaySub = isAway ? 'Vous jouez chez '+T1.name : 'Vous recevez '+T1.name;
+      const diffI = (typeof difficultyInfo==='function') ? difficultyInfo() : null;
+      h+='<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;background:'+awayCol+'18;border-bottom:1px solid '+awayCol+'33;flex-wrap:wrap">'
+        +'<span style="font-size:10px;font-weight:900;letter-spacing:.5px;color:'+awayCol+'">'+awayTxt+'</span>'
+        +'<span style="font-size:9px;color:var(--muted)">— '+awaySub+'</span>'
+        +(diffI ? '<span style="font-size:9px;font-weight:700;color:var(--muted);border-left:1px solid '+awayCol+'44;padding-left:6px;margin-left:2px" title="'+diffI.desc.replace(/"/g,'&quot;')+'">'+diffI.label+'</span>' : '')
+        +'</div>';
+    }
+
     // Tabs
     h+='<div style="display:flex;border-bottom:1px solid #111">'
       +'<button id="pm-tab-match" onclick="pmTab(\'match\')" style="flex:1;background:var(--card);border:none;color:var(--text);font-size:10px;font-weight:700;padding:8px 4px;cursor:pointer;border-bottom:2px solid #18c860">📊 Match</button>'
@@ -1315,11 +1358,18 @@ function showPreMatch(onStart){
 
     // Tab match
     h+='<div id="pm-panel-match">';
-    // Header
+    // Header — l'équipe qui REÇOIT s'affiche toujours à gauche (comme à la
+    // TV), même si en interne teams[0] reste toujours l'équipe du joueur.
     h+='<div style="background:linear-gradient(135deg,'+T0.color+'22,transparent 40%,'+T1.color+'22);padding:20px 16px 14px;display:flex;align-items:center;gap:8px">';
-    h+=col(T0,o0,hm0,fm0,b0);
-    h+='<div style="flex-shrink:0;font-size:22px;font-weight:900;color:#444;letter-spacing:3px">VS</div>';
-    h+=col(T1,o1,hm1,fm1,b1);
+    if(isAway){
+      h+=col(T1,o1,hm1,fm1,b1);
+      h+='<div style="flex-shrink:0;font-size:22px;font-weight:900;color:#444;letter-spacing:3px">VS</div>';
+      h+=col(T0,o0,hm0,fm0,b0);
+    } else {
+      h+=col(T0,o0,hm0,fm0,b0);
+      h+='<div style="flex-shrink:0;font-size:22px;font-weight:900;color:#444;letter-spacing:3px">VS</div>';
+      h+=col(T1,o1,hm1,fm1,b1);
+    }
     h+='</div>';
     // Stat bars
     h+='<div style="padding:12px 16px 8px;border-top:1px solid #111">';
@@ -1983,9 +2033,13 @@ function syncHUD(){
       // Suffixe « 🤖 IA » si cette équipe est pilotée par le coach IA (adversaire).
       const aiManaged = Array.isArray(G._humanTeams) && G._humanTeams[+i]===false;
       const suffix = aiManaged ? ' 🤖' : '';
+      // Petit repère 🏠/✈️ sur l'équipe du joueur (team 0) en carrière, pour
+      // rappeler qu'un match sur deux se joue à l'extérieur.
+      const _fix = window._careerFixPlaying;
+      const homePrefix = (i==='0' && _fix && _fix.homeIsPlayer===false) ? '✈️ ' : '';
       const span=nameEl.querySelector('span');
-      if(span){[...nameEl.childNodes].forEach(n=>{if(n.nodeType===3)n.remove();});nameEl.appendChild(document.createTextNode(T.name+suffix));}
-      else nameEl.textContent=T.name+suffix;
+      if(span){[...nameEl.childNodes].forEach(n=>{if(n.nodeType===3)n.remove();});nameEl.appendChild(document.createTextNode(homePrefix+T.name+suffix));}
+      else nameEl.textContent=homePrefix+T.name+suffix;
       if(aiManaged) nameEl.title='Équipe gérée par le coach IA (mentalité et changements automatiques)';
       else nameEl.removeAttribute('title');
     }
@@ -7039,13 +7093,13 @@ function renderCareerDirector(el){
   const budget = club.budget;
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
-  const tabs = ['overview','squad','mercato','finances','sponsors','infra','staff','calendar'];
+  const tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar'];
   // Onglet Réserves : seulement si le club a des équipes affiliées.
   if(C.affiliates && C.affiliates.length) tabs.push('affiliates');
   // Onglet Historique : seulement une fois qu'au moins une saison est archivée.
   if(C.history && C.history.length) tabs.push('history');
   const tabLabels = {
-    overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato',
+    overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato', academy:'🌱 Académie',
     finances:'💰 Finances', sponsors:'🤝 Sponsors', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
     affiliates:'🏛 Réserves', history:'📜 Historique'
   };
@@ -7165,6 +7219,7 @@ function renderCareerDirectorTab(tab){
   if(tab==='overview') el.innerHTML = _renderDirectorOverview();
   else if(tab==='squad') el.innerHTML = _renderDirectorSquad();
   else if(tab==='mercato') el.innerHTML = _renderDirectorMercato();
+  else if(tab==='academy') el.innerHTML = _renderDirectorAcademy();
   else if(tab==='finances') el.innerHTML = _renderDirectorFinances();
   else if(tab==='sponsors') el.innerHTML = _renderDirectorSponsors();
   else if(tab==='infra') el.innerHTML = _renderDirectorInfra();
@@ -7502,6 +7557,17 @@ function _renderDirectorOverview(){
 
   // ── Offre d'un autre club (prioritaire : décision à prendre) ─────────
   try{ if(typeof _renderJobOfferCard==='function') h += _renderJobOfferCard(); }catch(e){ console.error('job offer card:',e); }
+  // ── Pépite en attente à l'académie (visibilité — facile à manquer) ──
+  try{
+    const _gem = (C.youthPool||[]).find(function(p){ return p && p._isPotentialPro; });
+    if(_gem){
+      h += '<div style="background:rgba(156,39,176,.12);border:1px solid #9c27b0;border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="renderCareerDirectorTab(\'academy\')">';
+      h += '<div style="font-size:20px">💎</div>';
+      h += '<div style="flex:1"><div style="font-size:11px;font-weight:900;color:#c99cf0">Pépite à l\'académie !</div>';
+      h += '<div style="font-size:9px;color:var(--muted)">' + _gem.name + ' (' + _gem.pos + ') a un potentiel professionnel — à promouvoir ou vendre dans l\'onglet 🌱 Académie.</div></div>';
+      h += '</div>';
+    }
+  }catch(e){}
   // ── Bilan d'intersaison (retraites, progressions, jeunes) ────────────
   try{ if(typeof _renderSquadReportCard==='function') h += _renderSquadReportCard(); }catch(e){ console.error('squad report:',e); }
   // ── Confiance du board ───────────────────────────────────────────────
@@ -8046,31 +8112,6 @@ function _renderDirectorMercato(){
     }
     h += '</div>';
 
-    // Académie jeunes
-    h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
-    h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px">🎓 Jeunes du club</div>';
-    const youth = C.youthPool || [];
-    if(youth.length === 0){
-      h += '<div style="font-size:9px;color:var(--muted)">Pas encore de jeunes. Ils arrivent en début de saison.</div>';
-    } else {
-      youth.forEach(function(p, i){
-        const vals = Object.values(p.s||{});
-        const ovr = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length) : 10;
-        const pot = p._potential || ovr;
-        const potCol = pot >= 70 ? '#9c27b0' : pot >= 50 ? '#f0c028' : pot >= 35 ? '#18c860' : '#888';
-        h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)">';
-        h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + p.pos + '</div>';
-        h += '<div style="flex:1"><div style="font-size:10px;font-weight:700">' + p.name + (p._isPotentialPro?' <span style="color:#9c27b0">💎 PÉPITE</span>':'') + '</div>';
-        h += '<div style="font-size:8px;color:var(--muted)">OVR actuel : ' + ovr + ' · Potentiel : <span style="color:' + potCol + '">' + pot + '</span></div></div>';
-        h += '<button class="btn btng" onclick="promoteYouth(' + i + ')" style="font-size:8px;padding:2px 6px">↑ Promouvoir</button>';
-        if(p._isPotentialPro){
-          h += '<button class="btn" onclick="sellYouthPro(' + i + ')" style="font-size:8px;padding:2px 6px;color:#9c27b0;border-color:#9c27b0">💰 Vendre</button>';
-        }
-        h += '</div>';
-      });
-    }
-    h += '</div>';
-
   } else if(isSemiPro){
     // ── MODE SEMI-PRO (R1 / R2) ────────────────────────────────────
     h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
@@ -8134,7 +8175,7 @@ function promoteYouth(idx){
   careerV2.youthPool.splice(idx, 1);
   logEvent('🎓 ' + p.name + ' intègre l\'équipe première !', '#18c860');
   saveCareerV2();
-  renderCareerDirectorTab('mercato');
+  renderCareerDirectorTab('academy');
 }
 
 function sellYouthPro(idx){
@@ -8148,7 +8189,7 @@ function sellYouthPro(idx){
   careerV2.youthPool.splice(idx, 1);
   logEvent('💰 ' + p.name + ' vendu à un club professionnel pour 🪙 ' + _fmtMoney(fee) + ' !', '#9c27b0');
   saveCareerV2();
-  renderCareerDirectorTab('mercato');
+  renderCareerDirectorTab('academy');
 }
 
 function refreshFreeAgents(){
@@ -8158,6 +8199,80 @@ function refreshFreeAgents(){
   renderCareerDirectorTab('mercato');
 }
 
+
+// ── ONGLET ACADÉMIE DE JEUNES ─────────────────────────────────────────
+// Auparavant, les jeunes générés en début de saison n'étaient visibles QUE
+// pour les clubs amateurs (DH/R3), noyés en bas de l'onglet Mercato — un
+// club pro/semi-pro recevait bien des jeunes (la génération ne dépend pas du
+// niveau) mais ne les voyait JAMAIS nulle part. Onglet dédié, visible à tous
+// les niveaux, avec une vraie vitrine : progression vers le potentiel,
+// niveau du centre de formation, et son effet concret expliqué en clair.
+function _renderDirectorAcademy(){
+  const C = careerV2; const club = C.club;
+  const acadLvl = (club.infra && club.infra.formation) || 0;
+  const quality = Math.min(100, 30 + acadLvl*14); // même formule que l'affichage infra (cohérence)
+  const youth = C.youthPool || [];
+
+  let h = '<div style="padding:4px">';
+
+  // ── Bandeau centre de formation : niveau + effet concret ────────────
+  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:12px;margin-bottom:10px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+  h += '<div style="font-size:11px;font-weight:900;color:var(--gold);font-family:\'Barlow Condensed\',sans-serif;letter-spacing:1px">🌱 CENTRE DE FORMATION</div>';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--muted)">Niveau ' + acadLvl + '/5</div>';
+  h += '</div>';
+  h += '<div style="height:6px;background:#111;border-radius:3px;overflow:hidden;margin-bottom:8px">';
+  h += '<div style="height:100%;width:' + quality + '%;background:linear-gradient(90deg,#18c860,#f0c028);border-radius:3px"></div></div>';
+  h += '<div style="font-size:9px;color:var(--muted);line-height:1.5">';
+  if(acadLvl <= 0){
+    h += 'Pas encore de centre de formation construit — vos jeunes arrivent quand même (bénévolat local), mais en petit nombre et avec un potentiel limité. <b style="color:var(--gold)">Construisez-en un depuis Infrastructures</b> pour en accueillir plus, et de meilleure qualité.';
+  } else {
+    h += 'Chaque niveau améliore <b>la quantité</b> (+1 jeune tous les 2 niveaux) <b>et la qualité</b> (+4 de potentiel de base par niveau) des jeunes recrutés, ainsi que vos chances de tomber sur un talent régional ou une <b>pépite</b> professionnelle.';
+  }
+  h += '</div></div>';
+
+  // ── Liste des jeunes ──────────────────────────────────────────────
+  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🎓 Jeunes du club (' + youth.length + ')</div>';
+  h += '</div>';
+
+  if(youth.length === 0){
+    h += '<div style="font-size:9px;color:var(--muted);padding:6px 0">Pas encore de jeunes cette saison. Une nouvelle vague arrive au début de la prochaine saison.</div>';
+  } else {
+    youth.forEach(function(p, i){
+      const vals = Object.values(p.s||{});
+      const ovr = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length) : 10;
+      const pot = p._potential || ovr;
+      const potCol = pot >= 70 ? '#9c27b0' : pot >= 50 ? '#f0c028' : pot >= 35 ? '#18c860' : '#888';
+      const prog = Math.max(2, Math.min(100, Math.round(ovr/Math.max(1,pot)*100)));
+      const raceI = (typeof raceMeta==='function') ? raceMeta(p.race) : {emoji:'👤',name:''};
+      h += '<div style="padding:8px 0;border-bottom:1px solid var(--b1)">';
+      h += '<div style="display:flex;align-items:center;gap:8px">';
+      h += '<div style="width:26px;font-size:8px;color:var(--muted);text-align:center">' + p.pos + '</div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.name + (p._isPotentialPro?' <span style="color:#9c27b0">💎 PÉPITE</span>':'') + '</div>';
+      h += '<div style="font-size:8px;color:var(--muted)">' + raceI.emoji + ' ' + raceI.name + ' · ' + (p._age||16) + ' ans</div>';
+      h += '</div>';
+      h += '<button class="btn btng" onclick="promoteYouth(' + i + ')" style="font-size:8px;padding:2px 6px;white-space:nowrap">↑ Promouvoir</button>';
+      if(p._isPotentialPro){
+        h += '<button class="btn" onclick="sellYouthPro(' + i + ')" style="font-size:8px;padding:2px 6px;color:#9c27b0;border-color:#9c27b0;white-space:nowrap">💰 Vendre</button>';
+      }
+      h += '</div>';
+      // Barre de progression OVR actuel → potentiel
+      h += '<div style="display:flex;align-items:center;gap:6px;margin-top:5px">';
+      h += '<span style="font-size:8px;color:var(--muted);width:20px">' + ovr + '</span>';
+      h += '<div style="flex:1;height:5px;background:#111;border-radius:3px;overflow:hidden">';
+      h += '<div style="height:100%;width:' + prog + '%;background:' + potCol + ';border-radius:3px"></div></div>';
+      h += '<span style="font-size:8px;font-weight:700;color:' + potCol + ';width:20px;text-align:right">' + pot + '</span>';
+      h += '</div>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+  h += '</div>';
+  return h;
+}
 
 function _renderDirectorFinances(){
   const C = careerV2; const club = C.club;
@@ -9533,12 +9648,12 @@ function playCareerMatchV2(){
   };
 
   // ── Équipe adversaire IA (team 1) — générée au même format et niveau ─
-  const aiSquad = WORLDS.generateSquad(nation, region, {
+  const aiSquad = _applyDifficultyToSquad(WORLDS.generateSquad(nation, region, {
     positions: XI_POS,
     bench: BENCH_POS,
     reserves: [],
     level: level,
-  });
+  }));
   // Noms depuis la région ou génériques
   const regionObj = WORLDS.getRegion(nation, region);
   let aiColor   = regionObj ? regionObj.color : '#1878e8';
@@ -9685,7 +9800,7 @@ function playCareerFriendlyMatch(){
 
   let aiSquad;
   try{
-    aiSquad = WORLDS.generateSquad(nation, region, { positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel });
+    aiSquad = _applyDifficultyToSquad(WORLDS.generateSquad(nation, region, { positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel }));
   }catch(e){
     console.error('friendly ai squad:', e);
     logEvent('⚠️ Impossible de générer l\'adversaire amical. Match simulé à la place.','#e0a020');
@@ -9839,9 +9954,9 @@ function playCareerCupMatch(){
   // Adversaire généré à SON niveau de division (fix bug 2).
   let aiSquad;
   try{
-    aiSquad = WORLDS.generateSquad(nation, region, {
+    aiSquad = _applyDifficultyToSquad(WORLDS.generateSquad(nation, region, {
       positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel,
-    });
+    }));
   }catch(e){
     console.error('cup ai squad:', e);
     logEvent('⚠️ Impossible de générer l\'adversaire de coupe. Match simulé à la place.','#e0a020');
@@ -10091,9 +10206,9 @@ function playCareerPlayoffMatch(){
 
   let aiSquad;
   try{
-    aiSquad = WORLDS.generateSquad(nation, region, {
+    aiSquad = _applyDifficultyToSquad(WORLDS.generateSquad(nation, region, {
       positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel,
-    });
+    }));
   }catch(e){
     console.error('playoff ai squad:', e);
     logEvent('⚠️ Impossible de générer l\'adversaire du barrage. Match simulé à la place.','#e0a020');
@@ -10236,9 +10351,9 @@ function playCareerBarrageMatch(){
 
   let aiSquad;
   try{
-    aiSquad = WORLDS.generateSquad(nation, region, {
+    aiSquad = _applyDifficultyToSquad(WORLDS.generateSquad(nation, region, {
       positions: XI_POS, bench: BENCH_POS, reserves: [], level: oppLevel,
-    });
+    }));
   }catch(e){
     console.error('barrage ai squad:', e);
     logEvent('⚠️ Impossible de générer l\'adversaire du barrage. Match simulé à la place.','#e0a020');

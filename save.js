@@ -18,6 +18,62 @@
 let profiles = {};          // tous les profils
 let activeProfileId = null; // profil actif
 
+// ═══════════════════════════════════════════════════
+// DIFFICULTÉ IA — Réglage global, lisible et transparent
+// ═══════════════════════════════════════════════════
+// Un seul curseur à 4 crans, avec un effet CLAIR et annoncé : un multiplicateur
+// appliqué aux stats (spd/sht/def/stam/tec/res) des équipes adverses générées
+// pour les matchs de carrière (championnat, coupes, amicaux, barrages/PO).
+// Volontairement SIMPLE plutôt que de toucher à 10 systèmes différents :
+// l'effet est immédiat, prévisible, et se voit direct dans l'OVR adverse
+// affiché à l'avant-match — donc "lisible" pour le joueur.
+// N'affecte JAMAIS l'effectif du joueur, le mercato, ni l'académie de jeunes.
+const DIFFICULTY_LEVELS = {
+  easy:   { id:'easy',   label:'🟢 Facile',     mult:0.90, desc:"Adversaires ~10% plus faibles que leur niveau réel. Idéal pour découvrir la carrière sans pression." },
+  normal: { id:'normal', label:'🟡 Normal',     mult:1.00, desc:'Niveau fidèle à la division adverse, sans avantage ni désavantage.' },
+  hard:   { id:'hard',   label:'🟠 Difficile',  mult:1.08, desc:'Adversaires ~8% plus forts. Chaque match demande une vraie tactique.' },
+  legend: { id:'legend', label:'🔴 Légendaire', mult:1.18, desc:'Adversaires ~18% plus forts. Réservé aux managers qui veulent souffrir.' },
+};
+const DIFFICULTY_ORDER = ['easy','normal','hard','legend'];
+
+function difficultyLevel(){
+  const d = window._difficulty;
+  return DIFFICULTY_LEVELS[d] ? d : 'normal';
+}
+function difficultyInfo(){ return DIFFICULTY_LEVELS[difficultyLevel()]; }
+function setDifficultyLevel(id){
+  if(!DIFFICULTY_LEVELS[id]) return;
+  window._difficulty = id;
+  try{ localStorage.setItem('footsim_difficulty', id); }catch(e){}
+  if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
+}
+(function _restoreDifficulty(){
+  try{
+    const d = localStorage.getItem('footsim_difficulty');
+    if(DIFFICULTY_LEVELS[d]) window._difficulty = d;
+  }catch(e){}
+})();
+
+// Applique le multiplicateur de difficulté aux stats d'un effectif IA
+// fraîchement généré (WORLDS.generateSquad). Purement défensif : ne touche
+// jamais l'effectif du joueur, ignore silencieusement toute forme inattendue.
+function _applyDifficultyToSquad(squad){
+  if(!squad) return squad;
+  const mult = difficultyInfo().mult;
+  if(mult===1) return squad;
+  const STAT_KEYS=['spd','sht','def','stam','tec','res'];
+  ['players','bench','reserves'].forEach(function(tier){
+    (squad[tier]||[]).forEach(function(p){
+      if(!p || !p.s) return;
+      STAT_KEYS.forEach(function(key){
+        if(p.s[key]==null) return;
+        p.s[key] = Math.max(1, Math.min(99, Math.round(p.s[key]*mult)));
+      });
+    });
+  });
+  return squad;
+}
+
 const _genId = (prefix) => prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 
 // ── Persistance profils ───────────────────────────────────────────────
@@ -796,8 +852,11 @@ function _generateFreeAgents(){
 }
 
 // ── Générer des jeunes du club ──────────────────────────────────────────
-// Appelé en début de saison — 1-3 jeunes arrivent
-// 1 chance sur 1000 qu'un jeune ait un potentiel pro exceptionnel
+// Appelé en début de saison — le nombre et la qualité des jeunes dépendent
+// désormais du niveau du CENTRE DE FORMATION (infra.formation, 0-5). Avant
+// cette version, l'infrastructure affichait « +qualité et quantité des
+// jeunes » sans que ça ait le moindre effet réel sur cette fonction — un
+// club pouvait investir des dizaines de milliers dans son centre pour rien.
 function _generateYouthIntake(){
   if(!careerV2) return;
   const C = careerV2;
@@ -808,7 +867,11 @@ function _generateYouthIntake(){
 
   if(!C.youthPool) C.youthPool = [];
 
-  const nb = 1 + Math.floor(Math.random() * 3); // 1-3 jeunes
+  // Niveau du centre de formation (0 = pas construit, jusqu'à 5).
+  const acadLvl = (C.club.infra && C.club.infra.formation) || 0;
+
+  // Quantité : 1-3 jeunes de base, +1 dès le niveau 2, +2 à partir du niveau 4.
+  const nb = 1 + Math.floor(Math.random() * 3) + Math.floor(acadLvl / 2);
   const positions = ['MC','ATT','DC','DD','DG','MC'];
   const regionObj = WORLDS.getRegion(nation, region);
   const names = regionObj ? [...(regionObj.names||[])].sort(function(){ return Math.random()-.5; }) : [];
@@ -822,23 +885,28 @@ function _generateYouthIntake(){
     var p = WORLDS.generatePlayer(nation, region, pos, name, 'dh');
     if(!p) continue;
 
-    // Potentiel : combien il pourrait atteindre au max
-    var pot = 15 + Math.floor(Math.random()*30); // 15-45 par défaut (resteront amateurs)
+    // Potentiel : combien il pourrait atteindre au max. Un centre de
+    // formation mieux équipé remonte la fourchette de base (+4/niveau, soit
+    // jusqu'à +20 au niveau 5) : les jeunes qui en sortent sont mieux formés.
+    var pot = 15 + Math.floor(Math.random()*30) + acadLvl*4;
 
-    // 1 chance sur 200 : talent régional (potentiel R1-D3)
-    if(Math.random() < 0.005){
-      pot = 50 + Math.floor(Math.random()*20);
+    // Talent régional (potentiel R1-D3). Chance de base 1/200, qui augmente
+    // avec le niveau du centre (jusqu'à ~1/40 au niveau 5).
+    if(Math.random() < 0.005 + acadLvl*0.004){
+      pot = 50 + Math.floor(Math.random()*20) + acadLvl*2;
       logEvent('⭐ '+name+' montre un potentiel régional prometteur !','#f0c028');
     }
 
-    // 1 chance sur 1000 : PÉPITE PRO
-    if(Math.random() < 0.001){
+    // PÉPITE PRO — chance de base 1/1000, qui augmente avec le niveau du
+    // centre (jusqu'à ~1/250 au niveau 5). Un bon centre de formation
+    // multiplie par 4 les chances de tomber sur une vraie pépite.
+    if(Math.random() < 0.001 + acadLvl*0.0006){
       pot = 72 + Math.floor(Math.random()*18); // 72-90 — niveau pro
       p._isPotentialPro = true;
       logEvent('💎💎💎 INCROYABLE ! '+name+' est une pépite de niveau professionnel ! Un club pro va vouloir le recruter...','#9c27b0');
     }
 
-    p._potential = pot;
+    p._potential = Math.min(95, pot);
     p._age = 16 + Math.floor(Math.random()*3); // 16-18 ans
     p._isYouth = true;
     C.youthPool.push(p);
