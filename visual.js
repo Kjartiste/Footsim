@@ -497,7 +497,13 @@ function resize(){
   // trop basse → image floue. Le ratio d'aspect, lui, est déjà préservé par
   // _s=Math.min(sx,sy) + le centrage (_ox/_oy) : le terrain n'est jamais
   // étiré, il est mis à l'échelle uniformément et lettterboxé.
-  const dpr=Math.min(window.devicePixelRatio||1, 2); // borné : au-delà, coût GPU inutile
+  // Pendant l'enregistrement, la caméra de diffusion ne recopie qu'une FENÊTRE
+  // du canvas (~40% de sa largeur) et l'étire sur 1080 px : on suréchantillonne
+  // donc le rendu pour que le recadrage reste net (sinon ×2,7 d'agrandissement
+  // = bouillie). Coût accepté car ponctuel, et le canvas est figé (_recLocked)
+  // pendant toute la capture.
+  const _ss=(window._recSuperSample||1);
+  const dpr=Math.min((window.devicePixelRatio||1)*_ss, 3); // borné : au-delà, coût GPU inutile
   const cw=Math.max(1, wrap.offsetWidth), ch=Math.max(1, wrap.offsetHeight);
   cvs.style.width=cw+'px';
   cvs.style.height=ch+'px';
