@@ -34,6 +34,8 @@ function spawnGoal(gx,gy,col,ati){
   // ── TEMPS FORT : secousse d'écran + flash coloré ───────────────────────
   triggerShake('HEAVY');        // preset intensité forte
   triggerFlash(col, 0.32, 420); // couleur de l'équipe, opacité pic, durée
+  // La tribune de l'équipe qui marque explose de joie (flashs blancs).
+  triggerStandsCheer(ati!==undefined?ati:(G.atkTi||0));
 }
 
 // ── SCREEN SHAKE (enrichi) ───────────────────────────────────────────────
@@ -428,6 +430,7 @@ const INJ_COLORS=['','#f0c028','#ff7020','#e02030'];
 // Cache du terrain pré-rendu (voir _buildPitchCache plus bas). Déclaré ici,
 // avant resize(), pour éviter toute zone morte temporelle (TDZ).
 let _pitchCache=null, _pitchW=0, _pitchH=0;
+let _standsCache=null, _standsW=0, _standsH=0; // déclaré tôt : resize() y touche avant le module tribunes
 
 // ── SPRITE DE LUEUR PRÉ-RENDU (perf particules) ──────────────────────────
 // Reconstruire un createRadialGradient par étincelle par frame était le
@@ -489,12 +492,35 @@ function resize(){
   const wrap=document.getElementById('canvas-wrap');
   cvs.width=wrap.offsetWidth;
   cvs.height=wrap.offsetHeight;
-  const margin=8;
-  const sx=(cvs.width-margin*2)/WW,sy=(cvs.height-margin*2)/WH;
+  // ── MARGE DE TRIBUNES (proportionnelle) ────────────────────────────────
+  // Au lieu d'une marge fixe de 8px (qui collait le terrain aux bords et ne
+  // laissait aucune place aux gradins), on réserve un pourcentage du canvas
+  // tout autour. La SURFACE JOUABLE est inchangée : WW/WH restent identiques,
+  // seul le facteur d'échelle _s diminue. Toute la logique de jeu, qui passe
+  // par wx/wy/ws, suit automatiquement.
+  // Sur petit écran (mobile) on réduit fortement : 13% de 380px ne laisserait
+  // pas assez de terrain. Le thème "classic" (terrain sobre, sans décor) et
+  // l'enregistrement vidéo gardent l'ancienne marge fixe.
+  // Marge horizontale (virages) plus généreuse que la verticale : c'est là que
+  // les tribunes se voient le mieux, et le terrain garde ainsi sa présence.
+  const ratio=_standRatio();
+  const mx=ratio>0 ? cvs.width*ratio        : 8;
+  const my=ratio>0 ? cvs.height*ratio*0.62  : 8;
+  const sx=(cvs.width-mx*2)/WW,sy=(cvs.height-my*2)/WH;
   _s=Math.min(sx,sy);
   _ox=(cvs.width-WW*_s)/2;
   _oy=(cvs.height-WH*_s)/2;
   _pitchCache=null; // le terrain doit être re-préparé à la nouvelle taille
+  _standsCache=null; // les gradins dépendent de la taille → à reconstruire
+}
+
+// Fraction du canvas réservée aux tribunes de chaque côté.
+// 0 = pas de tribunes (marge fixe legacy de 8px).
+function _standRatio(){
+  if(typeof stadiumTheme==='function' && stadiumTheme()==='classic') return 0;
+  if(!cvs) return 0.13;
+  if(cvs.width<560) return 0.06;  // mobile : juste de quoi loger les panneaux LED
+  return 0.13;
 }
 
 const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
@@ -526,7 +552,7 @@ function setStadiumTheme(t){
   if(!STADIUM_THEMES.includes(t))return;
   window._stadiumTheme=t;
   try{ localStorage.setItem('footsim_stadium', t); }catch(e){}
-  _pitchCache=null; // force la reconstruction du terrain avec le nouveau style
+  _pitchCache=null; _standsCache=null; // force la reconstruction terrain + tribunes
   // Re-render les écrans qui affichent le sélecteur, s'ils sont ouverts.
   if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
   if(typeof _renderDirectorInfra==='function' && (document.getElementById('career-director-content')?.innerHTML||'').indexOf('Infrastructures')>=0){
@@ -814,25 +840,23 @@ function _buildPitchCache(){
     const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
     const leftM=px0, rightM=oc.width-px1, topM=py0, bottomM=oc.height-py1;
 
-    // Bande de foule (texture de points ternes) dans les marges suffisamment
-    // grandes pour être lisibles — sinon on laisse juste le fond uni.
-    const crowdBand=(x,y,w,h)=>{
-      if(w<6||h<6)return;
-      c.save();
-      c.fillStyle=pal.crowdBg;c.fillRect(x,y,w,h);
-      const n=Math.min(140, Math.floor((w*h)/18));
-      for(let i=0;i<n;i++){
-        const rx=x+Math.random()*w, ry=y+Math.random()*h;
-        c.fillStyle=pick(pal.crowdShades);
-        const rr=rng(.6,1.6);
-        c.beginPath();c.arc(rx,ry,rr,0,Math.PI*2);c.fill();
-      }
-      c.restore();
-    };
-    crowdBand(0,0,leftM,oc.height);
-    crowdBand(px1,0,rightM,oc.height);
-    crowdBand(0,0,oc.width,topM);
-    crowdBand(0,py1,oc.width,bottomM);
+    // ── GRADINS ────────────────────────────────────────────────────────────
+    // Remplace l'ancienne texture de points aléatoires par de vrais gradins
+    // en perspective (voir _buildStandsCache plus bas). Le cache est construit
+    // à part puis composité ici, dans le même canvas hors-écran : le coût
+    // par frame reste d'un seul blit.
+    // Sur mobile la marge est trop fine pour des gradins lisibles : on garde
+    // seulement le fond uni + les panneaux LED, qui eux restent nets.
+    if(_standRatio()>0.08){
+      const st=_buildStandsCache();
+      if(st) c.drawImage(st,0,0);
+    } else {
+      c.fillStyle=pal.crowdBg||'#0a0e14';
+      c.fillRect(0,0,leftM,oc.height);
+      c.fillRect(px1,0,rightM,oc.height);
+      c.fillRect(0,0,oc.width,topM);
+      c.fillRect(0,py1,oc.width,bottomM);
+    }
 
     // Panneaux LED publicitaires : fine bande colorée collée au pourtour du
     // terrain (toujours visible même quand la marge est petite).
@@ -870,9 +894,12 @@ function _buildPitchCache(){
   // centre du jeu. Radial doux, peu coûteux car pré-calculé une seule fois.
   const cx0=oc.width/2, cy0=oc.height/2;
   const rad=Math.max(oc.width,oc.height)*0.75;
+  // NB : avec les tribunes, le vignettage tomberait pile sur les gradins et
+  // annulerait le travail de détail. On l'atténue quand le décor est actif.
+  const vgMax=_standRatio()>0.08 ? .18 : .28;
   const vg=c.createRadialGradient(cx0,cy0,rad*0.35,cx0,cy0,rad);
   vg.addColorStop(0,'rgba(0,0,0,0)');
-  vg.addColorStop(1,'rgba(0,0,0,.28)');
+  vg.addColorStop(1,'rgba(0,0,0,'+vgMax+')');
   c.fillStyle=vg;
   c.fillRect(0,0,oc.width,oc.height);
 
@@ -908,6 +935,230 @@ function drawSnow(rawDt){
     ctx.fillStyle='#fff';
     ctx.beginPath();ctx.arc(gx,gy,ws(f.r),0,Math.PI*2);ctx.fill();
   });
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRIBUNES — gradins en perspective, liés à la simulation
+// ═══════════════════════════════════════════════════════════════════════════
+// Remplace la texture de points aléatoires de l'ancien crowdBand() par de
+// vrais gradins : rangées qui se resserrent vers l'extérieur (perspective),
+// sièges alignés, spectateurs présents sur une fraction des sièges seulement
+// (les trous font le réalisme). Le nombre de rangées, la présence d'un toit
+// et le taux de remplissage sont dérivés de club.stadium_capacity et de
+// l'affluence — le joueur VOIT sa progression de carrière.
+//
+// Tout est pré-calculé dans _standsCache (un seul canvas hors-écran, blitté
+// une fois par frame comme le terrain) : coût d'exécution nul. Seule la
+// couche "vivante" (ola, explosion de joie sur but) est dessinée par frame.
+
+
+// ── Profil de stade dérivé de la carrière ───────────────────────────────
+// Renvoie {rows, fill, roof, cap} — degré d'équipement du stade.
+// Hors carrière (match d'exhibition), on retombe sur un stade moyen.
+function _stadiumProfile(){
+  let cap=null, rep=55;
+  try{
+    if(typeof careerV2!=='undefined' && careerV2 && careerV2.club){
+      cap=careerV2.club.stadium_capacity;
+      rep=careerV2.club.reputation!=null?careerV2.club.reputation:55;
+    }
+  }catch(e){}
+  if(!cap||!isFinite(cap)) cap=12000; // exhibition : stade de milieu de tableau
+
+  // Rangées : échelle logarithmique — 800 places → 2 rangées, 35 000 → 6.
+  const rows=Math.max(2, Math.min(6, Math.round(Math.log10(Math.max(cap,500))*2.15-4.0)));
+  // Toit : seulement à partir d'un stade déjà sérieux (~R1/D3 et au-dessus).
+  const roof=cap>=8000;
+  // Remplissage : même formule que l'affluence de save.js:765, bornée pour
+  // rester lisible (un stade jamais vide à moins de 20%, jamais 100% plein).
+  const fill=Math.max(0.2, Math.min(0.95, 0.25+rep/120));
+  return {rows, fill, roof, cap};
+}
+
+// ── Couleurs des virages ────────────────────────────────────────────────
+// Les tribunes derrière chaque but prennent la teinte de l'équipe qui y joue,
+// ce qui personnalise gratuitement chaque affiche.
+function _standTint(side, pal){
+  try{
+    const t=teams[side===0?0:1];
+    if(t && t.color) return t.color;
+  }catch(e){}
+  return pal.crowdBg;
+}
+
+// Mélange une couleur hex vers du sombre (les gradins sont dans l'ombre).
+function _darken(hex, k){
+  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'');
+  if(!m) return 'rgba(20,24,32,1)';
+  const r=Math.round(parseInt(m[1],16)*k), g=Math.round(parseInt(m[2],16)*k), b=Math.round(parseInt(m[3],16)*k);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Construction d'une tribune (une face du stade) ──────────────────────
+// (x,y,w,h) = zone de la marge à remplir. `dir` indique vers où le stade
+// "monte" (les rangées du fond sont les plus éloignées du terrain) :
+// 'up' (tribune du haut), 'down', 'left', 'right'.
+// La perspective : chaque rangée en s'éloignant du terrain est plus fine
+// (facteur 0.93) et plus sombre → illusion de hauteur.
+function _buildStand(c, x, y, w, h, dir, prof, pal, tint){
+  if(w<4||h<4) return;
+  const horiz=(dir==='up'||dir==='down');
+  const depth=horiz?h:w;      // profondeur visuelle de la tribune
+  const span =horiz?w:h;      // longueur le long du terrain
+  if(depth<5) return;
+
+  const rows=prof.rows;
+  // Répartition des rangées en perspective : somme d'une suite géométrique.
+  const K=0.93;
+  let sum=0; for(let i=0;i<rows;i++) sum+=Math.pow(K,i);
+  const baseRow=depth/sum;
+
+  c.save();
+  c.beginPath(); c.rect(x,y,w,h); c.clip();
+
+  // Fond de tribune (béton sombre)
+  c.fillStyle=pal.crowdBg||'#0a0e14';
+  c.fillRect(x,y,w,h);
+
+  // `off` = distance depuis le bord du TERRAIN vers l'extérieur.
+  let off=0;
+  for(let r=0;r<rows;r++){
+    const rowH=baseRow*Math.pow(K,r);
+    // Position de la rangée selon l'orientation.
+    let rx,ry,rw,rh;
+    if(dir==='up')   { rx=x; ry=y+h-off-rowH; rw=w; rh=rowH; }
+    else if(dir==='down'){ rx=x; ry=y+off;    rw=w; rh=rowH; }
+    else if(dir==='left') { rx=x+w-off-rowH; ry=y; rw=rowH; rh=h; }
+    else                  { rx=x+off;        ry=y; rw=rowH; rh=h; }
+
+    // Marche de béton : plus sombre en s'éloignant (profondeur).
+    const shade=0.55-r*0.06;
+    c.fillStyle=_darken(tint, Math.max(0.10, shade*0.34));
+    c.fillRect(rx,ry,rw,rh);
+    // Nez de marche clair : sépare visuellement les rangées.
+    c.fillStyle='rgba(255,255,255,.05)';
+    if(horiz) c.fillRect(rx, dir==='up'?ry:ry+rh-1, rw, 1);
+    else      c.fillRect(dir==='left'?rx:rx+rw-1, ry, 1, rh);
+
+    // ── Spectateurs ──────────────────────────────────────────────────────
+    // Un point par siège, présent seulement avec la probabilité `fill`.
+    // Les trous (sièges vides) sont ce qui rend la foule crédible.
+    const seatPitch=Math.max(3, rowH*0.62);
+    const nSeats=Math.floor(span/seatPitch);
+    const dotR=Math.max(0.7, rowH*0.17);
+    for(let s=0;s<nSeats;s++){
+      if(Math.random()>prof.fill) continue; // siège vide
+      const t=(s+0.5)*seatPitch + rng(-seatPitch*0.12, seatPitch*0.12);
+      let sx2,sy2;
+      if(horiz){ sx2=rx+t; sy2=ry+rowH*0.5; }
+      else     { sx2=rx+rowH*0.5; sy2=ry+t; }
+      // 1 spectateur sur 5 porte les couleurs du club (écharpe/maillot).
+      c.fillStyle = Math.random()<0.20 ? _darken(tint,0.85) : pick(pal.crowdShades||['#2c3444']);
+      c.beginPath(); c.arc(sx2,sy2,dotR,0,Math.PI*2); c.fill();
+    }
+    off+=rowH;
+  }
+
+  // ── Toit ────────────────────────────────────────────────────────────────
+  // Trois pixels de dégradé sombre au-dessus des rangées hautes suffisent :
+  // le cerveau lit "couverture".
+  if(prof.roof){
+    const rt=Math.max(3, depth*0.16);
+    let gx0,gy0,gx1,gy1,bx,by,bw,bh;
+    if(dir==='up')        { bx=x; by=y;          bw=w; bh=rt; gx0=0;gy0=y;   gx1=0;gy1=y+rt; }
+    else if(dir==='down') { bx=x; by=y+h-rt;     bw=w; bh=rt; gx0=0;gy0=y+h; gx1=0;gy1=y+h-rt; }
+    else if(dir==='left') { bx=x; by=y;          bw=rt; bh=h; gx0=x;gy0=0;   gx1=x+rt;gy1=0; }
+    else                  { bx=x+w-rt; by=y;     bw=rt; bh=h; gx0=x+w;gy0=0; gx1=x+w-rt;gy1=0; }
+    const rg=c.createLinearGradient(gx0,gy0,gx1,gy1);
+    rg.addColorStop(0,'rgba(0,0,0,.92)');
+    rg.addColorStop(1,'rgba(0,0,0,.25)');
+    c.fillStyle=rg; c.fillRect(bx,by,bw,bh);
+  }
+
+  // ── Piliers / tunnels ───────────────────────────────────────────────────
+  // Blocs sombres réguliers qui rompent la monotonie de la foule.
+  const pitchStep=Math.max(48, span/6);
+  c.fillStyle='rgba(0,0,0,.42)';
+  for(let p=pitchStep*0.5; p<span; p+=pitchStep){
+    if(horiz) c.fillRect(x+p-1.5, y, 3, h);
+    else      c.fillRect(x, y+p-1.5, w, 3);
+  }
+
+  c.restore();
+}
+
+// ── Construction du cache complet des tribunes ──────────────────────────
+function _buildStandsCache(){
+  if(!cvs||cvs.width<2||cvs.height<2) return null;
+  const prof=_stadiumProfile();
+  const pal=_stadiumPalette(stadiumTheme());
+  const oc=document.createElement('canvas');
+  oc.width=cvs.width; oc.height=cvs.height;
+  const c=oc.getContext('2d');
+
+  const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
+  const leftM=px0, rightM=oc.width-px1, topM=py0, bottomM=oc.height-py1;
+
+  // Virages (derrière les buts) : teintés aux couleurs des deux équipes.
+  _buildStand(c, 0, 0, leftM, oc.height, 'left',  prof, pal, _standTint(0,pal));
+  _buildStand(c, px1, 0, rightM, oc.height, 'right', prof, pal, _standTint(1,pal));
+  // Tribunes latérales : neutres (mélange des deux camps). On les teinte d'un
+  // gris béton clair plutôt que du fond quasi-noir, sinon les marches et les
+  // spectateurs disparaissent complètement dans l'ombre.
+  const NEUTRAL='#8a94a6';
+  _buildStand(c, px0, 0, px1-px0, topM, 'up',   prof, pal, NEUTRAL);
+  _buildStand(c, px0, py1, px1-px0, bottomM, 'down', prof, pal, NEUTRAL);
+
+  _standsCache=oc; _standsW=oc.width; _standsH=oc.height;
+  return oc;
+}
+
+// ── Couche vivante : ola + explosion de joie sur but ────────────────────
+// Dessinée par frame PAR-DESSUS le cache statique. Volontairement légère :
+// une poignée de rectangles en `lighter`, pas de recalcul de foule.
+let _standsCheer={t:0, dur:0, side:0};
+function triggerStandsCheer(side){ _standsCheer={t:performance.now(), dur:900, side:side|0}; }
+
+function drawStandsLive(){
+  if(_standRatio()<=0 || !_standsCache) return;
+  const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
+  const now=performance.now();
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+
+  // ── OLA ────────────────────────────────────────────────────────────────
+  // Un sinus qui balaie horizontalement et module l'alpha de colonnes de
+  // tribune. Discret : c'est une respiration, pas un clignotement.
+  const wave=(now/1000)*0.55;
+  const colW=Math.max(26, (px1-px0)/14);
+  for(let x=0;x<ctx.canvas.width;x+=colW){
+    const phase=Math.sin(wave - (x/ctx.canvas.width)*Math.PI*3);
+    if(phase<0.6) continue;
+    const a=(phase-0.6)/0.4*0.07;
+    ctx.fillStyle=`rgba(255,255,255,${a.toFixed(3)})`;
+    if(py0>6)                   ctx.fillRect(x,0,colW-2,py0);
+    if(ctx.canvas.height-py1>6) ctx.fillRect(x,py1,colW-2,ctx.canvas.height-py1);
+  }
+
+  // ── EXPLOSION DE JOIE (sur but) ────────────────────────────────────────
+  // Flashs blancs aléatoires dans la tribune de l'équipe qui vient de marquer.
+  if(_standsCheer.dur){
+    const el=now-_standsCheer.t;
+    if(el>=_standsCheer.dur){ _standsCheer.dur=0; }
+    else{
+      const k=1-el/_standsCheer.dur;                 // décroissance
+      const side=_standsCheer.side;
+      const zx=side===0?0:px1, zw=side===0?px0:(ctx.canvas.width-px1);
+      if(zw>4){
+        for(let i=0;i<26;i++){
+          if(Math.random()>k) continue;
+          ctx.fillStyle=`rgba(255,255,255,${(0.5*k).toFixed(3)})`;
+          ctx.fillRect(zx+Math.random()*zw, Math.random()*ctx.canvas.height, 2, 2);
+        }
+      }
+    }
+  }
   ctx.restore();
 }
 
@@ -2094,6 +2345,7 @@ function frame(ts){
     ctx.translate(-zm.cx, -zm.cy);
   }
   drawPitch();
+  drawStandsLive(); // ola + explosion de joie, par-dessus les gradins statiques
   const shaking = (sh.x||sh.y);
   if(shaking){ ctx.save(); ctx.translate(sh.x, sh.y); }
   drawBallLight();
