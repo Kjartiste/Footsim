@@ -645,12 +645,14 @@ function _stadiumPalette(theme){
     return { bg:'#0f2418', a:'#1f9d3c', b:'#24b347', line:'rgba(255,255,255,.5)', net:'rgba(255,255,255,.82)',
       netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
       stripes:true, snowGround:false, border:true,
+      stands:{kind:'seats', apron:'#2b2f36', aisle:.30},
       boardCols:BASE_BOARDS, crowdShades:BASE_CROWD, crowdBg:'#0a0e14', floodlight:'rgba(255,241,201,.10)' };
   }
   if(theme==='snow'){
     return { bg:'#c9d6de', a:'#eef3f6', b:'#e6edf1', wornColor:'#4f7a56', line:'rgba(22,32,45,.55)',
       net:'rgba(30,40,55,.78)', netFaint:'rgba(30,40,55,.16)', faint:'rgba(30,40,55,.32)',
       stripes:false, snowGround:true, border:true,
+      stands:{kind:'seats', apron:'#dfe8ee', snowy:true, aisle:.22},
       boardCols:['#8ecae6','#ffffff','#219ebc','#adb5bd','#e0f7ff'],
       crowdShades:['#3a4552','#48566a','#2e3742','#55637a'], crowdBg:'#1b232c', floodlight:'rgba(210,230,255,.12)' };
   }
@@ -661,6 +663,7 @@ function _stadiumPalette(theme){
     return { bg:'#1c1608', a:'#e8e2d4', b:'#d8d0bc', line:'rgba(30,26,18,.75)',
       net:'rgba(30,26,18,.75)', netFaint:'rgba(30,26,18,.14)', faint:'rgba(30,26,18,.35)',
       stripes:false, snowGround:false, marble:true, veinCol:'rgba(160,140,90,.5)', border:true,
+      stands:{kind:'columns', apron:'#cfc6ad', colCol:'#e8e2d4', aisle:0},
       boardCols:['#c9a05a','#e8d9b0','#a8542f','#8c6b3f','#f0e4c0'],
       crowdShades:['#3a2f1e','#4a3c26','#2e2517','#57472c'], crowdBg:'#140f08',
       floodlight:'rgba(255,214,140,.14)' };
@@ -671,6 +674,7 @@ function _stadiumPalette(theme){
     return { bg:'#08150c', a:'#0f3d1e', b:'#154d26', line:'rgba(214,232,210,.55)',
       net:'rgba(214,232,210,.75)', netFaint:'rgba(214,232,210,.12)', faint:'rgba(214,232,210,.28)',
       stripes:false, snowGround:false, border:true,
+      stands:{kind:'canopy', apron:'#16351d', aisle:0},
       boardCols:['#4b3621','#2e4d24','#6b4a2c','#3a5c2f','#5c4128'],
       crowdShades:['#12200f','#1a2b14','#0c1a0a','#223318'], crowdBg:'#081108',
       floodlight:'rgba(184,224,150,.10)' };
@@ -681,6 +685,7 @@ function _stadiumPalette(theme){
     return { bg:'#132312', a:'#3fae4a', b:'#c9d94a', line:'rgba(255,255,255,.55)',
       net:'rgba(255,255,255,.82)', netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
       stripes:true, snowGround:false, border:true,
+      stands:{kind:'bamboo', apron:'#24401c', aisle:0},
       boardCols:['#e8e0a8','#8fbf3f','#d9c96a','#4f9a3f','#f2edc8'],
       crowdShades:['#2a3a20','#35472a','#213018','#3e4f2c'], crowdBg:'#101c0e',
       floodlight:'rgba(230,244,180,.12)' };
@@ -691,6 +696,7 @@ function _stadiumPalette(theme){
     return { bg:'#1a1410', a:'#c9975f', b:'#b8804a', line:'rgba(178,34,34,.85)',
       net:'rgba(240,240,240,.85)', netFaint:'rgba(240,240,240,.14)', faint:'rgba(30,60,140,.5)',
       stripes:false, snowGround:false, parquet:true, border:true,
+      stands:{kind:'seats', apron:'#8a5a32', indoor:true, aisle:.34},
       boardCols:['#e63946','#1d3557','#f0c028','#ffffff','#2a9d8f'],
       crowdShades:['#241a12','#2e2216','#1c140d','#37291a'], crowdBg:'#120d09',
       floodlight:'rgba(255,244,214,.14)' };
@@ -701,6 +707,7 @@ function _stadiumPalette(theme){
     return { bg:'#15171a', a:'#5a6068', b:'#4c5158', line:'rgba(240,224,90,.7)',
       net:'rgba(200,200,200,.7)', netFaint:'rgba(200,200,200,.1)', faint:'rgba(240,224,90,.28)',
       stripes:false, snowGround:false, city:true, border:true,
+      stands:{kind:'fence', apron:'#3a3d42', aisle:0},
       boardCols:['#e63946','#f0c028','#2a9d8f','#8840e0','#ff8a3d'],
       crowdShades:['#202226','#2a2c30','#1a1c1f','#34363a'], crowdBg:'#101113',
       floodlight:'rgba(220,230,255,.10)' };
@@ -709,6 +716,7 @@ function _stadiumPalette(theme){
   return { bg:'#0f2a0f', a:'#1c5f1c', b:'#217021', line:LINE, net:'rgba(255,255,255,.82)',
     netFaint:'rgba(255,255,255,.12)', faint:'rgba(255,255,255,.3)',
     stripes:false, snowGround:false, border:true,
+    stands:{kind:'seats', apron:'#2b2f36', aisle:.30},
     boardCols:BASE_BOARDS, crowdShades:BASE_CROWD, crowdBg:'#0a0e14', floodlight:'rgba(255,241,201,.10)' };
 }
 
@@ -1119,8 +1127,9 @@ function _buildStand(c, x, y, w, h, dir, prof, pal, tint, sc){
   const standDepth = depth - TRACK;
   if(standDepth < SEAT*0.8){ c.restore(); return; }
 
-  // Bande de dégagement (piste) : plus claire que les gradins.
-  c.fillStyle='rgba(255,255,255,.045)';
+  // Bande de dégagement (piste) : couleur donnée par le thème (marbre, neige,
+  // sous-bois, bitume…) plutôt qu'un voile blanc universel.
+  c.fillStyle=(pal.stands&&pal.stands.apron) || 'rgba(255,255,255,.045)';
   if(dir==='up')        c.fillRect(x, y+h-TRACK, w, TRACK);
   else if(dir==='down') c.fillRect(x, y, w, TRACK);
   else if(dir==='left') c.fillRect(x+w-TRACK, y, TRACK, h);
@@ -1130,47 +1139,129 @@ function _buildStand(c, x, y, w, h, dir, prof, pal, tint, sc){
   const rows=Math.max(1, Math.floor(standDepth/SEAT));
   const cols=Math.max(1, Math.floor(span/SEAT));
 
-  // Assise des gradins (légèrement teintée aux couleurs du club).
-  c.fillStyle=_darken(tint, 0.22);
+  const KIND=(pal.stands&&pal.stands.kind)||'seats';
+
+  // Assise / sol du pourtour, selon le thème.
+  const seatBed = KIND==='seats' ? _darken(tint, 0.22) : (pal.crowdBg||'#0a0e14');
+  c.fillStyle=seatBed;
   if(dir==='up')        c.fillRect(x, y, w, h-TRACK);
   else if(dir==='down') c.fillRect(x, y+TRACK, w, h-TRACK);
   else if(dir==='left') c.fillRect(x, y, w-TRACK, h);
   else                  c.fillRect(x+TRACK, y, w-TRACK, h);
 
-  // ── Spectateurs : un point par siège occupé ────────────────────────────
-  // Les trous (sièges vides) font le réalisme ; `fill` vient de l'affluence.
-  for(let r=0;r<rows;r++){
-    for(let k=0;k<cols;k++){
-      if(Math.random()>prof.fill) continue;
-      // Décalage d'un demi-siège une rangée sur deux (quinconce, comme un
-      // vrai plan de salle) + micro-jitter pour casser la grille.
-      const along = (k+0.5+(r%2)*0.5)*SEAT + rng(-SEAT*0.10, SEAT*0.10);
+  // ── Placement d'une cellule du pourtour ────────────────────────────────
+  // Convertit (le long du stade, profondeur depuis le terrain) → (px,py),
+  // quel que soit le côté. Toutes les décorations de thème passent par là :
+  // elles n'ont donc pas à connaître l'orientation.
+  const cell=(along, deep)=>{
+    if(dir==='up')        return [x+along,  y+h-deep];
+    if(dir==='down')      return [x+along,  y+deep];
+    if(dir==='left')      return [x+w-deep, y+along];
+    return                       [x+deep,   y+along];
+  };
+
+  // Parcourt la grille du pourtour (quinconce) et appelle cb(px,py,r,k).
+  const eachCell=(step, cb)=>{
+    const rows=Math.max(1, Math.floor(standDepth/step));
+    const cols=Math.max(1, Math.floor(span/step));
+    for(let r=0;r<rows;r++) for(let k=0;k<cols;k++){
+      const along=(k+0.5+(r%2)*0.5)*step + rng(-step*0.10, step*0.10);
       if(along>span) continue;
-      const deep  = TRACK + (r+0.5)*SEAT + rng(-SEAT*0.08, SEAT*0.08);
-      let sx2,sy2;
-      if(dir==='up')        { sx2=x+along;        sy2=y+h-deep; }
-      else if(dir==='down') { sx2=x+along;        sy2=y+deep;   }
-      else if(dir==='left') { sx2=x+w-deep;       sy2=y+along;  }
-      else                  { sx2=x+deep;         sy2=y+along;  }
-      // 1 spectateur sur 4 porte les couleurs du club (maillot/écharpe).
-      c.fillStyle = Math.random()<0.25 ? _darken(tint,0.95) : pick(pal.crowdShades||['#2c3444']);
-      c.beginPath(); c.arc(sx2,sy2,DOT,0,Math.PI*2); c.fill();
+      const deep = TRACK + (r+0.5)*step + rng(-step*0.08, step*0.08);
+      const [px,py]=cell(along,deep);
+      cb(px,py,r,k);
     }
+  };
+
+  // ── Décor du pourtour, propre à chaque thème ───────────────────────────
+  if(KIND==='seats'){
+    // Tribunes : supporters vus de haut. En salle (handball) la foule est
+    // plus dense et les teintes club plus rares (public assis, neutre).
+    const indoor=!!pal.stands.indoor;
+    eachCell(SEAT, (px,py)=>{
+      if(Math.random()>prof.fill) return;   // siège vide
+      c.fillStyle = Math.random()<(indoor?0.12:0.25) ? _darken(tint,0.95)
+                                                     : pick(pal.crowdShades||['#2c3444']);
+      c.beginPath(); c.arc(px,py,DOT,0,Math.PI*2); c.fill();
+    });
+    // Neige : les rangées extérieures sont poudrées.
+    if(pal.stands.snowy){
+      eachCell(SEAT*1.6, (px,py)=>{
+        if(Math.random()>0.5) return;
+        c.fillStyle='rgba(255,255,255,.5)';
+        c.beginPath(); c.arc(px,py,DOT*0.7,0,Math.PI*2); c.fill();
+      });
+    }
+  } else if(KIND==='columns'){
+    // Grèce antique : péristyle. Vu du zénith, une colonne est un disque
+    // clair posé sur le marbre + son ombre portée. Pas de foule.
+    eachCell(M(4.2), (px,py)=>{
+      c.fillStyle='rgba(0,0,0,.28)';
+      c.beginPath(); c.arc(px+DOT*0.28, py+DOT*0.28, DOT*0.92, 0, Math.PI*2); c.fill();
+      c.fillStyle=pal.stands.colCol||'#e8e2d4';
+      c.beginPath(); c.arc(px,py,DOT*0.85,0,Math.PI*2); c.fill();
+      c.strokeStyle='rgba(120,100,60,.45)'; c.lineWidth=Math.max(1,DOT*0.10);
+      c.beginPath(); c.arc(px,py,DOT*0.55,0,Math.PI*2); c.stroke();
+    });
+  } else if(KIND==='canopy'){
+    // Forêt : pas de gradins, le stade est en clairière. On voit la cime des
+    // arbres — des disques verts irréguliers, plus clairs au centre.
+    eachCell(M(3.6), (px,py)=>{
+      const R=DOT*rng(0.9,1.5);
+      c.fillStyle=pick(['#12200f','#1a2b14','#0c1a0a','#223318']);
+      c.beginPath(); c.arc(px,py,R,0,Math.PI*2); c.fill();
+      c.fillStyle='rgba(150,200,120,.16)';
+      c.beginPath(); c.arc(px-R*0.22,py-R*0.22,R*0.45,0,Math.PI*2); c.fill();
+    });
+  } else if(KIND==='bamboo'){
+    // Bambouseraie : touffes de tiges vues d'en haut (petits disques clairs
+    // groupés) sur un sous-bois sombre.
+    eachCell(M(3.0), (px,py)=>{
+      const n=2+Math.floor(Math.random()*3);
+      for(let i=0;i<n;i++){
+        const a=Math.random()*Math.PI*2, d=Math.random()*DOT*0.8;
+        c.fillStyle=pick(['#8fbf3f','#c9d94a','#4f9a3f','#6faa35']);
+        c.beginPath(); c.arc(px+Math.cos(a)*d, py+Math.sin(a)*d, DOT*rng(0.16,0.28), 0, Math.PI*2); c.fill();
+      }
+    });
+  } else if(KIND==='fence'){
+    // City-stade : pas de tribunes, un grillage et du bitume. Le grillage se
+    // lit comme un quadrillage fin ; quelques spectateurs debout contre.
+    c.strokeStyle='rgba(200,210,220,.18)'; c.lineWidth=Math.max(1,M(0.08));
+    const gstep=M(1.6);
+    for(let d0=TRACK; d0<depth; d0+=gstep){
+      const [ax,ay]=cell(0,d0), [bx,by]=cell(span,d0);
+      c.beginPath(); c.moveTo(ax,ay); c.lineTo(bx,by); c.stroke();
+    }
+    for(let a0=0; a0<span; a0+=gstep){
+      const [ax,ay]=cell(a0,TRACK), [bx,by]=cell(a0,depth);
+      c.beginPath(); c.moveTo(ax,ay); c.lineTo(bx,by); c.stroke();
+    }
+    eachCell(SEAT*1.5, (px,py)=>{
+      if(Math.random()>prof.fill*0.5) return;
+      c.fillStyle = Math.random()<0.3 ? _darken(tint,0.95) : pick(pal.crowdShades||['#2c3444']);
+      c.beginPath(); c.arc(px,py,DOT*0.85,0,Math.PI*2); c.fill();
+    });
   }
 
   // ── Escaliers / vomitoires ─────────────────────────────────────────────
   // Allées régulières : d'en haut, ce sont des couloirs vides dans la foule.
+  // Une forêt ou un péristyle n'a pas d'escalier : l'opacité vient du thème
+  // (`aisle:0` ⇒ aucun tracé).
+  const aisleA=(pal.stands&&pal.stands.aisle!=null)?pal.stands.aisle:0.30;
+  if(aisleA>0){
   const aisle=Math.max(M(18), span/3);
-  c.fillStyle='rgba(0,0,0,.30)';
+  c.fillStyle='rgba(0,0,0,'+aisleA+')';
   for(let a=aisle*0.5; a<span; a+=aisle){
     if(horiz) c.fillRect(x+a-M(0.6), (dir==='up'?y:y+TRACK), M(1.2), h-TRACK);
     else      c.fillRect((dir==='left'?x:x+TRACK), y+a-M(0.6), w-TRACK, M(1.2));
+  }
   }
 
   // ── Toit ───────────────────────────────────────────────────────────────
   // Vu du dessus, le toit masque les rangées les plus extérieures : une bande
   // sombre sur le bord extérieur suffit à lire « tribune couverte ».
-  if(prof.roof && standDepth > SEAT*1.8){
+  if(prof.roof && KIND==='seats' && standDepth > SEAT*1.8){
     const rt=Math.min(standDepth*0.20, M(1.8));
     let bx,by,bw,bh,gx0,gy0,gx1,gy1;
     if(dir==='up')        { bx=x; by=y;        bw=w;  bh=rt; gx0=0;gy0=y;      gx1=0;gy1=y+rt; }
@@ -1212,7 +1303,7 @@ function _buildStandsCache(){
   // la bande correspondante en « pelouse d'en-but » pour que la cage se
   // détache nettement (et non sur du béton de tribune).
   const APRON=_goalApronM();
-  c.fillStyle=_lighten(pal.crowdBg||'#0a0e14', 0.20);
+  c.fillStyle=(pal.stands&&pal.stands.apron) || _lighten(pal.crowdBg||'#0a0e14', 0.20);
   c.fillRect(wx(-APRON), 0, ws(APRON), oc.height);
   c.fillRect(wx(WW),     0, ws(APRON), oc.height);
   // Tribunes latérales : neutres (mélange des deux camps). On les teinte d'un
