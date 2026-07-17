@@ -532,7 +532,15 @@ function setStadiumStands(on){
   window._standsEnabled = !!on;
   try{ localStorage.setItem('footsim_stands', on?'1':'0'); }catch(e){}
   _pitchCache=null; _standsCache=null;
+  // Re-render les écrans qui affichent le toggle, s'ils sont ouverts (même
+  // pattern que setStadiumTheme, dont ce toggle est le voisin direct).
   if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
+  if(typeof _renderDirectorInfra==='function' && (document.getElementById('career-director-content')?.innerHTML||'').indexOf('Infrastructures')>=0){
+    try{ renderCareerDirectorTab('infra'); }catch(e){}
+  }
+  if(document.getElementById('prematch-modal')?.classList.contains('on') && typeof showPreMatch==='function'){
+    try{ showPreMatch(window._prematchOnStart); }catch(e){}
+  }
 }
 (function _restoreStadiumStands(){
   try{ if(localStorage.getItem('footsim_stands')==='0') window._standsEnabled=false; }catch(e){}
@@ -862,7 +870,7 @@ function _buildPitchCache(){
     // par frame reste d'un seul blit.
     // Sur mobile la marge est trop fine pour des gradins lisibles : on garde
     // seulement le fond uni + les panneaux LED, qui eux restent nets.
-    if(_standRatio()>0.08){
+    if(_standRatio()>=0.08){
       const st=_buildStandsCache();
       if(st) c.drawImage(st,0,0);
     } else {
@@ -911,7 +919,7 @@ function _buildPitchCache(){
   const rad=Math.max(oc.width,oc.height)*0.75;
   // NB : avec les tribunes, le vignettage tomberait pile sur les gradins et
   // annulerait le travail de détail. On l'atténue quand le décor est actif.
-  const vgMax=_standRatio()>0.08 ? .18 : .28;
+  const vgMax=_standRatio()>=0.08 ? .18 : .28;
   const vg=c.createRadialGradient(cx0,cy0,rad*0.35,cx0,cy0,rad);
   vg.addColorStop(0,'rgba(0,0,0,0)');
   vg.addColorStop(1,'rgba(0,0,0,'+vgMax+')');

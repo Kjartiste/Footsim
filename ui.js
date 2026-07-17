@@ -587,6 +587,18 @@ function _stadiumSelectorHTML(){
       +'</button>';
   });
   h+='</div>';
+  // ── Toggle tribunes on/off ──────────────────────────────────────────
+  const standsOn = (typeof stadiumStands==='function') ? stadiumStands() : true;
+  const isClassic = cur==='classic';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)">'
+    +'<div>'
+      +'<div style="font-size:11px;font-weight:800;color:var(--text)">Tribunes / pourtour</div>'
+      +'<div style="font-size:8px;color:var(--muted);margin-top:1px">'+(isClassic?'Déjà masquées en style Classique.':'Affiche ou masque le décor autour du terrain (plus de place à l\'écran une fois désactivé).')+'</div>'
+    +'</div>'
+    +'<button onclick="setStadiumStands('+(!standsOn)+')" '+(isClassic?'disabled':'')+' style="flex-shrink:0;padding:8px 12px;border-radius:9px;cursor:'+(isClassic?'default':'pointer')+';border:2px solid '+(standsOn&&!isClassic?'var(--gold)':'var(--b1)')+';background:'+(standsOn&&!isClassic?'rgba(240,192,40,.14)':'var(--dark)')+';color:'+(standsOn&&!isClassic?'var(--gold)':'var(--muted)')+';opacity:'+(isClassic?'.55':'1')+'">'
+      +'<div style="font-size:11px;font-weight:900;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:.5px;white-space:nowrap">'+(standsOn?'✅ ACTIVÉES':'🚫 DÉSACTIVÉES')+'</div>'
+    +'</button>'
+  +'</div>';
   return h;
 }
 
