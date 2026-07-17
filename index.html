@@ -60,13 +60,6 @@ html[data-textsize="tresgrand"] .slogo{zoom:1.3}
    largeur/hauteur de l'écran. Purement une histoire de layout : #main est
    déjà flex:1, donc masquer #sidebar suffit à lui laisser toute la place. */
 #app.theater-mode #sidebar{display:none}
-/* En plein écran natif, <html>/<body> doivent réellement occuper l'écran :
-   sinon le navigateur peint des bandes noires autour du layout d'origine.
-   Le canvas, lui, garde ses proportions (mise à l'échelle uniforme dans
-   resize()) — l'image n'est jamais déformée, seulement centrée. */
-:fullscreen #app, :-webkit-full-screen #app{width:100vw;height:100vh}
-html:fullscreen, body:fullscreen{width:100%;height:100%;background:var(--bg,#0d1117)}
-:fullscreen #main, :-webkit-full-screen #main{flex:1 1 auto;height:100%;max-height:none}
 @media(max-width:600px){
   /* En mobile la sidebar passe sous le canvas et #main a une hauteur
      fixe (42vw) : en plein écran on lui redonne toute la hauteur. */

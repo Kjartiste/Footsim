@@ -587,18 +587,6 @@ function _stadiumSelectorHTML(){
       +'</button>';
   });
   h+='</div>';
-  // ── Toggle tribunes / pourtour ──────────────────────────────────────
-  const standsOn = (typeof stadiumStands==='function') ? stadiumStands() : true;
-  const isClassic = cur==='classic';
-  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">'
-    +'<div>'
-      +'<div style="font-size:11px;font-weight:800;color:var(--text)">Tribunes &amp; infrastructures</div>'
-      +'<div style="font-size:8px;color:var(--muted);margin-top:1px">'+(isClassic?'Déjà masquées en style Classique.':'Gradins, cages et décor autour du terrain (vue aérienne, à l\'échelle des joueurs).')+'</div>'
-    +'</div>'
-    +'<button onclick="setStadiumStands('+(!standsOn)+')" '+(isClassic?'disabled':'')+' style="flex-shrink:0;padding:8px 12px;border-radius:9px;cursor:'+(isClassic?'default':'pointer')+';border:2px solid '+(standsOn&&!isClassic?'var(--gold)':'var(--b1)')+';background:'+(standsOn&&!isClassic?'rgba(240,192,40,.14)':'var(--dark)')+';color:'+(standsOn&&!isClassic?'var(--gold)':'var(--muted)')+';opacity:'+(isClassic?'.55':'1')+'">'
-      +'<div style="font-size:11px;font-weight:900;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:.5px;white-space:nowrap">'+(standsOn?'✅ ACTIVÉES':'🚫 DÉSACTIVÉES')+'</div>'
-    +'</button>'
-  +'</div>';
   return h;
 }
 
@@ -704,28 +692,9 @@ function renderSettings(){
       ${DIFFICULTY_LEVELS[diffNow].desc}
     </div>
   `);
-  const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  const fsSupported = (typeof _fullscreenSupported==='function') ? _fullscreenSupported() : true;
-  const fsCard = card(`
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Affichage</div>
-    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Le plein écran masque le menu et l'interface du navigateur. L'image garde ses proportions
-      quelle que soit la résolution ou le format d'écran.
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <div>
-        <div style="font-size:11px;font-weight:800;color:var(--text)">Mode plein écran</div>
-        <div style="font-size:8px;color:var(--muted);margin-top:1px">${fsSupported?'Échap pour quitter.':'Non pris en charge par ce navigateur (iOS Safari) : le menu sera simplement masqué.'}</div>
-      </div>
-      <button onclick="toggleTheaterMode()" style="flex-shrink:0;padding:8px 12px;border-radius:9px;cursor:pointer;border:2px solid ${fsOn?'var(--gold)':'var(--b1)'};background:${fsOn?'rgba(240,192,40,.14)':'var(--dark)'};color:${fsOn?'var(--gold)':'var(--muted)'}">
-        <div style="font-size:11px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;white-space:nowrap">${fsOn?'⛶ QUITTER':'⛶ ACTIVER'}</div>
-      </button>
-    </div>
-  `);
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
     ${themeCard}
-    ${fsCard}
     ${stadeCard}
     ${diffCard}
     ${textSizeCard}
@@ -756,33 +725,15 @@ function setTheme(t){
 // de vrai plein écran navigateur en plus (masque aussi la barre d'adresse
 // sur mobile) — non bloquant si l'API est indisponible ou refusée (courant
 // sur iOS Safari, qui n'implémente pas requestFullscreen).
-function _fullscreenSupported(){
-  const e=document.documentElement;
-  return !!(e.requestFullscreen || e.webkitRequestFullscreen || e.msRequestFullscreen);
-}
-function _enterFullscreen(){
-  const e=document.documentElement;
-  const fn = e.requestFullscreen || e.webkitRequestFullscreen || e.msRequestFullscreen;
-  if(!fn) return;                       // iOS Safari : on garde le mode "sidebar masquée"
-  try{ const r=fn.call(e); if(r&&r.catch) r.catch(()=>{}); }catch(err){}
-}
-function _exitFullscreen(){
-  const fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-  if(!fn) return;
-  try{ const r=fn.call(document); if(r&&r.catch) r.catch(()=>{}); }catch(err){}
-}
-function _isFullscreen(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
-
 function toggleTheaterMode(){
   const app=document.getElementById('app');
   if(!app) return;
   const on=app.classList.toggle('theater-mode');
   _syncTheaterBtn(on);
-  if(on) _enterFullscreen();
-  else if(_isFullscreen()) _exitFullscreen();
-  // Le panneau Paramètres affiche l'état du plein écran : le resynchroniser.
-  if(typeof renderSettings==='function' && document.getElementById('settings-out')){
-    setTimeout(()=>{ try{ renderSettings(); }catch(e){} }, 80);
+  if(on){
+    if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+  } else if(document.fullscreenElement && document.exitFullscreen){
+    document.exitFullscreen().catch(()=>{});
   }
   // La taille du canvas dépend de #canvas-wrap, qui vient de changer de
   // taille (sidebar masquée/réaffichée) : on force un resize après le
@@ -801,25 +752,14 @@ function _syncTheaterBtn(on){
 // Si l'utilisateur quitte le plein écran natif autrement (touche Échap,
 // bouton du navigateur…), on resynchronise la sidebar et le bouton pour ne
 // pas rester dans un état incohérent.
-function _onFsChange(){
-  if(_isFullscreen()) return;
+document.addEventListener('fullscreenchange',()=>{
+  if(document.fullscreenElement) return;
   const app=document.getElementById('app');
   if(app && app.classList.contains('theater-mode')){
     app.classList.remove('theater-mode');
     _syncTheaterBtn(false);
     setTimeout(()=>{ if(typeof resize==='function') resize(); }, 60);
   }
-  if(typeof renderSettings==='function' && document.getElementById('settings-out')){
-    try{ renderSettings(); }catch(e){}
-  }
-}
-document.addEventListener('fullscreenchange', _onFsChange);
-document.addEventListener('webkitfullscreenchange', _onFsChange);
-// Un changement de résolution/format (rotation, écran externe, entrée en
-// plein écran) doit re-caler le canvas : sans ça l'image resterait à
-// l'ancienne taille jusqu'au prochain resize fenêtre.
-window.addEventListener('orientationchange',()=>{
-  setTimeout(()=>{ if(typeof resize==='function') resize(); }, 120);
 });
 
 // Bascule la taille de l'interface (normal / grand / très grand) et la mémorise.

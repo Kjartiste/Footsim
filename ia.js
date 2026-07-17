@@ -2478,7 +2478,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     return;
   }
 
-  // ── Distraction (id interne conservé : boing_boing) — Ruby/Saphyr uniquement ──
+  // ── Boing Boing — Ruby/Saphyr uniquement ──
   if(sp.id==='boing_boing'){
     // Max 1 fois par joueur
     if((carrier._boingCount||0)>=1){ setPhase('ATTACK'); return; }
@@ -2488,8 +2488,8 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const scorer=actP(dti)[0]||actP(dti,'ATT')[0];
     for(let i=0;i<30;i++){const a=i/30*Math.PI*2;G.ptcl.push({t:'s',x:carrier.x+Math.cos(a)*10,y:carrier.y+Math.sin(a)*10,vx:Math.cos(a)*.8,vy:Math.sin(a)*.8,l:60,m:60,col:i%2===0?'#ff69b4':'#ff1493',sz:.3+Math.random()*.5});}
     G.ptcl.push({t:'ring_expand',x:carrier.x,y:carrier.y,col:'#ff69b4',maxR:18,l:40,m:40});
-    G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-8,tx:'✨ DISTRACTION !!',col:'#ff69b4',l:80,m:80,sz:2.0});
-    logEvent(`✨ ${carrier.name} — DISTRACTION ! L'équipe adverse, troublée par la ruse, perd le fil du jeu.`,'#ff69b4');
+    G.ptcl.push({t:'lbl',x:carrier.x,y:carrier.y-8,tx:'🍑 BOING BOING !!',col:'#ff69b4',l:80,m:80,sz:2.0});
+    logEvent(`🍑 ${carrier.name} — BOING BOING ! L'équipe adverse est... déconcentrée.`,'#ff69b4');
     setTimeout(()=>{
       if(!G.running)return;
       const ownGoalX = dti===0 ? G.goalX1 : G.goalX2;
