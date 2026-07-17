@@ -939,160 +939,332 @@ function drawSnow(rawDt){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TRIBUNES — gradins en perspective, liés à la simulation
+// PÉRIPHÉRIE — vue au zénith, thématisée par stade
 // ═══════════════════════════════════════════════════════════════════════════
-// Remplace la texture de points aléatoires de l'ancien crowdBand() par de
-// vrais gradins : rangées qui se resserrent vers l'extérieur (perspective),
-// sièges alignés, spectateurs présents sur une fraction des sièges seulement
-// (les trous font le réalisme). Le nombre de rangées, la présence d'un toit
-// et le taux de remplissage sont dérivés de club.stadium_capacity et de
-// l'affluence — le joueur VOIT sa progression de carrière.
+// Le match est vu d'en haut (comme sur ta réf de terrain). D'un vrai stade,
+// à cette hauteur, on ne voit PAS de rangées de sièges en perspective — on
+// voit ce qui coiffe le stade selon son thème :
+//   modern/synthetic → toits ondulés en tôle/béton, teintés côté virages.
+//   snow             → mêmes toits recouverts d'une couche de neige épaisse.
+//   greek            → péristyle : plusieurs rangées de colonnes vues d'en haut.
+//   forest           → canopée dense, aucun gradin — le stade est en clairière.
+//   bamboo           → bambouseraie (clusters de tiges vus d'en haut).
+//   handball         → tribunes bois d'une salle indoor (rangées de sièges).
+//   city             → bitume urbain + grillage périphérique.
+//   classic          → rien (border:false dans la palette).
+//
+// Les deux virages (goal-end, gauche/droite) prennent une teinte discrète des
+// couleurs du club qui y joue quand le thème le permet — ça personnalise
+// gratuitement chaque affiche.
 //
 // Tout est pré-calculé dans _standsCache (un seul canvas hors-écran, blitté
 // une fois par frame comme le terrain) : coût d'exécution nul. Seule la
-// couche "vivante" (ola, explosion de joie sur but) est dessinée par frame.
+// couche "vivante" (flash de but) est dessinée par frame quand elle a du sens.
 
-
-// ── Profil de stade dérivé de la carrière ───────────────────────────────
-// Renvoie {rows, fill, roof, cap} — degré d'équipement du stade.
-// Hors carrière (match d'exhibition), on retombe sur un stade moyen.
-function _stadiumProfile(){
-  let cap=null, rep=55;
-  try{
-    if(typeof careerV2!=='undefined' && careerV2 && careerV2.club){
-      cap=careerV2.club.stadium_capacity;
-      rep=careerV2.club.reputation!=null?careerV2.club.reputation:55;
-    }
-  }catch(e){}
-  if(!cap||!isFinite(cap)) cap=12000; // exhibition : stade de milieu de tableau
-
-  // Rangées : échelle logarithmique — 800 places → 2 rangées, 35 000 → 6.
-  const rows=Math.max(2, Math.min(6, Math.round(Math.log10(Math.max(cap,500))*2.15-4.0)));
-  // Toit : seulement à partir d'un stade déjà sérieux (~R1/D3 et au-dessus).
-  const roof=cap>=8000;
-  // Remplissage : même formule que l'affluence de save.js:765, bornée pour
-  // rester lisible (un stade jamais vide à moins de 20%, jamais 100% plein).
-  const fill=Math.max(0.2, Math.min(0.95, 0.25+rep/120));
-  return {rows, fill, roof, cap};
-}
 
 // ── Couleurs des virages ────────────────────────────────────────────────
-// Les tribunes derrière chaque but prennent la teinte de l'équipe qui y joue,
-// ce qui personnalise gratuitement chaque affiche.
+// Le pourtour derrière chaque but prend la teinte de l'équipe qui y joue,
+// ce qui personnalise gratuitement chaque affiche (là où le thème le permet).
 function _standTint(side, pal){
   try{
     const t=teams[side===0?0:1];
     if(t && t.color) return t.color;
   }catch(e){}
-  return pal.crowdBg;
+  return pal.crowdBg||'#7a8695';
 }
 
-// Mélange une couleur hex vers du sombre (les gradins sont dans l'ombre).
-function _darken(hex, k){
-  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'');
-  if(!m) return 'rgba(20,24,32,1)';
-  const r=Math.round(parseInt(m[1],16)*k), g=Math.round(parseInt(m[2],16)*k), b=Math.round(parseInt(m[3],16)*k);
-  return `rgb(${r},${g},${b})`;
+// Mélange linéaire deux couleurs hex → renvoie une chaîne rgb().
+// Utilisé pour teinter subtilement les toits/tribunes avec la couleur du club.
+function _mix(hexA, hexB, k){
+  const p=(s)=>{
+    const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(s||'');
+    return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[80,80,80];
+  };
+  const a=p(hexA), b=p(hexB);
+  const r=Math.round(a[0]+(b[0]-a[0])*k);
+  const g=Math.round(a[1]+(b[1]-a[1])*k);
+  const bb=Math.round(a[2]+(b[2]-a[2])*k);
+  return `rgb(${r},${g},${bb})`;
 }
 
-// ── Construction d'une tribune (une face du stade) ──────────────────────
-// (x,y,w,h) = zone de la marge à remplir. `dir` indique vers où le stade
-// "monte" (les rangées du fond sont les plus éloignées du terrain) :
-// 'up' (tribune du haut), 'down', 'left', 'right'.
-// La perspective : chaque rangée en s'éloignant du terrain est plus fine
-// (facteur 0.93) et plus sombre → illusion de hauteur.
-function _buildStand(c, x, y, w, h, dir, prof, pal, tint){
+// Utilitaire d'orientation : profondeur perpendiculaire au terrain, portée
+// le long de la ligne de touche, sens vers l'extérieur.
+function _sideGeom(x,y,w,h,side){
+  const horiz=(side==='up'||side==='down');
+  return {
+    horiz,
+    depth: horiz?h:w,   // épaisseur du toit/canopée
+    span:  horiz?w:h,   // longueur le long du terrain
+  };
+}
+
+// Peint le trait fin qui souligne le bord côté terrain (rim/gouttière).
+function _paintInnerRim(c,x,y,w,h,side,color,thick){
+  c.fillStyle=color;
+  if(side==='up')    c.fillRect(x, y+h-thick, w, thick);
+  if(side==='down')  c.fillRect(x, y,         w, thick);
+  if(side==='left')  c.fillRect(x+w-thick, y, thick, h);
+  if(side==='right') c.fillRect(x,         y, thick, h);
+}
+
+// ── Peintre par thème — dispatcher ──────────────────────────────────────
+// (x,y,w,h) = bande de la marge à couvrir. `side` ∈ {'up','down','left','right'}.
+// `tint` = couleur dominante côté virage (ou neutre pour les faces latérales).
+function _buildRoofPanel(c, x, y, w, h, side, theme, pal, tint){
   if(w<4||h<4) return;
-  const horiz=(dir==='up'||dir==='down');
-  const depth=horiz?h:w;      // profondeur visuelle de la tribune
-  const span =horiz?w:h;      // longueur le long du terrain
-  if(depth<5) return;
-
-  const rows=prof.rows;
-  // Répartition des rangées en perspective : somme d'une suite géométrique.
-  const K=0.93;
-  let sum=0; for(let i=0;i<rows;i++) sum+=Math.pow(K,i);
-  const baseRow=depth/sum;
-
   c.save();
   c.beginPath(); c.rect(x,y,w,h); c.clip();
-
-  // Fond de tribune (béton sombre)
-  c.fillStyle=pal.crowdBg||'#0a0e14';
-  c.fillRect(x,y,w,h);
-
-  // `off` = distance depuis le bord du TERRAIN vers l'extérieur.
-  let off=0;
-  for(let r=0;r<rows;r++){
-    const rowH=baseRow*Math.pow(K,r);
-    // Position de la rangée selon l'orientation.
-    let rx,ry,rw,rh;
-    if(dir==='up')   { rx=x; ry=y+h-off-rowH; rw=w; rh=rowH; }
-    else if(dir==='down'){ rx=x; ry=y+off;    rw=w; rh=rowH; }
-    else if(dir==='left') { rx=x+w-off-rowH; ry=y; rw=rowH; rh=h; }
-    else                  { rx=x+off;        ry=y; rw=rowH; rh=h; }
-
-    // Marche de béton : plus sombre en s'éloignant (profondeur).
-    const shade=0.55-r*0.06;
-    c.fillStyle=_darken(tint, Math.max(0.10, shade*0.34));
-    c.fillRect(rx,ry,rw,rh);
-    // Nez de marche clair : sépare visuellement les rangées.
-    c.fillStyle='rgba(255,255,255,.05)';
-    if(horiz) c.fillRect(rx, dir==='up'?ry:ry+rh-1, rw, 1);
-    else      c.fillRect(dir==='left'?rx:rx+rw-1, ry, 1, rh);
-
-    // ── Spectateurs ──────────────────────────────────────────────────────
-    // Un point par siège, présent seulement avec la probabilité `fill`.
-    // Les trous (sièges vides) sont ce qui rend la foule crédible.
-    const seatPitch=Math.max(3, rowH*0.62);
-    const nSeats=Math.floor(span/seatPitch);
-    const dotR=Math.max(0.7, rowH*0.17);
-    for(let s=0;s<nSeats;s++){
-      if(Math.random()>prof.fill) continue; // siège vide
-      const t=(s+0.5)*seatPitch + rng(-seatPitch*0.12, seatPitch*0.12);
-      let sx2,sy2;
-      if(horiz){ sx2=rx+t; sy2=ry+rowH*0.5; }
-      else     { sx2=rx+rowH*0.5; sy2=ry+t; }
-      // 1 spectateur sur 5 porte les couleurs du club (écharpe/maillot).
-      c.fillStyle = Math.random()<0.20 ? _darken(tint,0.85) : pick(pal.crowdShades||['#2c3444']);
-      c.beginPath(); c.arc(sx2,sy2,dotR,0,Math.PI*2); c.fill();
-    }
-    off+=rowH;
+  switch(theme){
+    case 'greek':    _paintGreekColonnade(c,x,y,w,h,side,pal,tint); break;
+    case 'forest':   _paintForestCanopy  (c,x,y,w,h,side,pal,tint); break;
+    case 'bamboo':   _paintBambooGrove   (c,x,y,w,h,side,pal,tint); break;
+    case 'handball': _paintHandballHall  (c,x,y,w,h,side,pal,tint); break;
+    case 'city':     _paintCityFence     (c,x,y,w,h,side,pal,tint); break;
+    case 'snow':     _paintSnowRoof      (c,x,y,w,h,side,pal,tint); break;
+    case 'synthetic':_paintModernRoof    (c,x,y,w,h,side,pal,tint,true); break;
+    default:         _paintModernRoof    (c,x,y,w,h,side,pal,tint,false);
   }
-
-  // ── Toit ────────────────────────────────────────────────────────────────
-  // Trois pixels de dégradé sombre au-dessus des rangées hautes suffisent :
-  // le cerveau lit "couverture".
-  if(prof.roof){
-    const rt=Math.max(3, depth*0.16);
-    let gx0,gy0,gx1,gy1,bx,by,bw,bh;
-    if(dir==='up')        { bx=x; by=y;          bw=w; bh=rt; gx0=0;gy0=y;   gx1=0;gy1=y+rt; }
-    else if(dir==='down') { bx=x; by=y+h-rt;     bw=w; bh=rt; gx0=0;gy0=y+h; gx1=0;gy1=y+h-rt; }
-    else if(dir==='left') { bx=x; by=y;          bw=rt; bh=h; gx0=x;gy0=0;   gx1=x+rt;gy1=0; }
-    else                  { bx=x+w-rt; by=y;     bw=rt; bh=h; gx0=x+w;gy0=0; gx1=x+w-rt;gy1=0; }
-    const rg=c.createLinearGradient(gx0,gy0,gx1,gy1);
-    rg.addColorStop(0,'rgba(0,0,0,.92)');
-    rg.addColorStop(1,'rgba(0,0,0,.25)');
-    c.fillStyle=rg; c.fillRect(bx,by,bw,bh);
-  }
-
-  // ── Piliers / tunnels ───────────────────────────────────────────────────
-  // Blocs sombres réguliers qui rompent la monotonie de la foule.
-  const pitchStep=Math.max(48, span/6);
-  c.fillStyle='rgba(0,0,0,.42)';
-  for(let p=pitchStep*0.5; p<span; p+=pitchStep){
-    if(horiz) c.fillRect(x+p-1.5, y, 3, h);
-    else      c.fillRect(x, y+p-1.5, w, 3);
-  }
-
   c.restore();
 }
 
-// ── Construction du cache complet des tribunes ──────────────────────────
+// ── modern / synthetic : toits ondulés en tôle/béton ────────────────────
+// Poutres parallèles à la ligne de touche, teintées d'une pointe de couleur
+// club côté intérieur (dégradé vers l'extérieur). Rim lumineux côté pelouse.
+function _paintModernRoof(c,x,y,w,h,side,pal,tint,light){
+  const g=_sideGeom(x,y,w,h,side);
+  const bg = light ? '#3a4552' : '#141a22';
+  c.fillStyle=bg; c.fillRect(x,y,w,h);
+  const nBeams=Math.max(4, Math.floor(g.depth/6));
+  const beamStep=g.depth/nBeams;
+  const beamBase = light ? '#4c5665' : '#232b3a';
+  for(let i=0;i<nBeams;i++){
+    // i=0 côté extérieur, i=nBeams-1 côté terrain → teinte club plus marquée près du terrain.
+    const t = nBeams>1 ? i/(nBeams-1) : 0;
+    c.fillStyle = _mix(beamBase, tint, 0.14*t);
+    if(g.horiz){
+      const by = side==='up' ? y+(nBeams-1-i)*beamStep : y+i*beamStep;
+      c.fillRect(x, by, w, beamStep+1);
+      c.fillStyle='rgba(0,0,0,0.28)'; c.fillRect(x, by, w, 1);
+    } else {
+      const bx = side==='left' ? x+(nBeams-1-i)*beamStep : x+i*beamStep;
+      c.fillStyle = _mix(beamBase, tint, 0.14*t);
+      c.fillRect(bx, y, beamStep+1, h);
+      c.fillStyle='rgba(0,0,0,0.28)'; c.fillRect(bx, y, 1, h);
+    }
+  }
+  _paintInnerRim(c,x,y,w,h,side,'rgba(255,255,255,0.18)',2);
+}
+
+// ── snow : mêmes toits, épaisse couche de neige ─────────────────────────
+function _paintSnowRoof(c,x,y,w,h,side,pal,tint){
+  const g=_sideGeom(x,y,w,h,side);
+  c.fillStyle='#3a4552'; c.fillRect(x,y,w,h);
+  // Neige épaisse : gradient blanc plein à l'extérieur → gris-bleu au bord du
+  // toit (le bord chauffé par la lumière du stade dégage un peu).
+  let gr;
+  if(g.horiz){
+    const y0 = side==='up' ? y : y+h;      // bord extérieur
+    const y1 = side==='up' ? y+h : y;      // bord côté terrain
+    gr = c.createLinearGradient(0,y0,0,y1);
+  } else {
+    const x0 = side==='left' ? x : x+w;
+    const x1 = side==='left' ? x+w : x;
+    gr = c.createLinearGradient(x0,0,x1,0);
+  }
+  gr.addColorStop(0,'#f4f8fb');
+  gr.addColorStop(0.65,'#d6e0e6');
+  gr.addColorStop(1,'#8a97a2');
+  c.fillStyle=gr; c.fillRect(x,y,w,h);
+  // Congères irrégulières
+  for(let i=0;i<14;i++){
+    c.fillStyle='rgba(255,255,255,0.55)';
+    c.beginPath();
+    c.ellipse(rng(x,x+w), rng(y,y+h), rng(2,5), rng(1,2.5), rng(0,Math.PI),0,Math.PI*2);
+    c.fill();
+  }
+  // Quelques traces de club sur les virages (drapeaux/bâches teintés)
+  for(let i=0;i<3;i++){
+    c.fillStyle=_mix('#ffffff',tint,0.5);
+    c.globalAlpha=0.35;
+    c.fillRect(rng(x,x+w-6), rng(y,y+h-3), rng(4,8), rng(2,3));
+    c.globalAlpha=1;
+  }
+  _paintInnerRim(c,x,y,w,h,side,'rgba(90,110,135,0.55)',1);
+}
+
+// ── greek : péristyle vu d'en haut ──────────────────────────────────────
+// 1 à 3 rangées de colonnes, chapiteau rond en marbre clair, fût plus foncé.
+function _paintGreekColonnade(c,x,y,w,h,side,pal,tint){
+  const g=_sideGeom(x,y,w,h,side);
+  c.fillStyle='#241a0e'; c.fillRect(x,y,w,h);
+  // Sol de dallage entre les colonnes (marbre plus sombre)
+  c.fillStyle='#3a2c18';
+  for(let i=0;i<Math.max(4,g.depth/4);i++){
+    c.fillStyle='rgba(80,60,35,0.4)';
+    c.fillRect(rng(x,x+w-3), rng(y,y+h-3), rng(2,4), rng(2,4));
+  }
+  const rows = Math.max(1, Math.min(3, Math.floor(g.depth/10)));
+  const rowStep = g.depth/(rows+0.5);
+  const colDiam = Math.min(rowStep*0.65, g.span/14);
+  const colStep = Math.max(colDiam*1.4, 6);
+  for(let r=0; r<rows; r++){
+    // r=0 côté terrain, r=rows-1 rangée du fond → plus sombre.
+    const shade = 0.95 - r*0.18;
+    const off = (r%2)*colStep*0.5;
+    for(let s=colStep*0.5+off; s<g.span; s+=colStep){
+      let cx, cy;
+      if(g.horiz){
+        cx = x + s;
+        cy = side==='up' ? y+h-rowStep*(r+0.5) : y+rowStep*(r+0.5);
+      } else {
+        cy = y + s;
+        cx = side==='left' ? x+w-rowStep*(r+0.5) : x+rowStep*(r+0.5);
+      }
+      // Ombre portée décalée vers l'intérieur (soleil bas côté terrain)
+      c.fillStyle='rgba(0,0,0,0.6)';
+      c.beginPath(); c.arc(cx+1.4, cy+1.4, colDiam*0.55, 0, Math.PI*2); c.fill();
+      // Chapiteau (marbre clair)
+      c.fillStyle = `rgba(224,212,182,${shade})`;
+      c.beginPath(); c.arc(cx, cy, colDiam*0.5, 0, Math.PI*2); c.fill();
+      // Fût visible au centre (plus foncé, texture)
+      c.fillStyle = `rgba(196,178,138,${shade})`;
+      c.beginPath(); c.arc(cx, cy, colDiam*0.32, 0, Math.PI*2); c.fill();
+    }
+  }
+  // Frise terracotta côté terrain (bordure décorative)
+  _paintInnerRim(c,x,y,w,h,side,'rgba(168,84,47,0.9)',2);
+}
+
+// ── forest : canopée dense ──────────────────────────────────────────────
+// Aucun gradin — le stade est en pleine clairière, entouré d'arbres.
+function _paintForestCanopy(c,x,y,w,h,side,pal,tint){
+  c.fillStyle='#050b06'; c.fillRect(x,y,w,h);
+  const shades = ['#1c4a1c','#245a28','#2f6b30','#183e18','#3a7a38','#2a5a26'];
+  const n = Math.floor((w*h)/55);
+  for(let i=0;i<n;i++){
+    const rx=rng(x-3,x+w+3), ry=rng(y-3,y+h+3);
+    const rr=rng(3,7.5);
+    // Ombre portée
+    c.fillStyle='rgba(0,0,0,0.4)';
+    c.beginPath(); c.arc(rx+1.2, ry+1.5, rr, 0, Math.PI*2); c.fill();
+    // Feuillage
+    c.fillStyle = pick(shades);
+    c.beginPath(); c.arc(rx, ry, rr, 0, Math.PI*2); c.fill();
+    // Reflet lumineux (soleil traversant la canopée)
+    if(Math.random()<0.35){
+      c.fillStyle='rgba(180,220,140,0.45)';
+      c.beginPath(); c.arc(rx-rr*0.3, ry-rr*0.3, rr*0.4, 0, Math.PI*2); c.fill();
+    }
+  }
+  // Lisière : ligne sombre nette côté terrain
+  _paintInnerRim(c,x,y,w,h,side,'rgba(0,0,0,0.55)',2);
+}
+
+// ── bamboo : bambouseraie ───────────────────────────────────────────────
+// Tiges de bambou vues d'en haut : petits disques verts/jaunes en amas dense.
+function _paintBambooGrove(c,x,y,w,h,side,pal,tint){
+  c.fillStyle='#0a1408'; c.fillRect(x,y,w,h);
+  const shades=['#8fbf3f','#4f9a3f','#c9d94a','#3fae4a','#6da834','#a8c94a'];
+  const n = Math.floor((w*h)/22);
+  for(let i=0;i<n;i++){
+    const rx=rng(x,x+w), ry=rng(y,y+h);
+    const rr=rng(1.2,2.6);
+    c.fillStyle='rgba(0,0,0,0.4)';
+    c.beginPath(); c.arc(rx+0.7, ry+0.7, rr, 0, Math.PI*2); c.fill();
+    c.fillStyle=pick(shades);
+    c.beginPath(); c.arc(rx, ry, rr, 0, Math.PI*2); c.fill();
+    // Cœur creux au centre (tige de bambou)
+    c.fillStyle='rgba(20,40,10,0.55)';
+    c.beginPath(); c.arc(rx, ry, rr*0.35, 0, Math.PI*2); c.fill();
+  }
+  // Chemin de pierres côté terrain
+  _paintInnerRim(c,x,y,w,h,side,'rgba(220,200,140,0.5)',2);
+}
+
+// ── handball : tribunes bois d'une salle indoor ─────────────────────────
+// Rangées parallèles au terrain, sièges colorés visibles ponctuellement.
+function _paintHandballHall(c,x,y,w,h,side,pal,tint){
+  const g=_sideGeom(x,y,w,h,side);
+  c.fillStyle='#1a1410'; c.fillRect(x,y,w,h);
+  const nRows = Math.max(3, Math.floor(g.depth/5));
+  const rowStep = g.depth/nRows;
+  const seatCols = ['#c9302c','#1d3557','#3d4a5c','#e0a038'];
+  for(let r=0;r<nRows;r++){
+    // r=0 côté terrain
+    const t = nRows>1 ? r/(nRows-1) : 0;
+    const wood = r%2===0 ? '#a67a44' : '#8a6236';
+    c.fillStyle = _mix(wood, tint, 0.10*(1-t));
+    let rx, ry, rw, rh;
+    if(g.horiz){
+      ry = side==='up' ? y+h-(r+1)*rowStep : y+r*rowStep;
+      rx = x; rw = w; rh = rowStep;
+    } else {
+      rx = side==='left' ? x+w-(r+1)*rowStep : x+r*rowStep;
+      ry = y; rw = rowStep; rh = h;
+    }
+    c.fillRect(rx, ry, rw+1, rh);
+    // Sièges — carrés colorés régulièrement, avec trous (~30% vides)
+    const nSeats = Math.floor(g.span/5);
+    const seatPitch = g.span/nSeats;
+    for(let s=0;s<nSeats;s++){
+      if(Math.random()<0.28) continue;
+      c.fillStyle = pick(seatCols);
+      if(g.horiz){
+        c.fillRect(x + (s+0.3)*seatPitch, ry+rowStep*0.35, seatPitch*0.5, rowStep*0.4);
+      } else {
+        c.fillRect(rx+rowStep*0.35, y + (s+0.3)*seatPitch, rowStep*0.4, seatPitch*0.5);
+      }
+    }
+  }
+  // Rambarde métallique côté terrain
+  _paintInnerRim(c,x,y,w,h,side,'rgba(180,180,190,0.8)',1);
+}
+
+// ── city : bitume urbain + grillage périphérique ────────────────────────
+function _paintCityFence(c,x,y,w,h,side,pal,tint){
+  const g=_sideGeom(x,y,w,h,side);
+  c.fillStyle='#2a2d33'; c.fillRect(x,y,w,h);
+  // Grain d'asphalte
+  for(let i=0;i<Math.floor(w*h/3);i++){
+    c.fillStyle = Math.random()<0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)';
+    c.fillRect(rng(x,x+w), rng(y,y+h), 1, 1);
+  }
+  // Taches — flaques, graffiti, restes de peinture (les couleurs du club s'y glissent)
+  for(let i=0;i<4;i++){
+    c.fillStyle = pick(['rgba(230,57,70,0.35)','rgba(240,192,40,0.3)',
+                        'rgba(136,64,224,0.3)', _mix('#3a3d43',tint,0.55)]);
+    c.globalAlpha = 0.55;
+    c.beginPath();
+    c.ellipse(rng(x,x+w), rng(y,y+h), rng(3,7), rng(1.5,3), rng(0,Math.PI),0,Math.PI*2);
+    c.fill();
+    c.globalAlpha = 1;
+  }
+  // Grillage : quadrillage en losanges dans la bande côté terrain
+  const fenceDepth = Math.min(g.depth*0.55, 14);
+  c.save();
+  c.strokeStyle='rgba(190,200,210,0.55)';
+  c.lineWidth=0.8;
+  let fx, fy, fw, fh;
+  if(side==='up')         { fx=x; fy=y+h-fenceDepth; fw=w; fh=fenceDepth; }
+  else if(side==='down')  { fx=x; fy=y;              fw=w; fh=fenceDepth; }
+  else if(side==='left')  { fx=x+w-fenceDepth; fy=y; fw=fenceDepth; fh=h; }
+  else                     { fx=x;              fy=y; fw=fenceDepth; fh=h; }
+  c.beginPath(); c.rect(fx,fy,fw,fh); c.clip();
+  const step=4;
+  const maxSize=Math.max(fw,fh);
+  for(let d=-maxSize; d<maxSize*2; d+=step){
+    c.beginPath(); c.moveTo(fx+d,fy);       c.lineTo(fx+d+fh, fy+fh); c.stroke();
+    c.beginPath(); c.moveTo(fx+d+fh, fy);   c.lineTo(fx+d,    fy+fh); c.stroke();
+  }
+  c.restore();
+  _paintInnerRim(c,x,y,w,h,side,'rgba(240,224,90,0.5)',1);
+}
+
+// ── Construction du cache complet du pourtour ───────────────────────────
 function _buildStandsCache(){
   if(!cvs||cvs.width<2||cvs.height<2) return null;
-  const prof=_stadiumProfile();
-  const pal=_stadiumPalette(stadiumTheme());
+  const theme=stadiumTheme();
+  const pal=_stadiumPalette(theme);
   const oc=document.createElement('canvas');
   oc.width=cvs.width; oc.height=cvs.height;
   const c=oc.getContext('2d');
@@ -1101,14 +1273,12 @@ function _buildStandsCache(){
   const leftM=px0, rightM=oc.width-px1, topM=py0, bottomM=oc.height-py1;
 
   // Virages (derrière les buts) : teintés aux couleurs des deux équipes.
-  _buildStand(c, 0, 0, leftM, oc.height, 'left',  prof, pal, _standTint(0,pal));
-  _buildStand(c, px1, 0, rightM, oc.height, 'right', prof, pal, _standTint(1,pal));
-  // Tribunes latérales : neutres (mélange des deux camps). On les teinte d'un
-  // gris béton clair plutôt que du fond quasi-noir, sinon les marches et les
-  // spectateurs disparaissent complètement dans l'ombre.
+  // Les faces latérales (haut/bas) sont neutres.
   const NEUTRAL='#8a94a6';
-  _buildStand(c, px0, 0, px1-px0, topM, 'up',   prof, pal, NEUTRAL);
-  _buildStand(c, px0, py1, px1-px0, bottomM, 'down', prof, pal, NEUTRAL);
+  _buildRoofPanel(c, 0,   0, leftM,  oc.height, 'left',  theme, pal, _standTint(0,pal));
+  _buildRoofPanel(c, px1, 0, rightM, oc.height, 'right', theme, pal, _standTint(1,pal));
+  _buildRoofPanel(c, px0, 0,        px1-px0, topM,    'up',   theme, pal, NEUTRAL);
+  _buildRoofPanel(c, px0, py1,      px1-px0, bottomM, 'down', theme, pal, NEUTRAL);
 
   _standsCache=oc; _standsW=oc.width; _standsH=oc.height;
   return oc;
@@ -1122,41 +1292,30 @@ function triggerStandsCheer(side){ _standsCheer={t:performance.now(), dur:900, s
 
 function drawStandsLive(){
   if(_standRatio()<=0 || !_standsCache) return;
-  const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
+  // Vue au zénith : plus d'"ola" en scan sinusoïdal (ça n'a de sens que sur des
+  // gradins en perspective). L'explosion de but reste pertinente sur les thèmes
+  // qui montrent une vraie foule ; les autres (péristyle, forêt, bambouseraie,
+  // city-stade) restent silencieux pour rester cohérents.
+  if(!_standsCheer.dur) return;
+  const theme=stadiumTheme();
+  const hasCrowd = (theme==='modern'||theme==='synthetic'||theme==='snow'||theme==='handball');
+  if(!hasCrowd){ _standsCheer.dur=0; return; }
+
+  const px0=wx(0), px1=wx(WW);
   const now=performance.now();
+  const el=now-_standsCheer.t;
+  if(el>=_standsCheer.dur){ _standsCheer.dur=0; return; }
+
   ctx.save();
   ctx.globalCompositeOperation='lighter';
-
-  // ── OLA ────────────────────────────────────────────────────────────────
-  // Un sinus qui balaie horizontalement et module l'alpha de colonnes de
-  // tribune. Discret : c'est une respiration, pas un clignotement.
-  const wave=(now/1000)*0.55;
-  const colW=Math.max(26, (px1-px0)/14);
-  for(let x=0;x<ctx.canvas.width;x+=colW){
-    const phase=Math.sin(wave - (x/ctx.canvas.width)*Math.PI*3);
-    if(phase<0.6) continue;
-    const a=(phase-0.6)/0.4*0.07;
-    ctx.fillStyle=`rgba(255,255,255,${a.toFixed(3)})`;
-    if(py0>6)                   ctx.fillRect(x,0,colW-2,py0);
-    if(ctx.canvas.height-py1>6) ctx.fillRect(x,py1,colW-2,ctx.canvas.height-py1);
-  }
-
-  // ── EXPLOSION DE JOIE (sur but) ────────────────────────────────────────
-  // Flashs blancs aléatoires dans la tribune de l'équipe qui vient de marquer.
-  if(_standsCheer.dur){
-    const el=now-_standsCheer.t;
-    if(el>=_standsCheer.dur){ _standsCheer.dur=0; }
-    else{
-      const k=1-el/_standsCheer.dur;                 // décroissance
-      const side=_standsCheer.side;
-      const zx=side===0?0:px1, zw=side===0?px0:(ctx.canvas.width-px1);
-      if(zw>4){
-        for(let i=0;i<26;i++){
-          if(Math.random()>k) continue;
-          ctx.fillStyle=`rgba(255,255,255,${(0.5*k).toFixed(3)})`;
-          ctx.fillRect(zx+Math.random()*zw, Math.random()*ctx.canvas.height, 2, 2);
-        }
-      }
+  const k=1-el/_standsCheer.dur;   // décroissance
+  const side=_standsCheer.side;
+  const zx=side===0?0:px1, zw=side===0?px0:(ctx.canvas.width-px1);
+  if(zw>4){
+    for(let i=0;i<26;i++){
+      if(Math.random()>k) continue;
+      ctx.fillStyle=`rgba(255,255,255,${(0.5*k).toFixed(3)})`;
+      ctx.fillRect(zx+Math.random()*zw, Math.random()*ctx.canvas.height, 2, 2);
     }
   }
   ctx.restore();
