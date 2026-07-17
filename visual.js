@@ -490,8 +490,19 @@ function resize(){
   // setGameMode() dans data.js.
   if(window._recLocked) return;
   const wrap=document.getElementById('canvas-wrap');
-  cvs.width=wrap.offsetWidth;
-  cvs.height=wrap.offsetHeight;
+  // ── RÉSOLUTION NATIVE (anti-flou / anti-déformation) ───────────────────
+  // Le backing store suit la densité de pixels de l'écran, tandis que la
+  // taille CSS reste celle du wrap. Sans ça, en plein écran sur un écran
+  // hi-DPI (Retina, mobile), le canvas était étiré depuis une résolution
+  // trop basse → image floue. Le ratio d'aspect, lui, est déjà préservé par
+  // _s=Math.min(sx,sy) + le centrage (_ox/_oy) : le terrain n'est jamais
+  // étiré, il est mis à l'échelle uniformément et lettterboxé.
+  const dpr=Math.min(window.devicePixelRatio||1, 2); // borné : au-delà, coût GPU inutile
+  const cw=Math.max(1, wrap.offsetWidth), ch=Math.max(1, wrap.offsetHeight);
+  cvs.style.width=cw+'px';
+  cvs.style.height=ch+'px';
+  cvs.width=Math.round(cw*dpr);
+  cvs.height=Math.round(ch*dpr);
   // ── MARGE DE TRIBUNES (proportionnelle) ────────────────────────────────
   // Au lieu d'une marge fixe de 8px (qui collait le terrain aux bords et ne
   // laissait aucune place aux gradins), on réserve un pourcentage du canvas
@@ -505,7 +516,7 @@ function resize(){
   // les tribunes se voient le mieux, et le terrain garde ainsi sa présence.
   const ratio=_standRatio();
   const mx=ratio>0 ? cvs.width*ratio        : 8;
-  const my=ratio>0 ? cvs.height*ratio*0.62  : 8;
+  const my=ratio>0 ? cvs.height*ratio*0.80  : 8;
   const sx=(cvs.width-mx*2)/WW,sy=(cvs.height-my*2)/WH;
   _s=Math.min(sx,sy);
   _ox=(cvs.width-WW*_s)/2;
@@ -518,10 +529,30 @@ function resize(){
 // 0 = pas de tribunes (marge fixe legacy de 8px).
 function _standRatio(){
   if(typeof stadiumTheme==='function' && stadiumTheme()==='classic') return 0;
-  if(!cvs) return 0.13;
-  if(cvs.width<560) return 0.06;  // mobile : juste de quoi loger les panneaux LED
-  return 0.13;
+  if(typeof stadiumStands==='function' && !stadiumStands()) return 0; // toggle joueur
+  if(!cvs) return 0.20;
+  // On teste la largeur CSS (et non cvs.width, qui est le backing store
+  // multiplié par le devicePixelRatio) : sinon un téléphone en dpr2 serait
+  // pris pour un écran large et le terrain deviendrait minuscule.
+  const cssW=cvs.clientWidth || cvs.width;
+  if(cssW<560) return 0.10;       // mobile : pourtour réduit, terrain lisible
+  return 0.20;                    // proportion réaliste terrain / infrastructures
 }
+
+// ── Toggle tribunes on/off (persistant) ─────────────────────────────────
+// Certains joueurs préfèrent un terrain plein cadre : ce réglage ramène la
+// marge à 8px (rendu legacy) sans toucher au thème choisi.
+function stadiumStands(){ return window._standsEnabled !== false; }
+function setStadiumStands(on){
+  window._standsEnabled = !!on;
+  try{ localStorage.setItem('footsim_stands', on?'1':'0'); }catch(e){}
+  _pitchCache=null; _standsCache=null;
+  if(typeof resize==='function') resize();
+  if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
+}
+(function _restoreStadiumStands(){
+  try{ if(localStorage.getItem('footsim_stands')==='0') window._standsEnabled=false; }catch(e){}
+})();
 
 const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
 // Couleur d'encrage manga (identique à --ink de theme.css) utilisée pour les
@@ -847,7 +878,7 @@ function _buildPitchCache(){
     // par frame reste d'un seul blit.
     // Sur mobile la marge est trop fine pour des gradins lisibles : on garde
     // seulement le fond uni + les panneaux LED, qui eux restent nets.
-    if(_standRatio()>0.08){
+    if(_standRatio()>=0.08){
       const st=_buildStandsCache();
       if(st) c.drawImage(st,0,0);
     } else {
@@ -860,10 +891,14 @@ function _buildPitchCache(){
 
     // Panneaux LED publicitaires : fine bande colorée collée au pourtour du
     // terrain (toujours visible même quand la marge est petite).
-    const boardT=Math.max(3,Math.min(7,Math.min(leftM,topM,3)+3));
+    // Épaisseur proportionnelle à la marge disponible : avec des tribunes
+    // agrandies, une bande figée à 7px paraîtrait collée au sol. On la borne
+    // pour qu'elle reste une bande LED et n'empiète pas sur les gradins.
+    const _bpx=Math.min(window.devicePixelRatio||1, 2); // cf. _buildStand
+    const boardT=Math.max(3*_bpx, Math.min(14*_bpx, Math.min(leftM,topM)*0.22+3*_bpx));
     const drawBoard=(x,y,w,h,horiz)=>{
       if(w<=0||h<=0)return;
-      const n=Math.max(1,Math.round((horiz?w:h)/26));
+      const n=Math.max(1,Math.round((horiz?w:h)/Math.max(26*_bpx, boardT*4)));
       const step=(horiz?w:h)/n;
       for(let i=0;i<n;i++){
         c.fillStyle=pal.boardCols[i%pal.boardCols.length];
@@ -896,7 +931,7 @@ function _buildPitchCache(){
   const rad=Math.max(oc.width,oc.height)*0.75;
   // NB : avec les tribunes, le vignettage tomberait pile sur les gradins et
   // annulerait le travail de détail. On l'atténue quand le décor est actif.
-  const vgMax=_standRatio()>0.08 ? .18 : .28;
+  const vgMax=_standRatio()>=0.08 ? .16 : .28;
   const vg=c.createRadialGradient(cx0,cy0,rad*0.35,cx0,cy0,rad);
   vg.addColorStop(0,'rgba(0,0,0,0)');
   vg.addColorStop(1,'rgba(0,0,0,'+vgMax+')');
@@ -1008,7 +1043,16 @@ function _buildStand(c, x, y, w, h, dir, prof, pal, tint){
   const span =horiz?w:h;      // longueur le long du terrain
   if(depth<5) return;
 
-  const rows=prof.rows;
+  // La marge est désormais généreuse (~20% du canvas) : on ajoute des rangées
+  // supplémentaires quand la place le permet, plutôt que d'étirer les rangées
+  // existantes — sinon les sièges deviennent des taches géantes. La densité
+  // (hauteur de marche ~9px) reste constante quelle que soit la résolution.
+  // Les tailles ci-dessous sont exprimées en pixels PERÇUS : on les multiplie
+  // par le devicePixelRatio, sinon un écran Retina afficherait deux fois plus
+  // de rangées deux fois plus petites (fourmilière illisible).
+  const _px=Math.min(window.devicePixelRatio||1, 2);
+  const rowsFit=Math.floor(depth/(9*_px));
+  const rows=Math.max(2, Math.min(rowsFit, prof.rows+3));
   // Répartition des rangées en perspective : somme d'une suite géométrique.
   const K=0.93;
   let sum=0; for(let i=0;i<rows;i++) sum+=Math.pow(K,i);
@@ -1044,9 +1088,9 @@ function _buildStand(c, x, y, w, h, dir, prof, pal, tint){
     // ── Spectateurs ──────────────────────────────────────────────────────
     // Un point par siège, présent seulement avec la probabilité `fill`.
     // Les trous (sièges vides) sont ce qui rend la foule crédible.
-    const seatPitch=Math.max(3, rowH*0.62);
+    const seatPitch=Math.min(7*_px, Math.max(3*_px, rowH*0.62));
     const nSeats=Math.floor(span/seatPitch);
-    const dotR=Math.max(0.7, rowH*0.17);
+    const dotR=Math.min(1.9*_px, Math.max(0.7*_px, rowH*0.17));
     for(let s=0;s<nSeats;s++){
       if(Math.random()>prof.fill) continue; // siège vide
       const t=(s+0.5)*seatPitch + rng(-seatPitch*0.12, seatPitch*0.12);
