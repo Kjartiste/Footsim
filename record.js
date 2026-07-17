@@ -117,14 +117,21 @@
     msgTimeout=setTimeout(()=>bubble.classList.remove('rec-msg-show'),4500);
   }
 
+  // Raison d'indisponibilité, ou null si l'enregistrement est possible.
+  // Centralisé ici : le bouton REC et la case d'avant-match s'appuient dessus.
+  function recUnsupportedReason(){
+    const cvs=document.getElementById('cvs');
+    if(!cvs) return 'Canvas introuvable.';
+    if(!canvasCaptureSupported()) return 'Ce navigateur ne prend pas en charge l\'enregistrement du canvas (captureStream indisponible).';
+    if(!pickMime()) return 'Aucun format vidéo supporté par ce navigateur (MediaRecorder indisponible).';
+    return null;
+  }
+  function recSupported(){ return recUnsupportedReason()===null; }
+
   function checkSupport(){
     const btn=document.getElementById('rec-btn');
     if(!btn) return;
-    const cvs=document.getElementById('cvs');
-    let reason=null;
-    if(!cvs) reason='Canvas introuvable.';
-    else if(!canvasCaptureSupported()) reason='Ce navigateur ne prend pas en charge l\'enregistrement du canvas (captureStream indisponible).';
-    else if(!pickMime()) reason='Aucun format vidéo supporté par ce navigateur (MediaRecorder indisponible).';
+    const reason=recUnsupportedReason();
     if(reason){
       btn.disabled=true;
       btn.classList.add('rec-disabled');
@@ -628,7 +635,65 @@
   }
 
   // ── Boucle d'enregistrement (indépendante de la boucle de jeu) ─────────
-  let _lastFrameTs=0;
+  // ═══════════════════════════════════════════════════════════
+  // PAUSE AUTOMATIQUE (mi-temps, pauses, fin)
+  // ═══════════════════════════════════════════════════════════
+  // Une mi-temps de plusieurs secondes d'écran figé n'a rien à faire dans un
+  // short. MediaRecorder sait suspendre puis reprendre : les frames sautées ne
+  // sont PAS encodées, donc la coupure est invisible au montage (pas de trou,
+  // pas de gel — la vidéo enchaîne directement).
+  // On s'appuie sur les états que le moteur maintient déjà : G.phase et
+  // G._paused. Aucun nouveau drapeau à tenir à jour.
+  function _shouldPause(){
+    if(typeof G==='undefined' || !G) return false;
+    if(G.phase==='HALFTIME') return true;   // mi-temps / pause prolongations
+    if(G._paused) return true;              // pause manuelle du joueur
+    return false;
+  }
+
+  // Quand l'enregistrement est armé depuis l'avant-match, il démarre par un
+  // générique de 2,2 s. Or le match, lui, commence tout de suite : les
+  // premières secondes de jeu se dérouleraient DERRIÈRE le générique et
+  // seraient perdues — exactement ce que l'option cherche à éviter.
+  // On retient donc le coup d'envoi le temps du générique, puis on relâche.
+  function _holdKickoffDuringIntro(){
+    if(typeof G==='undefined' || !G) return;
+    G._paused=true;
+    const release=()=>{
+      if(recState==='live' || recState==='idle'){
+        G._paused=false;
+        const b=document.getElementById('mbtn');
+        if(b) b.textContent='⏸ Pause';
+        return;
+      }
+      setTimeout(release, 80);
+    };
+    setTimeout(release, 80);
+  }
+
+  let _pausedByBreak=false;
+  function _syncPause(){
+    if(!recorder || recState!=='live') return;
+    const want=_shouldPause();
+    try{
+      if(want && recorder.state==='recording'){
+        recorder.pause(); _pausedByBreak=true;
+        if(crowdGain && actx){        // on baisse aussi le son pendant la coupure
+          try{ crowdGain.gain.setTargetAtTime(0.02, actx.currentTime, 0.2); }catch(e){}
+        }
+      } else if(!want && recorder.state==='paused' && _pausedByBreak){
+        recorder.resume(); _pausedByBreak=false;
+        if(crowdGain && actx){
+          try{ crowdGain.gain.setTargetAtTime(0.16, actx.currentTime, 0.3); }catch(e){}
+        }
+        // La caméra a pu « dériver » pendant la coupure : on la recale d'un
+        // coup au lieu de la laisser glisser à la reprise.
+        _camReset();
+      }
+    }catch(e){}
+  }
+
+  let _lastFrameTs=0, _pausedMs=0, _lastPauseTick=0;
   function recLoop(){
     recRAF=requestAnimationFrame(recLoop);
     const now=performance.now();
@@ -643,8 +708,16 @@
       drawIntro(Math.min(1,(now-stateStart)/INTRO_MS));
       if(now-stateStart>=INTRO_MS){ recState='live'; stateStart=now; setBtnUI('recording'); }
     } else if(recState==='live'){
+      _syncPause();
       if(cvs) drawLive(cvs, now, dtSec);
-      if(btn) btn.textContent='⏺ '+fmtTime((now-recStartTs)/1000);
+      if(btn){
+        // Le chrono du bouton doit refléter la durée RÉELLE de la vidéo :
+        // le temps passé en pause n'est pas encodé, il ne doit donc pas être
+        // compté (sinon le bouton annonce 3:00 pour une vidéo de 2:10).
+        if(_pausedByBreak) _pausedMs += (now-(_lastPauseTick||now));
+        _lastPauseTick=now;
+        btn.textContent=(_pausedByBreak?'⏸ ':'⏺ ')+fmtTime(Math.max(0,(now-recStartTs-_pausedMs))/1000);
+      }
     } else if(recState==='outro'){
       drawOutro(Math.min(1,(now-stateStart)/OUTRO_MS));
       if(now-stateStart>=OUTRO_MS) finalizeRecording();
@@ -774,7 +847,7 @@
     recorder.start(1000); // chunk toutes les secondes : évite de tout perdre en cas de crash
 
     recStartTs=performance.now();
-    recState='intro'; stateStart=recStartTs; goalCeleb=null; replay=null; _lastFrameTs=0; _camReset(); _rbReset();
+    recState='intro'; stateStart=recStartTs; goalCeleb=null; replay=null; _lastFrameTs=0; _pausedMs=0; _lastPauseTick=0; _pausedByBreak=false; _camReset(); _rbReset();
     if(hasAudio) setTimeout(()=>_audioWhistle(), INTRO_MS-250); // sifflet au coup d'envoi
     setBtnUI('intro');
     window.addEventListener('footsim:goal', onGoalEvent);
@@ -783,6 +856,13 @@
 
   function requestStop(){
     if(recState!=='intro' && recState!=='live') return;
+    // Si on arrête PENDANT une coupure (mi-temps), le recorder est en pause :
+    // il faut le relancer, sinon l'outro ne serait jamais encodé et la vidéo
+    // s'arrêterait net sur la dernière frame d'avant la pause.
+    if(recorder && recorder.state==='paused'){
+      try{ recorder.resume(); }catch(e){}
+      _pausedByBreak=false;
+    }
     recState='outro'; stateStart=performance.now();
     setBtnUI('outro');
   }
@@ -826,6 +906,29 @@
     // pendant le générique de fin ('outro') : clic ignoré, la vidéo se
     // finalise toute seule dans l'instant qui suit.
   };
+
+  // ── Armement depuis l'écran d'avant-match ────────────────────────────
+  // Coché avant le coup d'envoi, l'enregistrement démarre tout seul au
+  // lancement du match : plus besoin de cliquer REC dans la seconde qui suit
+  // l'engagement (et donc plus de premières secondes ratées).
+  // Même principe que `_gifArmNext`, dont c'est le voisin dans la modale.
+  window.armMatchRecording=function(on){
+    window._recArmNext=!!on;
+    try{ localStorage.setItem('footsim_recArm', on?'1':'0'); }catch(e){}
+  };
+  (function(){
+    try{ if(localStorage.getItem('footsim_recArm')==='1') window._recArmNext=true; }catch(e){}
+  })();
+  // Appelé par ui.js au coup d'envoi.
+  window.startMatchRecordingIfArmed=function(){
+    if(!window._recArmNext) return;
+    if(recState!=='idle') return;          // déjà en cours
+    if(!recSupported()) return;            // navigateur incapable : on n'insiste pas
+    startRecording();
+    if(recState!=='idle') _holdKickoffDuringIntro();
+  };
+  // L'état « prêt à enregistrer ? » sert aussi à griser la case d'avant-match.
+  window.matchRecordingSupported=function(){ return recSupported(); };
 
   // Sécurité : si l'utilisateur quitte la page/l'onglet en cours
   // d'enregistrement, on tente de finaliser proprement pour ne pas perdre

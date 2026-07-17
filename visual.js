@@ -2481,6 +2481,16 @@ function frame(ts){
         }
         if(G.minute>=45+(G._addedH1||0)){
           G.half=2;G.running=false;
+          // ── Remise de l'horloge à 45' ──────────────────────────────────
+          // Le temps additionnel de la 1re période NE se reporte PAS sur la
+          // seconde : dans un vrai match, 45+5 est suivi d'une reprise à 45',
+          // pas à 50'. Sans cette remise, G.minute restait à 50 et la 2e
+          // mi-temps, qui s'arrête à 90+add, ne durait plus que 40 minutes.
+          // On enregistre au passage la durée réelle jouée en 1re période
+          // (utile pour les stats et l'affichage).
+          G._h1EndMinute=G.minute;
+          G.minute=45;
+          G.minTick=0;
           G._firstHalfKickoffTi=G._kickoffTi??G.atkTi;
           logEvent('⏸ Mi-temps !','#f0c028');
           G.phase='HALFTIME';

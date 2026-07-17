@@ -1671,9 +1671,18 @@ function showPreMatch(onStart){
       +'</div>';
 
     // Option GIF avant le coup d'envoi (pour ne pas louper les moments chauds)
-    h+='<label style="display:flex;align-items:center;gap:7px;justify-content:center;padding:2px 14px 8px;font-size:11px;color:var(--muted);cursor:pointer">'
+    h+='<label style="display:flex;align-items:center;gap:7px;justify-content:center;padding:2px 14px 4px;font-size:11px;color:var(--muted);cursor:pointer">'
       +`<input type="checkbox" ${_gifArmNext?'checked':''} onchange="_gifArmNext=this.checked" style="accent-color:var(--gold);width:15px;height:15px">`
       +'🎬 Enregistrer la 1re mi-temps en GIF</label>';
+
+    // Option VIDÉO : armée ici, elle démarre toute seule au coup d'envoi.
+    // Sans ça il fallait cliquer REC après l'engagement — donc rater le début.
+    const _recOk = (typeof matchRecordingSupported==='function') ? matchRecordingSupported() : true;
+    h+='<label style="display:flex;align-items:center;gap:7px;justify-content:center;padding:0 14px 8px;font-size:11px;color:'+(_recOk?'var(--muted)':'#666')+';cursor:'+(_recOk?'pointer':'not-allowed')+'" '
+      +(_recOk?'':'title="Enregistrement vidéo non pris en charge par ce navigateur"')+'>'
+      +`<input type="checkbox" ${window._recArmNext?'checked':''} ${_recOk?'':'disabled'} onchange="armMatchRecording(this.checked)" style="accent-color:var(--gold);width:15px;height:15px">`
+      +'🎥 Enregistrer le match en vidéo'+(_recOk?'':' (indisponible)')+'</label>'
+      +'<div style="font-size:8px;color:#666;text-align:center;margin:-4px 14px 8px;font-style:italic">Démarre au coup d\'envoi. Les mi-temps et pauses sont automatiquement coupées.</div>';
     // Button
     h+='<div style="padding:0 14px 8px;display:flex;gap:8px">'
       +'<button onclick="openPreMatchLineup()" style="flex:1;background:var(--card);border:1px solid var(--b2);color:var(--text);font-size:11px;font-weight:700;padding:9px;border-radius:8px;cursor:pointer">✏️ Composition</button>'
@@ -1717,6 +1726,10 @@ function startMatchFromPreMatch(){
     const hc=document.getElementById('hclock');if(hc)hc.textContent="45'";
   }
   _gifArmIfNeeded();
+  // Enregistrement vidéo armé depuis l'avant-match : on le lance ici, avant
+  // l'engagement, pour que l'intro et les premières secondes soient dans la
+  // vidéo. Sans effet si la case n'est pas cochée.
+  try{ if(typeof startMatchRecordingIfArmed==='function') startMatchRecordingIfArmed(); }catch(e){}
   _triggerConcert();
   const btn=document.getElementById('mbtn');
   if(window._prematchOnStart){
