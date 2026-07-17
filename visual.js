@@ -514,14 +514,29 @@ function resize(){
   _standsCache=null; // les gradins dépendent de la taille → à reconstruire
 }
 
-// Fraction du canvas réservée aux tribunes de chaque côté.
-// 0 = pas de tribunes (marge fixe legacy de 8px).
+// Fraction du canvas réservée au pourtour de chaque côté.
+// 0 = pas de pourtour (marge fixe legacy de 8px).
 function _standRatio(){
+  if(!stadiumStands()) return 0;                                    // toggle off
   if(typeof stadiumTheme==='function' && stadiumTheme()==='classic') return 0;
-  if(!cvs) return 0.13;
-  if(cvs.width<560) return 0.06;  // mobile : juste de quoi loger les panneaux LED
-  return 0.13;
+  if(!cvs) return 0.08;
+  if(cvs.width<560) return 0.045; // mobile : pourtour discret
+  return 0.08;
 }
+
+// ── Toggle pourtour on/off ──────────────────────────────────────────────
+// Séparé du thème : le joueur peut aimer un thème (bambou, marbre…) mais
+// vouloir un rendu terrain pur, sans décor autour. Persistance localStorage.
+function stadiumStands(){ return window._standsEnabled !== false; }
+function setStadiumStands(on){
+  window._standsEnabled = !!on;
+  try{ localStorage.setItem('footsim_stands', on?'1':'0'); }catch(e){}
+  _pitchCache=null; _standsCache=null;
+  if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
+}
+(function _restoreStadiumStands(){
+  try{ if(localStorage.getItem('footsim_stands')==='0') window._standsEnabled=false; }catch(e){}
+})();
 
 const GRASS_A='#1a5c1a',GRASS_B='#1e6b1e',LINE='rgba(255,255,255,.46)';
 // Couleur d'encrage manga (identique à --ink de theme.css) utilisée pour les
@@ -1007,22 +1022,55 @@ function _paintInnerRim(c,x,y,w,h,side,color,thick){
   if(side==='right') c.fillRect(x,         y, thick, h);
 }
 
+// Couleur de la piste de dégagement entre le terrain et le pourtour.
+// Par défaut : tartan/asphalte sombre. Adaptée aux thèmes non-stade.
+function _runoffColor(theme){
+  if(theme==='snow')     return '#c9d6de';
+  if(theme==='greek')    return '#3a2c18';
+  if(theme==='forest')   return '#0d1a0a';
+  if(theme==='bamboo')   return '#1a2412';
+  if(theme==='handball') return '#8a6236';   // continuité parquet
+  if(theme==='city')     return '#1e2126';
+  return '#2c333e';                          // modern/synthetic
+}
+
 // ── Peintre par thème — dispatcher ──────────────────────────────────────
 // (x,y,w,h) = bande de la marge à couvrir. `side` ∈ {'up','down','left','right'}.
 // `tint` = couleur dominante côté virage (ou neutre pour les faces latérales).
+// On réserve d'abord une PISTE DE DÉGAGEMENT (~30% de la profondeur) collée
+// au terrain — derrière les cages et le long des lignes de touche — puis on
+// peint le toit/canopée sur la partie extérieure restante.
 function _buildRoofPanel(c, x, y, w, h, side, theme, pal, tint){
   if(w<4||h<4) return;
+  const g = _sideGeom(x,y,w,h,side);
+  const gap = Math.max(3, Math.round(g.depth * 0.30));
+
+  // Zone de dégagement (côté terrain)
+  c.fillStyle = _runoffColor(theme);
+  if(side==='up')         c.fillRect(x, y+h-gap, w, gap);
+  else if(side==='down')  c.fillRect(x, y,       w, gap);
+  else if(side==='left')  c.fillRect(x+w-gap, y, gap, h);
+  else                     c.fillRect(x,       y, gap, h);
+
+  // Zone décor (côté extérieur) : on inset la bande passée aux painters.
+  let rx=x, ry=y, rw=w, rh=h;
+  if(side==='up')         { rh = h - gap; }
+  else if(side==='down')  { ry = y + gap; rh = h - gap; }
+  else if(side==='left')  { rw = w - gap; }
+  else                     { rx = x + gap; rw = w - gap; }
+  if(rw<3||rh<3) return;    // marge trop fine : on garde juste la piste.
+
   c.save();
-  c.beginPath(); c.rect(x,y,w,h); c.clip();
+  c.beginPath(); c.rect(rx,ry,rw,rh); c.clip();
   switch(theme){
-    case 'greek':    _paintGreekColonnade(c,x,y,w,h,side,pal,tint); break;
-    case 'forest':   _paintForestCanopy  (c,x,y,w,h,side,pal,tint); break;
-    case 'bamboo':   _paintBambooGrove   (c,x,y,w,h,side,pal,tint); break;
-    case 'handball': _paintHandballHall  (c,x,y,w,h,side,pal,tint); break;
-    case 'city':     _paintCityFence     (c,x,y,w,h,side,pal,tint); break;
-    case 'snow':     _paintSnowRoof      (c,x,y,w,h,side,pal,tint); break;
-    case 'synthetic':_paintModernRoof    (c,x,y,w,h,side,pal,tint,true); break;
-    default:         _paintModernRoof    (c,x,y,w,h,side,pal,tint,false);
+    case 'greek':    _paintGreekColonnade(c,rx,ry,rw,rh,side,pal,tint); break;
+    case 'forest':   _paintForestCanopy  (c,rx,ry,rw,rh,side,pal,tint); break;
+    case 'bamboo':   _paintBambooGrove   (c,rx,ry,rw,rh,side,pal,tint); break;
+    case 'handball': _paintHandballHall  (c,rx,ry,rw,rh,side,pal,tint); break;
+    case 'city':     _paintCityFence     (c,rx,ry,rw,rh,side,pal,tint); break;
+    case 'snow':     _paintSnowRoof      (c,rx,ry,rw,rh,side,pal,tint); break;
+    case 'synthetic':_paintModernRoof    (c,rx,ry,rw,rh,side,pal,tint,true); break;
+    default:         _paintModernRoof    (c,rx,ry,rw,rh,side,pal,tint,false);
   }
   c.restore();
 }
