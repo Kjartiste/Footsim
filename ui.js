@@ -593,7 +593,7 @@ function _stadiumSelectorHTML(){
   h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">'
     +'<div>'
       +'<div style="font-size:11px;font-weight:800;color:var(--text)">Tribunes &amp; infrastructures</div>'
-      +'<div style="font-size:8px;color:var(--muted);margin-top:1px">'+(isClassic?'Déjà masquées en style Classique.':'Gradins, panneaux LED et décor autour du terrain. Désactiver agrandit le terrain à l\'écran.')+'</div>'
+      +'<div style="font-size:8px;color:var(--muted);margin-top:1px">'+(isClassic?'Déjà masquées en style Classique.':'Gradins, cages et décor autour du terrain (vue aérienne, à l\'échelle des joueurs).')+'</div>'
     +'</div>'
     +'<button onclick="setStadiumStands('+(!standsOn)+')" '+(isClassic?'disabled':'')+' style="flex-shrink:0;padding:8px 12px;border-radius:9px;cursor:'+(isClassic?'default':'pointer')+';border:2px solid '+(standsOn&&!isClassic?'var(--gold)':'var(--b1)')+';background:'+(standsOn&&!isClassic?'rgba(240,192,40,.14)':'var(--dark)')+';color:'+(standsOn&&!isClassic?'var(--gold)':'var(--muted)')+';opacity:'+(isClassic?'.55':'1')+'">'
       +'<div style="font-size:11px;font-weight:900;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:.5px;white-space:nowrap">'+(standsOn?'✅ ACTIVÉES':'🚫 DÉSACTIVÉES')+'</div>'

@@ -503,41 +503,74 @@ function resize(){
   cvs.style.height=ch+'px';
   cvs.width=Math.round(cw*dpr);
   cvs.height=Math.round(ch*dpr);
-  // ── MARGE DE TRIBUNES (proportionnelle) ────────────────────────────────
-  // Au lieu d'une marge fixe de 8px (qui collait le terrain aux bords et ne
-  // laissait aucune place aux gradins), on réserve un pourcentage du canvas
-  // tout autour. La SURFACE JOUABLE est inchangée : WW/WH restent identiques,
-  // seul le facteur d'échelle _s diminue. Toute la logique de jeu, qui passe
-  // par wx/wy/ws, suit automatiquement.
-  // Sur petit écran (mobile) on réduit fortement : 13% de 380px ne laisserait
-  // pas assez de terrain. Le thème "classic" (terrain sobre, sans décor) et
-  // l'enregistrement vidéo gardent l'ancienne marge fixe.
-  // Marge horizontale (virages) plus généreuse que la verticale : c'est là que
-  // les tribunes se voient le mieux, et le terrain garde ainsi sa présence.
-  const ratio=_standRatio();
-  const mx=ratio>0 ? cvs.width*ratio        : 8;
-  const my=ratio>0 ? cvs.height*ratio*0.80  : 8;
-  const sx=(cvs.width-mx*2)/WW,sy=(cvs.height-my*2)/WH;
-  _s=Math.min(sx,sy);
+  // ── POURTOUR DU STADE (en mètres monde) ────────────────────────────────
+  // La marge n'est plus un % du canvas (ce qui rétrécissait le terrain quand
+  // on agrandissait les tribunes) mais une bande exprimée dans la MÊME unité
+  // que le terrain : des mètres. Conséquences :
+  //   • le terrain occupe presque tout le cadre (rendu « plein cadre ») ;
+  //   • la bande est fine, comme sur une vraie vue aérienne ;
+  //   • tribunes, sièges et cages sont automatiquement à l'échelle des
+  //     joueurs, puisque tout partage le même facteur _s.
+  // WW/WH restent intouchés : gameplay, IA et collisions identiques.
+  const bandM=_standBandM();                 // profondeur du pourtour, en mètres
+  const totW=WW+bandM*2, totH=WH+bandM*2;    // monde + pourtour
+  _s=Math.min(cvs.width/totW, cvs.height/totH);
   _ox=(cvs.width-WW*_s)/2;
   _oy=(cvs.height-WH*_s)/2;
   _pitchCache=null; // le terrain doit être re-préparé à la nouvelle taille
   _standsCache=null; // les gradins dépendent de la taille → à reconstruire
 }
 
-// Fraction du canvas réservée aux tribunes de chaque côté.
-// 0 = pas de tribunes (marge fixe legacy de 8px).
-function _standRatio(){
-  if(typeof stadiumTheme==='function' && stadiumTheme()==='classic') return 0;
-  if(typeof stadiumStands==='function' && !stadiumStands()) return 0; // toggle joueur
-  if(!cvs) return 0.20;
-  // On teste la largeur CSS (et non cvs.width, qui est le backing store
-  // multiplié par le devicePixelRatio) : sinon un téléphone en dpr2 serait
-  // pris pour un écran large et le terrain deviendrait minuscule.
-  const cssW=cvs.clientWidth || cvs.width;
-  if(cssW<560) return 0.10;       // mobile : pourtour réduit, terrain lisible
-  return 0.20;                    // proportion réaliste terrain / infrastructures
+// ── Profondeur du pourtour, en MÈTRES ───────────────────────────────────
+// Décomposition derrière un but (le côté le plus contraint) :
+//   2,4 m de cage + 3,0 m de dégagement + ~4,6 m de tribunes = 10 m.
+// Derrière les lignes de touche il n'y a pas de cage : la même bande y laisse
+// 2,5 m de dégagement + le reste en tribunes.
+function _standBandM(){
+  if(typeof stadiumTheme==='function' && stadiumTheme()==='classic') return 0.6;
+  if(typeof stadiumStands==='function' && !stadiumStands()) return 0.6;
+  const cssW=cvs?(cvs.clientWidth||cvs.width):1000;
+  return cssW<560 ? 7.5 : 10.0;  // mobile : bande un peu plus fine
 }
+
+// Dégagement (pelouse/piste nue) entre le jeu et la première rangée, en mètres.
+// Derrière les buts on ajoute la profondeur de la cage : les tribunes doivent
+// commencer APRÈS le filet, jamais le toucher.
+const RUNOFF_SIDE = 2.5;   // le long des lignes de touche
+const RUNOFF_GOAL = 3.0;   // derrière les buts, EN PLUS des 2,4 m de cage
+// Sur mobile la bande totale est plus fine : on resserre les dégagements,
+// sinon ils la consommeraient entièrement et les tribunes disparaîtraient.
+function _runoffScale(){
+  const cssW=cvs?(cvs.clientWidth||cvs.width):1000;
+  return cssW<560 ? 0.6 : 1.0;
+}
+function _goalApronM(){ return 2.4 + RUNOFF_GOAL*_runoffScale(); }
+function _runoffM(dir){
+  return (dir==='left'||dir==='right') ? _goalApronM() : RUNOFF_SIDE*_runoffScale();
+}
+
+// Fraction du canvas occupée par le pourtour (informatif : vignettage, etc.).
+function _standRatio(){
+  const b=_standBandM();
+  if(b<=0.6) return 0;
+  if(!cvs || !_s) return 0.06;
+  return (b*_s)/cvs.width;
+}
+// Le pourtour est-il assez profond pour dessiner de vraies tribunes ?
+// On raisonne désormais en MÈTRES, pas en % de canvas : une bande de 6 m est
+// large (plusieurs rangées de sièges) même si elle ne représente que ~5 % de
+// la largeur du canvas. L'ancien seuil `_standRatio()>=0.08` désactivait donc
+// les gradins par erreur.
+function _standsVisible(){
+  const b=_standBandM();
+  if(b<=1.5) return false;
+  // Ce qui compte, c'est ce qui RESTE une fois le dégagement derrière les buts
+  // retiré (le côté le plus contraint) : sinon on annoncerait des tribunes
+  // alors qu'il n'y a plus la place d'y loger une seule rangée.
+  const usable=(b-_goalApronM())*(_s||0);
+  return usable >= 10;
+}
+
 
 // ── Toggle tribunes on/off (persistant) ─────────────────────────────────
 // Certains joueurs préfèrent un terrain plein cadre : ce réglage ramène la
@@ -833,10 +866,19 @@ function _buildPitchCache(){
     c.strokeRect(wx(left?0:WW-PA_W),wy(PCY-PA_H/2),ws(PA_W),ws(PA_H));
     const sbW=4,sbH=14;
     c.strokeRect(wx(left?0:WW-sbW),wy(PCY-sbH/2),ws(sbW),ws(sbH));
-    // But + filet (couleurs sombres sur neige pour rester lisibles sur le blanc)
-    c.save();c.strokeStyle=pal.net;c.lineWidth=ws(.28);
+    // ── But + filet ──────────────────────────────────────────────────────
+    // La cage déborde de 2,4 m derrière la ligne (profondeur réelle d'un but).
+    // Le pourtour étant désormais large de plusieurs mètres, elle tient
+    // ENTIÈREMENT dans le cadre au lieu d'être rognée par la marge de 8 px.
+    // Fond clair sous le filet : sans lui, la cage disparaîtrait sur le gris
+    // sombre des tribunes qui commencent juste derrière.
+    c.save();
     const gw=2.4,gh=GY2-GY1;
-    c.strokeRect(left?wx(-gw):wx(WW),wy(GY1),ws(gw),ws(gh));
+    const gX=left?wx(-gw):wx(WW);
+    c.fillStyle='rgba(255,255,255,.13)';
+    c.fillRect(gX,wy(GY1),ws(gw),ws(gh));
+    c.strokeStyle=pal.net;c.lineWidth=ws(.28);
+    c.strokeRect(gX,wy(GY1),ws(gw),ws(gh));
     c.strokeStyle=pal.netFaint;c.lineWidth=ws(.06);
     for(let k=0;k<=3;k++){
       const ny=GY1+(gh/3)*k;
@@ -878,7 +920,7 @@ function _buildPitchCache(){
     // par frame reste d'un seul blit.
     // Sur mobile la marge est trop fine pour des gradins lisibles : on garde
     // seulement le fond uni + les panneaux LED, qui eux restent nets.
-    if(_standRatio()>=0.08){
+    if(_standsVisible()){
       const st=_buildStandsCache();
       if(st) c.drawImage(st,0,0);
     } else {
@@ -931,7 +973,7 @@ function _buildPitchCache(){
   const rad=Math.max(oc.width,oc.height)*0.75;
   // NB : avec les tribunes, le vignettage tomberait pile sur les gradins et
   // annulerait le travail de détail. On l'atténue quand le décor est actif.
-  const vgMax=_standRatio()>=0.08 ? .16 : .28;
+  const vgMax=_standsVisible() ? .16 : .28;
   const vg=c.createRadialGradient(cx0,cy0,rad*0.35,cx0,cy0,rad);
   vg.addColorStop(0,'rgba(0,0,0,0)');
   vg.addColorStop(1,'rgba(0,0,0,'+vgMax+')');
@@ -1030,103 +1072,115 @@ function _darken(hex, k){
   return `rgb(${r},${g},${b})`;
 }
 
-// ── Construction d'une tribune (une face du stade) ──────────────────────
-// (x,y,w,h) = zone de la marge à remplir. `dir` indique vers où le stade
-// "monte" (les rangées du fond sont les plus éloignées du terrain) :
-// 'up' (tribune du haut), 'down', 'left', 'right'.
-// La perspective : chaque rangée en s'éloignant du terrain est plus fine
-// (facteur 0.93) et plus sombre → illusion de hauteur.
-function _buildStand(c, x, y, w, h, dir, prof, pal, tint){
-  if(w<4||h<4) return;
-  const horiz=(dir==='up'||dir==='down');
-  const depth=horiz?h:w;      // profondeur visuelle de la tribune
-  const span =horiz?w:h;      // longueur le long du terrain
-  if(depth<5) return;
+// Éclaircit une couleur hex vers le blanc (inverse de _darken).
+function _lighten(hex, k){
+  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'');
+  if(!m) return 'rgb(60,70,60)';
+  const f=(v)=>Math.round(v+(255-v)*k);
+  return `rgb(${f(parseInt(m[1],16))},${f(parseInt(m[2],16))},${f(parseInt(m[3],16))})`;
+}
 
-  // La marge est désormais généreuse (~20% du canvas) : on ajoute des rangées
-  // supplémentaires quand la place le permet, plutôt que d'étirer les rangées
-  // existantes — sinon les sièges deviennent des taches géantes. La densité
-  // (hauteur de marche ~9px) reste constante quelle que soit la résolution.
-  // Les tailles ci-dessous sont exprimées en pixels PERÇUS : on les multiplie
-  // par le devicePixelRatio, sinon un écran Retina afficherait deux fois plus
-  // de rangées deux fois plus petites (fourmilière illisible).
-  const _px=Math.min(window.devicePixelRatio||1, 2);
-  const rowsFit=Math.floor(depth/(9*_px));
-  const rows=Math.max(2, Math.min(rowsFit, prof.rows+3));
-  // Répartition des rangées en perspective : somme d'une suite géométrique.
-  const K=0.93;
-  let sum=0; for(let i=0;i<rows;i++) sum+=Math.pow(K,i);
-  const baseRow=depth/sum;
+// ── Construction d'une tribune (une face du stade) — VUE DU DESSUS ──────
+// Le match est vu au zénith : d'en haut on ne voit PAS des gradins en
+// perspective, on voit un damier de sièges à plat, chaque spectateur formant
+// un petit point. Tout est dimensionné en MÈTRES puis converti par `sc`
+// (pixels par mètre) : les spectateurs sont donc automatiquement à l'échelle
+// des joueurs (rayon joueur ≈ 1,1–1,55 m ; tête vue de haut ≈ 0,45 m).
+//   (x,y,w,h) = zone du pourtour à remplir, en pixels.
+//   dir       = côté du stade ('up','down','left','right').
+//   sc        = échelle _s (px/m).
+function _buildStand(c, x, y, w, h, dir, prof, pal, tint, sc){
+  if(w<2||h<2) return;
+  const horiz=(dir==='up'||dir==='down');
+  const depth=horiz?h:w;      // profondeur du pourtour (px)
+  const span =horiz?w:h;      // longueur le long du terrain (px)
+  if(depth<2) return;
 
   c.save();
   c.beginPath(); c.rect(x,y,w,h); c.clip();
 
-  // Fond de tribune (béton sombre)
+  // Fond : le béton/asphalte qui ceinture le terrain.
   c.fillStyle=pal.crowdBg||'#0a0e14';
   c.fillRect(x,y,w,h);
 
-  // `off` = distance depuis le bord du TERRAIN vers l'extérieur.
-  let off=0;
+  // ── Géométrie réelle, en mètres ────────────────────────────────────────
+  const M       = (m)=>m*sc;      // mètres → pixels
+  // Dégagement : plus profond derrière les buts (il doit contenir la cage).
+  const TRACK   = M(_runoffM(dir));
+  // ── Échelle des spectateurs ────────────────────────────────────────────
+  // Choix ASSUMÉ de lisibilité contre réalisme : un vrai spectateur vu de
+  // haut ferait ~0,5 m (≈3 px), soit une poussière illisible qui donnait un
+  // aspect « buggé ». On dessine donc des supporters à la taille des joueurs
+  // (rayon ≈ 1,1 m contre 1,55 m pour un joueur) et, en contrepartie, on en
+  // met beaucoup moins : sièges espacés de 3,2 m. La foule se lit comme une
+  // foule, à la même échelle visuelle que le terrain.
+  const SEAT    = M(3.2);         // pas entre deux supporters
+  const DOT     = M(1.1);         // rayon d'un supporter (≈ celui d'un joueur)
+  const standDepth = depth - TRACK;
+  if(standDepth < SEAT*0.8){ c.restore(); return; }
+
+  // Bande de dégagement (piste) : plus claire que les gradins.
+  c.fillStyle='rgba(255,255,255,.045)';
+  if(dir==='up')        c.fillRect(x, y+h-TRACK, w, TRACK);
+  else if(dir==='down') c.fillRect(x, y, w, TRACK);
+  else if(dir==='left') c.fillRect(x+w-TRACK, y, TRACK, h);
+  else                  c.fillRect(x, y, TRACK, h);
+
+  // Origine des gradins = bord extérieur de la piste, en s'éloignant du terrain.
+  const rows=Math.max(1, Math.floor(standDepth/SEAT));
+  const cols=Math.max(1, Math.floor(span/SEAT));
+
+  // Assise des gradins (légèrement teintée aux couleurs du club).
+  c.fillStyle=_darken(tint, 0.22);
+  if(dir==='up')        c.fillRect(x, y, w, h-TRACK);
+  else if(dir==='down') c.fillRect(x, y+TRACK, w, h-TRACK);
+  else if(dir==='left') c.fillRect(x, y, w-TRACK, h);
+  else                  c.fillRect(x+TRACK, y, w-TRACK, h);
+
+  // ── Spectateurs : un point par siège occupé ────────────────────────────
+  // Les trous (sièges vides) font le réalisme ; `fill` vient de l'affluence.
   for(let r=0;r<rows;r++){
-    const rowH=baseRow*Math.pow(K,r);
-    // Position de la rangée selon l'orientation.
-    let rx,ry,rw,rh;
-    if(dir==='up')   { rx=x; ry=y+h-off-rowH; rw=w; rh=rowH; }
-    else if(dir==='down'){ rx=x; ry=y+off;    rw=w; rh=rowH; }
-    else if(dir==='left') { rx=x+w-off-rowH; ry=y; rw=rowH; rh=h; }
-    else                  { rx=x+off;        ry=y; rw=rowH; rh=h; }
-
-    // Marche de béton : plus sombre en s'éloignant (profondeur).
-    const shade=0.55-r*0.06;
-    c.fillStyle=_darken(tint, Math.max(0.10, shade*0.34));
-    c.fillRect(rx,ry,rw,rh);
-    // Nez de marche clair : sépare visuellement les rangées.
-    c.fillStyle='rgba(255,255,255,.05)';
-    if(horiz) c.fillRect(rx, dir==='up'?ry:ry+rh-1, rw, 1);
-    else      c.fillRect(dir==='left'?rx:rx+rw-1, ry, 1, rh);
-
-    // ── Spectateurs ──────────────────────────────────────────────────────
-    // Un point par siège, présent seulement avec la probabilité `fill`.
-    // Les trous (sièges vides) sont ce qui rend la foule crédible.
-    const seatPitch=Math.min(7*_px, Math.max(3*_px, rowH*0.62));
-    const nSeats=Math.floor(span/seatPitch);
-    const dotR=Math.min(1.9*_px, Math.max(0.7*_px, rowH*0.17));
-    for(let s=0;s<nSeats;s++){
-      if(Math.random()>prof.fill) continue; // siège vide
-      const t=(s+0.5)*seatPitch + rng(-seatPitch*0.12, seatPitch*0.12);
+    for(let k=0;k<cols;k++){
+      if(Math.random()>prof.fill) continue;
+      // Décalage d'un demi-siège une rangée sur deux (quinconce, comme un
+      // vrai plan de salle) + micro-jitter pour casser la grille.
+      const along = (k+0.5+(r%2)*0.5)*SEAT + rng(-SEAT*0.10, SEAT*0.10);
+      if(along>span) continue;
+      const deep  = TRACK + (r+0.5)*SEAT + rng(-SEAT*0.08, SEAT*0.08);
       let sx2,sy2;
-      if(horiz){ sx2=rx+t; sy2=ry+rowH*0.5; }
-      else     { sx2=rx+rowH*0.5; sy2=ry+t; }
-      // 1 spectateur sur 5 porte les couleurs du club (écharpe/maillot).
-      c.fillStyle = Math.random()<0.20 ? _darken(tint,0.85) : pick(pal.crowdShades||['#2c3444']);
-      c.beginPath(); c.arc(sx2,sy2,dotR,0,Math.PI*2); c.fill();
+      if(dir==='up')        { sx2=x+along;        sy2=y+h-deep; }
+      else if(dir==='down') { sx2=x+along;        sy2=y+deep;   }
+      else if(dir==='left') { sx2=x+w-deep;       sy2=y+along;  }
+      else                  { sx2=x+deep;         sy2=y+along;  }
+      // 1 spectateur sur 4 porte les couleurs du club (maillot/écharpe).
+      c.fillStyle = Math.random()<0.25 ? _darken(tint,0.95) : pick(pal.crowdShades||['#2c3444']);
+      c.beginPath(); c.arc(sx2,sy2,DOT,0,Math.PI*2); c.fill();
     }
-    off+=rowH;
   }
 
-  // ── Toit ────────────────────────────────────────────────────────────────
-  // Trois pixels de dégradé sombre au-dessus des rangées hautes suffisent :
-  // le cerveau lit "couverture".
-  if(prof.roof){
-    const rt=Math.max(3, depth*0.16);
-    let gx0,gy0,gx1,gy1,bx,by,bw,bh;
-    if(dir==='up')        { bx=x; by=y;          bw=w; bh=rt; gx0=0;gy0=y;   gx1=0;gy1=y+rt; }
-    else if(dir==='down') { bx=x; by=y+h-rt;     bw=w; bh=rt; gx0=0;gy0=y+h; gx1=0;gy1=y+h-rt; }
-    else if(dir==='left') { bx=x; by=y;          bw=rt; bh=h; gx0=x;gy0=0;   gx1=x+rt;gy1=0; }
-    else                  { bx=x+w-rt; by=y;     bw=rt; bh=h; gx0=x+w;gy0=0; gx1=x+w-rt;gy1=0; }
+  // ── Escaliers / vomitoires ─────────────────────────────────────────────
+  // Allées régulières : d'en haut, ce sont des couloirs vides dans la foule.
+  const aisle=Math.max(M(18), span/3);
+  c.fillStyle='rgba(0,0,0,.30)';
+  for(let a=aisle*0.5; a<span; a+=aisle){
+    if(horiz) c.fillRect(x+a-M(0.6), (dir==='up'?y:y+TRACK), M(1.2), h-TRACK);
+    else      c.fillRect((dir==='left'?x:x+TRACK), y+a-M(0.6), w-TRACK, M(1.2));
+  }
+
+  // ── Toit ───────────────────────────────────────────────────────────────
+  // Vu du dessus, le toit masque les rangées les plus extérieures : une bande
+  // sombre sur le bord extérieur suffit à lire « tribune couverte ».
+  if(prof.roof && standDepth > SEAT*1.8){
+    const rt=Math.min(standDepth*0.20, M(1.8));
+    let bx,by,bw,bh,gx0,gy0,gx1,gy1;
+    if(dir==='up')        { bx=x; by=y;        bw=w;  bh=rt; gx0=0;gy0=y;      gx1=0;gy1=y+rt; }
+    else if(dir==='down') { bx=x; by=y+h-rt;   bw=w;  bh=rt; gx0=0;gy0=y+h;    gx1=0;gy1=y+h-rt; }
+    else if(dir==='left') { bx=x; by=y;        bw=rt; bh=h;  gx0=x;gy0=0;      gx1=x+rt;gy1=0; }
+    else                  { bx=x+w-rt; by=y;   bw=rt; bh=h;  gx0=x+w;gy0=0;    gx1=x+w-rt;gy1=0; }
     const rg=c.createLinearGradient(gx0,gy0,gx1,gy1);
-    rg.addColorStop(0,'rgba(0,0,0,.92)');
-    rg.addColorStop(1,'rgba(0,0,0,.25)');
+    rg.addColorStop(0,'rgba(0,0,0,.72)');
+    rg.addColorStop(1,'rgba(0,0,0,0)');
     c.fillStyle=rg; c.fillRect(bx,by,bw,bh);
-  }
-
-  // ── Piliers / tunnels ───────────────────────────────────────────────────
-  // Blocs sombres réguliers qui rompent la monotonie de la foule.
-  const pitchStep=Math.max(48, span/6);
-  c.fillStyle='rgba(0,0,0,.42)';
-  for(let p=pitchStep*0.5; p<span; p+=pitchStep){
-    if(horiz) c.fillRect(x+p-1.5, y, 3, h);
-    else      c.fillRect(x, y+p-1.5, w, 3);
   }
 
   c.restore();
@@ -1145,14 +1199,28 @@ function _buildStandsCache(){
   const leftM=px0, rightM=oc.width-px1, topM=py0, bottomM=oc.height-py1;
 
   // Virages (derrière les buts) : teintés aux couleurs des deux équipes.
-  _buildStand(c, 0, 0, leftM, oc.height, 'left',  prof, pal, _standTint(0,pal));
-  _buildStand(c, px1, 0, rightM, oc.height, 'right', prof, pal, _standTint(1,pal));
+  _buildStand(c, 0, 0, leftM, oc.height, 'left',  prof, pal, _standTint(0,pal), _s);
+  _buildStand(c, px1, 0, rightM, oc.height, 'right', prof, pal, _standTint(1,pal), _s);
+
+  // ── Dégagement derrière les cages ──────────────────────────────────────
+  // Les buts débordent de 2,4 m derrière la ligne : on efface les gradins sur
+  // cette emprise (+ une marge de respiration) pour que la cage se détache
+  // entièrement, comme sur une vraie vue aérienne. Sans ça, les spectateurs
+  // seraient dessinés SOUS le filet et la cage deviendrait illisible.
+  // Le dégagement derrière les buts est déjà réservé par _runoffM('left'/'right')
+  // dans _buildStand : les tribunes commencent après la cage. On repeint ici
+  // la bande correspondante en « pelouse d'en-but » pour que la cage se
+  // détache nettement (et non sur du béton de tribune).
+  const APRON=_goalApronM();
+  c.fillStyle=_lighten(pal.crowdBg||'#0a0e14', 0.20);
+  c.fillRect(wx(-APRON), 0, ws(APRON), oc.height);
+  c.fillRect(wx(WW),     0, ws(APRON), oc.height);
   // Tribunes latérales : neutres (mélange des deux camps). On les teinte d'un
   // gris béton clair plutôt que du fond quasi-noir, sinon les marches et les
   // spectateurs disparaissent complètement dans l'ombre.
   const NEUTRAL='#8a94a6';
-  _buildStand(c, px0, 0, px1-px0, topM, 'up',   prof, pal, NEUTRAL);
-  _buildStand(c, px0, py1, px1-px0, bottomM, 'down', prof, pal, NEUTRAL);
+  _buildStand(c, px0, 0, px1-px0, topM, 'up',   prof, pal, NEUTRAL, _s);
+  _buildStand(c, px0, py1, px1-px0, bottomM, 'down', prof, pal, NEUTRAL, _s);
 
   _standsCache=oc; _standsW=oc.width; _standsH=oc.height;
   return oc;
@@ -1165,7 +1233,7 @@ let _standsCheer={t:0, dur:0, side:0};
 function triggerStandsCheer(side){ _standsCheer={t:performance.now(), dur:900, side:side|0}; }
 
 function drawStandsLive(){
-  if(_standRatio()<=0 || !_standsCache) return;
+  if(!_standsVisible() || !_standsCache) return;
   const px0=wx(0), py0=wy(0), px1=wx(WW), py1=wy(WH);
   const now=performance.now();
   ctx.save();
