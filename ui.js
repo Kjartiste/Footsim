@@ -587,18 +587,6 @@ function _stadiumSelectorHTML(){
       +'</button>';
   });
   h+='</div>';
-  // ── Toggle tribunes on/off ──────────────────────────────────────────
-  const standsOn = (typeof stadiumStands==='function') ? stadiumStands() : true;
-  const isClassic = cur==='classic';
-  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)">'
-    +'<div>'
-      +'<div style="font-size:11px;font-weight:800;color:var(--text)">Tribunes / pourtour</div>'
-      +'<div style="font-size:8px;color:var(--muted);margin-top:1px">'+(isClassic?'Déjà masquées en style Classique.':'Affiche ou masque le décor autour du terrain (plus de place à l\'écran une fois désactivé).')+'</div>'
-    +'</div>'
-    +'<button onclick="setStadiumStands('+(!standsOn)+')" '+(isClassic?'disabled':'')+' style="flex-shrink:0;padding:8px 12px;border-radius:9px;cursor:'+(isClassic?'default':'pointer')+';border:2px solid '+(standsOn&&!isClassic?'var(--gold)':'var(--b1)')+';background:'+(standsOn&&!isClassic?'rgba(240,192,40,.14)':'var(--dark)')+';color:'+(standsOn&&!isClassic?'var(--gold)':'var(--muted)')+';opacity:'+(isClassic?'.55':'1')+'">'
-      +'<div style="font-size:11px;font-weight:900;font-family:\'Barlow Condensed\',sans-serif;letter-spacing:.5px;white-space:nowrap">'+(standsOn?'✅ ACTIVÉES':'🚫 DÉSACTIVÉES')+'</div>'
-    +'</button>'
-  +'</div>';
   return h;
 }
 
@@ -730,6 +718,49 @@ function setTheme(t){
     if(t==='light' || t==='dark') document.documentElement.setAttribute('data-theme', t);
   }catch(e){}
 })();
+
+// ── MODE PLEIN ÉCRAN (masque la sidebar) ─────────────────────────────────
+// Astuce pour filmer des shorts YouTube : le terrain occupe alors tout
+// l'écran. Purement visuel (classe CSS sur #app, voir index.html) + tentative
+// de vrai plein écran navigateur en plus (masque aussi la barre d'adresse
+// sur mobile) — non bloquant si l'API est indisponible ou refusée (courant
+// sur iOS Safari, qui n'implémente pas requestFullscreen).
+function toggleTheaterMode(){
+  const app=document.getElementById('app');
+  if(!app) return;
+  const on=app.classList.toggle('theater-mode');
+  _syncTheaterBtn(on);
+  if(on){
+    if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+  } else if(document.fullscreenElement && document.exitFullscreen){
+    document.exitFullscreen().catch(()=>{});
+  }
+  // La taille du canvas dépend de #canvas-wrap, qui vient de changer de
+  // taille (sidebar masquée/réaffichée) : on force un resize après le
+  // reflow plutôt que d'attendre le prochain redimensionnement fenêtre.
+  setTimeout(()=>{ if(typeof resize==='function') resize(); }, 60);
+}
+function _syncTheaterBtn(on){
+  const btn=document.getElementById('theater-btn');
+  if(!btn) return;
+  btn.classList.toggle('theater-active', on);
+  btn.textContent = on ? '⛶ Quitter' : '⛶ Plein écran';
+  btn.title = on
+    ? 'Réafficher le menu'
+    : 'Masquer le menu de gauche (plein écran, pratique pour filmer un short YouTube)';
+}
+// Si l'utilisateur quitte le plein écran natif autrement (touche Échap,
+// bouton du navigateur…), on resynchronise la sidebar et le bouton pour ne
+// pas rester dans un état incohérent.
+document.addEventListener('fullscreenchange',()=>{
+  if(document.fullscreenElement) return;
+  const app=document.getElementById('app');
+  if(app && app.classList.contains('theater-mode')){
+    app.classList.remove('theater-mode');
+    _syncTheaterBtn(false);
+    setTimeout(()=>{ if(typeof resize==='function') resize(); }, 60);
+  }
+});
 
 // Bascule la taille de l'interface (normal / grand / très grand) et la mémorise.
 // S'applique via un zoom CSS sur <html> (voir index.html) : tout grossit

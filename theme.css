@@ -269,6 +269,25 @@
    bouton dans cette ligne passait à la ligne et sortait de la zone
    visible → bouton invisible/inatteignable). Placé ici, il a toujours de
    la place et se comporte comme un vrai bouton REC de caméra. */
+/* Bouton "plein écran" : masque la sidebar pour que le terrain occupe tout
+   l'écran (pratique pour filmer un short au téléphone/écran). Même style
+   que #rec-btn, mais placé en haut à gauche pour ne jamais se chevaucher. */
+#theater-btn{
+  position:absolute;top:10px;left:10px;z-index:20;
+  padding:6px 12px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.35);
+  background:rgba(10,12,16,.55);backdrop-filter:blur(3px);
+  color:#fff;font-family:'Barlow Condensed',sans-serif;
+  font-size:12px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;
+  white-space:nowrap;transition:all .15s;
+}
+#theater-btn:hover{background:rgba(10,12,16,.75);border-color:rgba(255,255,255,.55)}
+#theater-btn.theater-active{border-color:var(--gold,#f0c028);color:var(--gold,#f0c028);background:rgba(240,192,40,.14)}
+/* En mode plein écran, le bouton "Quitter" repasse à droite (la sidebar,
+   qui portait #rec-btn à droite quoi qu'il arrive, est masquée : plus de
+   risque de chevauchement, et ça reste accessible au pouce sur mobile). */
+
 #rec-btn{
   position:absolute;top:10px;right:10px;z-index:20;
   padding:6px 12px;border-radius:20px;
