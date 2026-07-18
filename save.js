@@ -3977,13 +3977,20 @@ function openCareerTab(tab){
       const expiring=(p.contract||0)<=1;
       const injured=(p.injLevel||0)>0;
       const suspended=p.yc>=2||p.red;
+      // Moral/forme (_fm, -10..+10) : jusqu'ici il influençait le jeu (sorts,
+      // tir) mais n'était visible que comme moyenne d'équipe. On l'affiche par
+      // joueur pour que la méforme cesse d'être un effet invisible.
+      const _fmv = Math.round(p._fm||0);
+      const _fmIcon = _fmv>=6?'😀':_fmv>=2?'🙂':_fmv>=-1?'😐':_fmv>=-5?'😟':'😣';
+      const _fmCol  = _fmv>=2?'#18c860':_fmv>=-1?'#f0c028':'#e06060';
+      const _fmPill = `<span title="Moral / forme : ${_fmv>0?'+':''}${_fmv}" style="color:${_fmCol}">${_fmIcon}</span>`;
       return `<div style="display:flex;align-items:center;gap:5px;padding:5px 4px;border-bottom:1px solid var(--b1);background:${injured?'rgba(240,80,80,.04)':suspended?'rgba(240,192,0,.04)':'transparent'}">
         <div style="width:26px;height:26px;border-radius:50%;background:${PC.color}22;border:1px solid ${PC.color}44;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:${PC.color};overflow:hidden;flex-shrink:0">
           ${p.img?`<img src="${p.img}" style="width:100%;height:100%;object-fit:cover">`:`${e(p.ini)}`}
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e(p.name)}${expiring?` <span style="color:#f0c028;font-size:8px">⏳${p.contract||0}an</span>`:''}</div>
-          <div style="font-size:8px;color:var(--muted)">${e(p.pos)} · ${p.age||"?"}ans · ${starsHtml} · ${fmtG(sal)}/sem · ${p.goals||0}B${injured?` <span style="color:#e06060">🤕niv.${p.injLevel}</span>`:''} ${suspended?'<span style="color:#f0c028">🟨</span>':''}  </div>
+          <div style="font-size:8px;color:var(--muted)">${e(p.pos)} · ${p.age||"?"}ans · ${starsHtml} · ${fmtG(sal)}/sem · ${p.goals||0}B${injured?` <span style="color:#e06060">🤕niv.${p.injLevel}</span>`:''} ${suspended?'<span style="color:#f0c028">🟨</span>':''} ${_fmPill}  </div>
         </div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;color:${ovr>=72?'var(--green)':ovr>=56?'var(--gold)':'var(--muted)'};flex-shrink:0">${ovr}</div>
         <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
@@ -4653,12 +4660,21 @@ function syncCareerToTeam(){
   const all=PC.players||[];
   teams[0].name=PC.name; teams[0].color=PC.color; teams[0].img=PC.img||'';
   teams[0].strat=PC.strat||'321';
-  // Séparer les joueurs disponibles et indisponibles (blessés graves)
-  const available=all.filter(p=>!p._missNextMatch);
-  const unavailable=all.filter(p=>p._missNextMatch);
+  // Séparer les joueurs disponibles et indisponibles (blessés / suspendus).
+  // Un blessé est TOTALEMENT écarté de la feuille de match : ni titulaire, ni
+  // sur le banc (d'où il pourrait entrer en jeu), ni en réserve active. Avant,
+  // on complétait le banc avec des blessés quand il manquait de valides — un
+  // joueur indisponible pouvait donc apparaître comme remplaçant. On ne prend
+  // désormais QUE des joueurs disponibles.
+  const isOut = p => p._missNextMatch || (p._injWeeks||0) > 0;
+  const available=all.filter(p=>!isOut(p));
+  const unavailable=all.filter(p=>isOut(p));
   teams[0].players=available.slice(0,7).map(p=>clonePlayer(p));
-  teams[0].bench=[...available.slice(7,12),...unavailable.slice(0,Math.max(0,5-Math.max(0,available.length-7)))].slice(0,5).map(p=>({...clonePlayer(p),onBench:true,x:-10,y:PCY,tx:-10,ty:PCY}));
-  teams[0].reserves=[...available.slice(12),...unavailable].map(p=>clonePlayer(p));
+  teams[0].bench=available.slice(7,12).map(p=>({...clonePlayer(p),onBench:true,x:-10,y:PCY,tx:-10,ty:PCY}));
+  teams[0].reserves=available.slice(12).map(p=>clonePlayer(p));
+  // Les indisponibles sont tenus à part (affichage « infirmerie »), jamais
+  // alignables.
+  teams[0].injuredOut=unavailable.map(p=>({name:p.name, weeks:p._injWeeks||0}));
   syncHUD(); renderTB(0);
 }
 

@@ -7221,7 +7221,7 @@ function renderCareerDirector(el){
   const budget = club.budget;
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
-  const tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar'];
+  const tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar','scorers'];
   // Onglet Réserves : seulement si le club a des équipes affiliées.
   if(C.affiliates && C.affiliates.length) tabs.push('affiliates');
   // Onglet Historique : seulement une fois qu'au moins une saison est archivée.
@@ -7229,7 +7229,7 @@ function renderCareerDirector(el){
   const tabLabels = {
     overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato', academy:'🌱 Académie',
     finances:'💰 Finances', sponsors:'🤝 Sponsors', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
-    affiliates:'🏛 Réserves', history:'📜 Historique'
+    affiliates:'🏛 Réserves', history:'📜 Historique', scorers:'⚽ Buteurs'
   };
 
   let tabBtns = '';
@@ -7353,6 +7353,7 @@ function renderCareerDirectorTab(tab){
   else if(tab==='infra') el.innerHTML = _renderDirectorInfra();
   else if(tab==='staff') el.innerHTML = _renderDirectorStaff();
   else if(tab==='calendar') el.innerHTML = _renderDirectorCalendar();
+  else if(tab==='scorers') el.innerHTML = _renderDirectorScorers();
   else if(tab==='affiliates') el.innerHTML = _renderDirectorAffiliates();
   else if(tab==='history') el.innerHTML = _renderDirectorHistory();
   else el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px">A venir...</div>';
@@ -7909,8 +7910,8 @@ function _renderDirectorOverview(){
   if(standings.length > 0){
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px;margin-bottom:12px">';
     h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏆 Classement</div>';
-    h += '<div style="display:grid;grid-template-columns:24px 1fr 40px 40px 40px;gap:0;font-size:10px;color:var(--muted);padding:0 4px 6px;border-bottom:1px solid var(--b1);font-weight:700">';
-    h += '<div>#</div><div>Club</div><div style="text-align:center">J</div><div style="text-align:center">+/-</div><div style="text-align:center">Pts</div>';
+    h += '<div style="display:grid;grid-template-columns:22px 1fr 22px 22px 22px 22px 34px 30px;gap:0;font-size:9px;color:var(--muted);padding:0 4px 6px;border-bottom:1px solid var(--b1);font-weight:700">';
+    h += '<div>#</div><div>Club</div><div style="text-align:center">J</div><div style="text-align:center;color:#18c860">V</div><div style="text-align:center;color:#f0c028">N</div><div style="text-align:center;color:#e06060">D</div><div style="text-align:center" title="Buts pour / contre">BP:BC</div><div style="text-align:center">Pts</div>';
     h += '</div>';
     standings.forEach(function(s, i){
       const isMe = s.isPlayer;
@@ -7918,14 +7919,17 @@ function _renderDirectorOverview(){
       const gdCol = gd>0?'#18c860':gd<0?'#e06060':'var(--muted)';
       const posEmoji = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
       const rowBg = isMe ? 'background:'+accentCol+'18;border-radius:6px;' : '';
-      h += '<div style="display:grid;grid-template-columns:24px 1fr 40px 40px 40px;gap:0;align-items:center;padding:7px 4px;border-bottom:1px solid var(--b1)10;'+rowBg+'">';
+      h += '<div style="display:grid;grid-template-columns:22px 1fr 22px 22px 22px 22px 34px 30px;gap:0;align-items:center;padding:7px 4px;border-bottom:1px solid var(--b1)10;'+rowBg+'">';
       h += '<div style="font-size:11px;color:var(--muted)">'+(posEmoji||(i+1))+'</div>';
       const cBadge = (s.badge && typeof BadgeCache!=='undefined')
-        ? '<span style="width:18px;height:18px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center"><img src="'+BadgeCache.dataURI(s.badge,18)+'" width="18" height="18" style="object-fit:contain"></span>'
-        : '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:'+(s.color||'#888')+'"></span>';
-      h += '<div style="display:flex;align-items:center;gap:6px;min-width:0">'+cBadge+'<span style="font-size:12px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</span></div>';
-      h += '<div style="font-size:11px;text-align:center;color:var(--muted)">'+s.P+'</div>';
-      h += '<div style="font-size:11px;text-align:center;color:'+gdCol+'">'+(gd>0?'+':'')+gd+'</div>';
+        ? '<span style="width:16px;height:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center"><img src="'+BadgeCache.dataURI(s.badge,16)+'" width="16" height="16" style="object-fit:contain"></span>'
+        : '<span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:'+(s.color||'#888')+'"></span>';
+      h += '<div style="display:flex;align-items:center;gap:5px;min-width:0">'+cBadge+'<span style="font-size:11px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</span></div>';
+      h += '<div style="font-size:10px;text-align:center;color:var(--muted)">'+s.P+'</div>';
+      h += '<div style="font-size:10px;text-align:center;color:#18c860">'+(s.W||0)+'</div>';
+      h += '<div style="font-size:10px;text-align:center;color:#f0c028">'+(s.D||0)+'</div>';
+      h += '<div style="font-size:10px;text-align:center;color:#e06060">'+(s.L||0)+'</div>';
+      h += '<div style="font-size:9px;text-align:center;color:'+gdCol+'">'+(s.GF||0)+':'+(s.GA||0)+'</div>';
       h += '<div style="font-size:13px;font-weight:900;text-align:center;color:'+(isMe?accentCol:'var(--fg)')+'">'+s.Pts+'</div>';
       h += '</div>';
     });
@@ -9930,8 +9934,20 @@ function playCareerMatchV2(){
   // du match a la même taille que celui de l'IA (BENCH_POS) ; le surplus
   // part en réservistes (pas utilisé ce match, mais toujours dans le club).
   const benchSize = BENCH_POS.length;
+  // Un joueur blessé ou suspendu est ÉCARTÉ de la feuille de match : il ne peut
+  // être ni titulaire, ni remplaçant, ni réserviste alignable. On le retire donc
+  // du vivier avant toute composition (avant, aucun filtre n'existait côté V2 :
+  // un blessé pouvait être aligné). Les indisponibles sont listés à part pour
+  // l'affichage « infirmerie », mais jamais dans teams[0].
+  const _isUnavailable = function(p){ return p && ((p._injWeeks||0) > 0 || p._missNextMatch || (p.yc>=2) || p.red); };
+  const injuredOut = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]).filter(_isUnavailable);
+  // Le vivier inclut titulaires + banc + RÉSERVISTES sains : si des blessures
+  // dépeuplent l'effectif de départ, des réservistes valides peuvent monter
+  // plutôt que de jouer en infériorité. Les indisponibles sont exclus partout.
   const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
-    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }));
+    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }))
+    .concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); }))
+    .filter(function(p){ return !_isUnavailable(p); });
   const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; })
     .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
   const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; })
@@ -9966,7 +9982,7 @@ function playCareerMatchV2(){
     strat:   C.club.strat || '321',
     players: starters,
     bench:   matchBench,
-    reserves: surplus.concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); })),
+    reserves: surplus,
   };
 
   // ── Équipe adversaire IA (team 1) — générée au même format et niveau ─
@@ -11087,4 +11103,93 @@ function setMatchTactic(stratId){
   careerV2.club.strat = stratId;
   saveCareerV2();
   try{ renderCareerV2(); }catch(e){}
+}
+
+// ── Classement des buteurs de la division (Soulier d'or) ────────────────
+// Les buts étaient comptés (les tiens par match, ceux des PNJ via la sim) mais
+// aucun classement de buteurs n'existait — seul TON meilleur buteur apparaissait
+// en fin de saison. On agrège ici une vraie course au Soulier d'or :
+//   • tes buteurs réels (season_stats.scorers), exacts ;
+//   • pour chaque club adverse, une estimation stable : ses buts marqués
+//     (standings.GF) répartis sur ses meilleurs attaquants, avec une part
+//     dominante au buteur n°1. L'estimation est déterministe (graine = nom)
+//     pour ne pas gigoter d'un affichage à l'autre.
+function _seededRand(str){
+  let h = 2166136261;
+  for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return function(){ h += 0x6D2B79F5; let t = h; t = Math.imul(t ^ (t>>>15), t|1); t ^= t + Math.imul(t ^ (t>>>7), t|61); return ((t ^ (t>>>14))>>>0)/4294967296; };
+}
+
+function _leagueScorers(){
+  const C = careerV2;
+  if(!C) return [];
+  const list = [];
+
+  // 1) Tes buteurs — exacts.
+  const mine = (C.season_stats && C.season_stats.scorers) || {};
+  Object.keys(mine).forEach(function(name){
+    list.push({ name:name, club:C.club.name, goals:mine[name], isPlayer:true, mine:true });
+  });
+
+  // 2) Estimation pour chaque club adverse à partir de ses buts marqués.
+  const squads = C.opponentSquads || {};
+  (C.standings || []).forEach(function(st){
+    if(st.isPlayer) return;
+    const gf = st.GF || 0;
+    if(gf <= 0) return;
+    const entry = squads[st.name];
+    // Attaquants du club (ou postes offensifs), triés par niveau.
+    let attackers = [];
+    if(entry && entry.squad){
+      attackers = [].concat(entry.squad.players||[], entry.squad.bench||[])
+        .filter(function(p){ return p && ['ATT','MO','MOG','MOD','MC'].includes(p.pos); })
+        .sort(function(a,b){ return (_pOvr(b)) - (_pOvr(a)); });
+    }
+    const rnd = _seededRand(st.name + '|' + C.season);
+    if(attackers.length){
+      // Le buteur n°1 prend ~45-55% des buts, le reste se répartit.
+      const share1 = 0.45 + rnd()*0.12;
+      const g1 = Math.round(gf * share1);
+      if(g1 > 0) list.push({ name:attackers[0].name, club:st.name, goals:g1, isPlayer:false });
+      let rem = gf - g1;
+      for(let i=1;i<Math.min(3,attackers.length) && rem>0;i++){
+        const g = Math.round(rem * (0.5 + rnd()*0.2));
+        if(g > 0) list.push({ name:attackers[i].name, club:st.name, goals:g, isPlayer:false });
+        rem -= g;
+      }
+    } else {
+      // Pas d'effectif détaillé : un buteur anonyme porte l'essentiel.
+      list.push({ name:'Buteur de ' + st.name, club:st.name, goals:Math.round(gf*0.5), isPlayer:false });
+    }
+  });
+
+  return list.sort(function(a,b){ return b.goals - a.goals; }).slice(0, 20);
+}
+
+function _renderDirectorScorers(){
+  const C = careerV2;
+  const scorers = _leagueScorers();
+  let h = '<div style="padding:4px">';
+  h += '<div style="font-size:12px;font-weight:900;color:var(--gold);margin-bottom:8px">⚽ Course au Soulier d\'or</div>';
+  if(!scorers.length){
+    h += '<div style="font-size:10px;color:var(--muted)">Aucun but marqué pour l\'instant cette saison.</div></div>';
+    return h;
+  }
+  h += '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;overflow:hidden">';
+  scorers.forEach(function(sc, i){
+    const rankCol = i===0?'#f0c028':i===1?'#c0c0c0':i===2?'#cd7f32':'var(--muted)';
+    const bg = sc.mine ? 'rgba(24,200,96,.08)' : 'transparent';
+    h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--b1);background:' + bg + '">';
+    h += '<div style="width:20px;font-weight:900;font-size:11px;color:' + rankCol + '">' + (i+1) + '</div>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:10px;font-weight:700' + (sc.mine?';color:#18c860':'') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + sc.name + (sc.mine?' <span style="font-size:7px;color:#18c860">(vous)</span>':'') + '</div>';
+    h += '<div style="font-size:8px;color:var(--muted)">' + sc.club + '</div>';
+    h += '</div>';
+    h += '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;color:' + rankCol + '">' + sc.goals + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  h += '<div style="font-size:7px;color:var(--muted);margin-top:6px;font-style:italic">Tes buts sont exacts ; ceux des adversaires sont estimés d\'après leurs buts d\'équipe.</div>';
+  h += '</div>';
+  return h;
 }

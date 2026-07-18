@@ -2777,21 +2777,30 @@ function _resolveRivalResult(myG, oppG){
   const C = careerV2;
   if(!C || !C.rival) return;
   const r = C.rival;
+  // L'intensité (1..5) module l'enjeu : plus la rivalité est chargée, plus le
+  // résultat pèse. Un premier derby bouge peu ; un derby au sommet d'années de
+  // rivalité fait basculer une saison. Facteur 1.0 (intensité 1) à 1.8 (5).
+  const intens = Math.max(1, Math.min(5, r.intensity || 1));
+  const mult = 1 + (intens - 1) * 0.2;
+  const confSwing = Math.round(6 * mult);
+  const moraleSwing = Math.round(2 * mult);
   if(myG > oppG){
     r.wins = (r.wins||0) + 1;
-    r.intensity = Math.min(5, (r.intensity||1) + 1);
-    _boardAdjust(6, 'victoire dans le derby contre ' + r.name, '#18c860');
-    if(typeof C.director_reputation === 'number') C.director_reputation = Math.min(100, C.director_reputation + 3);
-    [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.min(10, (p._fm||0) + 2); });
-    try{ logEvent('🔥 Vous dominez le derby contre ' + r.name + ' ! Le vestiaire exulte.', '#18c860'); }catch(e){}
+    r.intensity = Math.min(5, intens + 1);
+    _boardAdjust(confSwing, 'victoire dans le derby contre ' + r.name, '#18c860');
+    if(typeof C.director_reputation === 'number') C.director_reputation = Math.min(100, C.director_reputation + Math.round(3 * mult));
+    [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.min(10, (p._fm||0) + moraleSwing); });
+    const intro = intens >= 4 ? '🔥🔥 DERBY AU SOMMET — ' : '🔥 ';
+    try{ logEvent(intro + 'Vous dominez ' + r.name + ' ! Le vestiaire exulte (+' + confSwing + ' confiance).', '#18c860'); }catch(e){}
     _mgrAchieve('derby_win_' + r.name, '🔥 Bourreau de ' + r.name);
   } else if(myG < oppG){
     r.losses = (r.losses||0) + 1;
-    r.intensity = Math.min(5, (r.intensity||1) + 1);
-    _boardAdjust(-6, 'défaite dans le derby contre ' + r.name, '#e06060');
-    if(typeof C.director_reputation === 'number') C.director_reputation = Math.max(0, C.director_reputation - 2);
-    [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.max(-10, (p._fm||0) - 2); });
-    try{ logEvent('💔 Défaite dans le derby contre ' + r.name + '. Le vestiaire est abattu.', '#e06060'); }catch(e){}
+    r.intensity = Math.min(5, intens + 1);
+    _boardAdjust(-confSwing, 'défaite dans le derby contre ' + r.name, '#e06060');
+    if(typeof C.director_reputation === 'number') C.director_reputation = Math.max(0, C.director_reputation - Math.round(2 * mult));
+    [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.max(-10, (p._fm||0) - moraleSwing); });
+    const intro = intens >= 4 ? '💔💔 DÉROUTE DANS LE DERBY AU SOMMET — ' : '💔 ';
+    try{ logEvent(intro + 'Défaite contre ' + r.name + '. Le vestiaire est abattu (-' + confSwing + ' confiance).', '#e06060'); }catch(e){}
   } else {
     r.draws = (r.draws||0) + 1;
     try{ logEvent('🤝 Match nul dans le derby contre ' + r.name + '.', '#f0c028'); }catch(e){}
