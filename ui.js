@@ -11474,27 +11474,45 @@ function _renderPlayoffBlock(po){
     }
   } else {
     // Étape de poules : afficher LES DEUX poules en entier.
-    if(po.myPoolTable){
-      h += poolTable('Votre '+(po.poolLabel||'poule'), po.myPoolTable, 2);
-    } else {
-      // Poule pas encore finalisée : montrer les équipes + matchs joués.
-      if(Array.isArray(po.myPoolTeams)){
-        h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted);font-weight:700">Votre '+(po.poolLabel||'poule')+'</div>';
-        po.myPoolTeams.forEach(function(t){
-          h += '<div style="font-size:10px;padding:2px 6px;color:'+(t.isPlayer?'var(--gold)':'var(--fg)')+';font-weight:'+(t.isPlayer?'900':'400')+'">• '+t.name+'</div>';
-        });
-      }
-      if(Array.isArray(po.matches)){
-        h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted)">Vos matchs :</div>';
-        po.matches.forEach(function(m){
-          const score = m.played ? (m.scoreMe+'–'+m.scoreOpp) : (m.isHome?'🏠 vs':'✈️ vs');
-          h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 6px;border-bottom:1px solid var(--b1)"><span>'+m.oppName+'</span><span style="font-weight:900;color:var(--muted)">'+score+'</span></div>';
-        });
-      }
+    // Filet pour les carrières créées avant la refonte : si myPoolTable n'a pas
+    // été calculé, on le reconstruit à partir des matchs joués + otherPts.
+    let myTable = po.myPoolTable;
+    if(!myTable && Array.isArray(po.matches)){
+      let myPts=0, myGf=0, myGa=0;
+      po.matches.forEach(function(m){
+        if(!m.played) return;
+        myGf+=m.scoreMe||0; myGa+=m.scoreOpp||0;
+        if(m.scoreMe>m.scoreOpp) myPts+=3; else if(m.scoreMe===m.scoreOpp) myPts+=1;
+      });
+      const seen={}; myTable=[];
+      po.matches.forEach(function(m){
+        if(seen[m.oppName]) return; seen[m.oppName]=true;
+        myTable.push({ name:m.oppName, pts:(po.otherPts&&po.otherPts[m.oppName])||0, gd:0 });
+      });
+      myTable.push({ name:po.myName||'Mon club', pts:myPts, gd:myGf-myGa, isPlayer:true });
+      myTable.sort(function(a,b){ return (b.pts-a.pts)||((b.gd||0)-(a.gd||0)); });
     }
-    // L'AUTRE poule, en entier (ce qui manquait).
+    if(myTable){
+      h += poolTable('Votre '+(po.poolLabel||'poule'), myTable, 2);
+    } else if(Array.isArray(po.myPoolTeams)){
+      h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted);font-weight:700">Votre '+(po.poolLabel||'poule')+'</div>';
+      po.myPoolTeams.forEach(function(t){
+        h += '<div style="font-size:10px;padding:2px 6px;color:'+(t.isPlayer?'var(--gold)':'var(--fg)')+';font-weight:'+(t.isPlayer?'900':'400')+'">• '+t.name+'</div>';
+      });
+    }
+    // Tes matchs joués (toujours utile).
+    if(Array.isArray(po.matches)){
+      h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted)">Vos matchs :</div>';
+      po.matches.forEach(function(m){
+        const score = m.played ? (m.scoreMe+'–'+m.scoreOpp) : (m.isHome?'🏠 vs':'✈️ vs');
+        h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 6px;border-bottom:1px solid var(--b1)"><span>'+m.oppName+'</span><span style="font-weight:900;color:var(--muted)">'+score+'</span></div>';
+      });
+    }
+    // L'AUTRE poule, en entier (seulement si disponible — carrières récentes).
     if(po.otherPoolTable){
       h += poolTable(po.otherPoolLabel||'Autre poule', po.otherPoolTable, 2);
+    } else {
+      h += '<div class="ctxt-xs" style="margin-top:6px;font-style:italic;color:var(--muted)">L\'autre poule s\'affichera en entier sur les nouvelles saisons (cette phase a démarré avant la mise à jour).</div>';
     }
   }
   h += '</div>';
