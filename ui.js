@@ -10437,7 +10437,7 @@ function simCareerMatchDirector(){
     return s + ((p.s&&p.s.sht||10)+(p.s&&p.s.spd||10)+(p.s&&p.s.tec||10))/3;
   }, 0) / Math.max(1, myPlayers.length);
 
-  const aiStr = myStr * (0.7 + Math.random() * 0.6);
+  const aiStr = _careerOppStrength(fix, myStr);
   const isHome = fix.homeIsPlayer;
   const myGoals = _poissonGoals((myStr/Math.max(1,aiStr)) * (isHome?1.1:0.9) * 0.8);
   const aiGoals = _poissonGoals((aiStr/Math.max(1,myStr)) * (isHome?0.9:1.1) * 0.8);
@@ -10483,6 +10483,44 @@ function _poissonGoals(lambda){
   var L = Math.exp(-lambda), k = 0, p = 1;
   do { k++; p *= Math.random(); } while(p > L);
   return k - 1;
+}
+
+// Force réelle de l'adversaire d'un fixture — le bug « toujours 4-0 » venait de
+// ce que le bloc « Simuler » calculait l'adversaire comme myStr*(0.7..1.3),
+// donc jamais la vraie équipe : si TON effectif était un peu fort, l'adversaire
+// l'était tout autant en proportion, sauf que les autres multiplicateurs
+// faisaient dériver le résultat. On calcule désormais une vraie force à partir
+// de l'effectif adverse (opponentSquads) ou, à défaut, de son rang au
+// classement.
+function _careerOppStrength(fix, myStr){
+  var C = careerV2;
+  if(!C || !fix) return myStr;
+  var oppId   = fix.homeIsPlayer ? fix.away : fix.home;
+  var oppName = fix.homeIsPlayer ? fix.awayName : fix.homeName;
+
+  // 1) Effectif adverse connu → moyenne de ses stats offensives (même mesure
+  //    que myStr, pour une comparaison honnête).
+  var entry = (C.opponentSquads || {})[oppName];
+  if(entry && entry.squad && entry.squad.players && entry.squad.players.length){
+    var ps = entry.squad.players;
+    var s = ps.reduce(function(acc,p){
+      return acc + ((p.s&&p.s.sht||10)+(p.s&&p.s.spd||10)+(p.s&&p.s.tec||10))/3;
+    }, 0) / ps.length;
+    if(s > 0) return s;
+  }
+
+  // 2) Sinon, dérivée du rang au classement : un club haut placé est plus fort.
+  var st = C.standings || [];
+  var sorted = st.slice().sort(function(a,b){ return (b.Pts||0)-(a.Pts||0); });
+  var idx = sorted.findIndex(function(x){ return x.id===oppId || x.name===oppName; });
+  if(idx >= 0 && sorted.length > 1){
+    // Meilleur rang (idx petit) → force plus haute, autour de myStr ±25%.
+    var frac = idx / (sorted.length - 1);           // 0 = 1er, 1 = dernier
+    return myStr * (1.25 - frac * 0.5);
+  }
+
+  // 3) Dernier recours : force proche de la nôtre, légèrement aléatoire.
+  return myStr * (0.85 + Math.random() * 0.3);
 }
 
 function _updateCareerStandings(fix){
