@@ -249,22 +249,29 @@ function _boardMaybeJobOffer(ctx){
   if(!Array.isArray(C.job_offers)) C.job_offers = [];
   // Une seule offre à la fois du board en cours de saison (évite le spam).
   if(C.job_offers.some(function(o){ return o._fromBoard; })) return;
+  // Certaines offres (surtout de clubs plus huppés) concernent leur ÉQUIPE
+  // RÉSERVE : un tremplin où l'on n'entraîne que la réserve. Plus fréquent
+  // quand on vise un club d'un niveau supérieur.
+  const isReserveOffer = (targetIdx < idx) && Math.random() < 0.35;
   C.job_offers.push({
-    club: target.name,
+    club: target.name + (isReserveOffer ? ' (Réserve)' : ''),
     region: target.region || C.club.region,
     level: levels[targetIdx],
     color: target.color || '#888',
     badge: target.badge || null,
-    salary: Math.round(budget * 0.002),           // salaire hebdo ≈ 0.2% du budget
+    salary: Math.round(budget * 0.002 * (isReserveOffer ? 0.6 : 1)),
     contract_years: 2,
     budget: budget,
-    objectives: [{ type: (targetIdx < idx ? 'top_half' : 'mid_table'),
-      desc: (targetIdx < idx ? 'Jouer le haut de tableau' : 'Stabiliser le club') }],
+    teamScope: isReserveOffer ? 'reserve' : 'first',
+    objectives: [ isReserveOffer
+      ? { type:'youth', target:2, desc:'Faire éclore les jeunes de la réserve' }
+      : { type: (targetIdx < idx ? 'top_half' : 'mid_table'),
+          desc: (targetIdx < idx ? 'Jouer le haut de tableau' : 'Stabiliser le club') } ],
     isStepUp: targetIdx < idx,
     season: C.season,
     _fromBoard: true,
   });
-  try{ logEvent('📨 ' + target.name + ' vous propose de prendre les rênes !', '#9c27b0'); }catch(e){}
+  try{ logEvent('📨 ' + target.name + (isReserveOffer?' (Réserve)':'') + ' vous propose de prendre les rênes !', '#9c27b0'); }catch(e){}
 }
 
 // Carte d'offre d'emploi (affichée en haut de la Vue).
@@ -277,7 +284,7 @@ function _renderJobOfferCard(){
   let h = '';
   offers.forEach(function(o){
     const idx = C.job_offers.indexOf(o);
-    h += '<div style="background:linear-gradient(135deg,rgba(156,39,176,0.18),var(--dark));border:1px solid #9c27b0;border-radius:8px;padding:12px;margin-bottom:10px">';
+    h += '<div class="ccard ccard-purple">';
     h += '<div style="font-size:10px;font-weight:700;color:#9c27b0;margin-bottom:6px">📨 Offre d\'un autre club</div>';
     h += '<div style="font-size:11px;line-height:1.6;margin-bottom:8px">';
     h += '<b style="color:' + (o.color||'#fff') + '">' + (o.badge?o.badge+' ':'') + o.club + '</b> ';
@@ -936,7 +943,7 @@ function _renderPrizesCard(){
   const pos = st.findIndex(function(s){ return s.isPlayer; }) + 1;
   const total = st.length;
 
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-top:8px">';
+  let h = '<div class="ccard ccard-flush" style="margin-top:8px">';
   h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:8px">🏅 Dotations de fin de saison</div>';
 
   if(pro){
@@ -1193,7 +1200,7 @@ function _renderSquadReportCard(){
   if(!r.retired.length && !r.progressed.length && !r.declined.length && !r.youth.length &&
      !(r.emergency && r.emergency.length)) return '';
 
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px">';
+  let h = '<div class="ccard">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
   h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🔄 Intersaison — évolution de l\'effectif</div>';
   h += '<button class="btn" onclick="_dismissSquadReport()" style="font-size:8px;padding:2px 8px">✕</button>';
@@ -2216,9 +2223,9 @@ function _renderManagerCard(){
   const next = nextId ? MANAGER_LICENSES[nextId] : null;
   const xp = m.xp || 0;
 
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px">';
-  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🎓 Votre carrière</div>';
+  let h = '<div class="ccard ccard-gold">';
+  h += '<div class="ccard-title">';
+  h += '<span>🎓 Votre carrière</span>';
   h += '<div style="font-size:11px;font-weight:900;color:#f0c028">' + lic.label + '</div>';
   h += '</div>';
   h += '<div style="font-size:8px;color:var(--muted);margin-bottom:6px">' + lic.desc + '</div>';
@@ -2567,7 +2574,7 @@ function _renderSeasonEventCard(){
   const C = careerV2;
   if(!C || !C.pending_event) return '';
   const ev = C.pending_event;
-  let h = '<div style="background:linear-gradient(135deg,rgba(240,192,40,0.16),var(--dark));border:1px solid #f0c028;border-radius:8px;padding:12px;margin-bottom:10px">';
+  let h = '<div class="ccard ccard-amber">';
   h += '<div style="font-size:12px;font-weight:900;margin-bottom:4px">' + ev.title + '</div>';
   h += '<div style="font-size:10px;color:var(--fg);line-height:1.5;margin-bottom:8px">' + ev.text + '</div>';
   h += '<div style="display:flex;flex-direction:column;gap:5px">';
@@ -2818,7 +2825,7 @@ function _renderRivalCard(){
   (C.fixtures || []).forEach(function(f){
     if(!f.played && isRivalFixture(f) && nextDerby === null) nextDerby = f.week;
   });
-  let h = '<div style="background:linear-gradient(135deg,rgba(224,32,48,0.16),var(--dark));border:1px solid #e02030;border-radius:8px;padding:10px;margin-bottom:10px">';
+  let h = '<div class="ccard ccard-red">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
   h += '<div style="font-size:10px;font-weight:700;color:#e02030">' + flames + ' Rival : <b style="color:var(--fg)">' + r.name + '</b></div>';
   h += '<div style="font-size:8px;color:var(--muted)">depuis S' + (r.since||C.season) + '</div>';
@@ -2854,7 +2861,7 @@ function _pressAdd(headline, tone){
 // Génère (ou non) un titre après un match du joueur.
 function _pressAfterMatch(fix, myG, oppG){
   const C = careerV2;
-  if(!C || C.type !== 'director') return;
+  if(!C || !C.club) return;
   const club = C.club.name;
   const oppName = fix.homeIsPlayer ? fix.awayName : fix.homeName;
   const diff = myG - oppG;
@@ -2887,12 +2894,63 @@ function _pressAfterMatch(fix, myG, oppG){
 // Titres liés aux temps forts hors match (transferts, board, événements).
 function _pressEvent(headline, tone){ _pressAdd(headline, tone); }
 
+// ── RÉSEAUX SOCIAUX ──────────────────────────────────────────────────────
+// La presse donne des TITRES officiels et posés. Les réseaux sociaux, eux,
+// sont la voix des supporters : plus courts, plus vifs, plus émotionnels. On
+// les tient dans un fil SÉPARÉ (C.social) avec son propre affichage.
+function _socialAdd(text, tone){
+  const C = careerV2;
+  if(!C) return;
+  if(!Array.isArray(C.social)) C.social = [];
+  // Pseudo de supporter aléatoire pour l'ambiance.
+  const handles = ['@ultra_'+(C.club?.name||'fc').toLowerCase().replace(/[^a-z]/g,'').slice(0,6),
+                   '@tribune_sud', '@supporter71', '@footfan_', '@kop_officiel', '@le12emehomme'];
+  const who = handles[Math.floor(Math.random()*handles.length)];
+  C.social.unshift({ who:who, text:text, tone:tone||'neutral', week:C.week||0, season:C.season||1 });
+  if(C.social.length > 15) C.social.length = 15;
+}
+
+// Réactions des supporters après un match (ton tranché selon le résultat).
+function _socialAfterMatch(fix, myG, oppG){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  const diff = myG - oppG;
+  const isDerby = (typeof isRivalFixture==='function') && isRivalFixture(fix);
+  if(isDerby){
+    if(diff > 0)      _socialAdd('ON A GAGNÉ LE DERBY 🔥🔥🔥 quelle soirée les gars !!!', 'good');
+    else if(diff < 0) _socialAdd('perdre le derby... j\'ai pas de mots. honteux 😤', 'bad');
+    else              _socialAdd('nul dans le derby, frustrant mais on lâche rien 💪', 'neutral');
+    return;
+  }
+  if(diff >= 3)       _socialAdd('MAIS QUELLE ÉQUIPE 🤩 ' + myG + '-' + oppG + ' on les a détruits', 'good');
+  else if(diff <= -3) _socialAdd(oppG + '-' + myG + '... on a touché le fond là. ça suffit 😡', 'bad');
+  else if(diff > 0 && Math.random()<0.4)  _socialAdd('3 points de plus 👏 allez on continue !', 'good');
+  else if(diff < 0 && Math.random()<0.4)  _socialAdd('encore une défaite, ça devient compliqué 😔', 'bad');
+  else if(diff === 0 && Math.random()<0.3) _socialAdd('un nul... bof. on voulait les 3 points', 'neutral');
+}
+
+function _renderSocialCard(){
+  const C = careerV2;
+  if(!C || !Array.isArray(C.social) || !C.social.length) return '';
+  let h = '<div class="ccard ccard-blue">';
+  h += '<div class="ccard-title">💬 Réseaux sociaux</div>';
+  C.social.slice(0, 4).forEach(function(p){
+    const col = p.tone==='good' ? '#18c860' : p.tone==='bad' ? '#e06060' : 'var(--muted)';
+    h += '<div style="padding:4px 0;border-bottom:1px solid var(--b1);line-height:1.4">';
+    h += '<div style="font-size:8px;color:'+col+';font-weight:700">'+p.who+'</div>';
+    h += '<div style="font-size:9px;color:var(--fg)">'+p.text+'</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
 // Carte presse (les 4 derniers titres).
 function _renderPressCard(){
   const C = careerV2;
   if(!C || !Array.isArray(C.press) || !C.press.length) return '';
-  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px">📰 La presse en parle</div>';
+  let h = '<div class="ccard">';
+  h += '<div class="ccard-title">📰 La presse en parle</div>';
   C.press.slice(0, 4).forEach(function(p){
     const col = p.tone==='good' ? '#18c860' : p.tone==='bad' ? '#e06060' : 'var(--muted)';
     h += '<div style="font-size:9px;color:var(--fg);padding:4px 0;border-bottom:1px solid var(--b1);line-height:1.4">';
@@ -2900,6 +2958,138 @@ function _renderPressCard(){
     h += ' <span style="font-size:7px;color:var(--muted)">S' + p.season + ' J' + p.week + '</span>';
     h += '</div>';
   });
+  h += '</div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// RÔLE DE CARRIÈRE : dirigeant vs manager (entraîneur)
+// ═══════════════════════════════════════════════════════════
+// En unifiant les deux carrières, on avait fait du « manager » une simple
+// couche cosmétique par-dessus le mode dirigeant : un manager voyait et
+// contrôlait TOUT (infrastructures, sponsors, finances d'investissement),
+// ce qui n'a pas de sens. Un manager dirige une ÉQUIPE (le sportif :
+// effectif, tactique, entraînement, recrutement sportif) ; les
+// infrastructures, les sponsors et le budget d'investissement relèvent des
+// DIRIGEANTS, à qui il doit faire des demandes.
+//
+// On introduit donc un rôle explicite :
+//   • careerV2.role === 'director' → contrôle total du club.
+//   • careerV2.role === 'manager'  → périmètre sportif uniquement.
+// (Rétrocompat : sans role, on retombe sur l'ancien type.)
+
+function _careerRole(){
+  const C = careerV2;
+  if(!C) return 'director';
+  if(C.role) return C.role;
+  // Migration douce : une carrière lancée en mode manager (nomade) devient
+  // un manager ; sinon dirigeant.
+  return C._nomad ? 'manager' : 'director';
+}
+function _isManager(){ return _careerRole() === 'manager'; }
+
+// Onglets accessibles selon le rôle. Un manager n'a pas la main sur les
+// infrastructures, les sponsors, ni les finances d'investissement du club.
+const _MANAGER_TABS = ['overview','squad','mercato','academy','staff','calendar','scorers','history'];
+function _tabAllowed(tab){
+  if(!_isManager()) return true;                 // dirigeant : tout
+  return _MANAGER_TABS.indexOf(tab) >= 0;
+}
+
+// Périmètre d'équipe : un manager peut être nommé à la 1re équipe ou à une
+// réserve. `teamScope` = 'first' | 'reserve'. Sert au titre et, plus tard, à
+// restreindre le vivier géré.
+function _teamScopeLabel(){
+  const C = careerV2;
+  if(!C || !C.teamScope || C.teamScope === 'first') return '';
+  return ' (Équipe réserve)';
+}
+
+// ═══════════════════════════════════════════════════════════
+// DEMANDES AUX DIRIGEANTS (mode manager)
+// ═══════════════════════════════════════════════════════════
+// Un manager ne décide pas des investissements : il les DEMANDE aux dirigeants,
+// qui acceptent ou refusent selon la confiance qu'ils lui portent et l'état des
+// finances. Cela remplace le contrôle direct des infrastructures / du budget.
+
+const BOARD_REQUESTS = {
+  infra:   { label:'Améliorer une infrastructure', desc:'Demander aux dirigeants d\'investir dans le centre d\'entraînement.' },
+  budget:  { label:'Renforcer le budget transferts', desc:'Demander une rallonge pour recruter.' },
+  wages:   { label:'Relever le plafond salarial', desc:'Demander une marge salariale supplémentaire.' },
+};
+
+// Chance d'acceptation d'une demande : dominée par la confiance du board.
+function _boardRequestChance(kind){
+  const conf = _boardConf();              // 0..100
+  let base = (conf - 30) / 70;            // 30 → 0%, 100 → 100%
+  // Les demandes coûteuses sont plus dures à obtenir.
+  if(kind === 'infra')  base -= 0.15;
+  if(kind === 'budget') base -= 0.10;
+  return Math.max(0.05, Math.min(0.95, base));
+}
+
+// Le manager soumet une demande. Résolue immédiatement (les dirigeants
+// tranchent), avec un effet concret en cas d'accord.
+function submitBoardRequest(kind){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  if(!_isManager()){ return; }            // les dirigeants agissent directement
+  // Une demande par semaine, pour éviter le spam.
+  if(C._boardRequestWeek === C.week){
+    logEvent('Vous avez déjà sollicité les dirigeants cette semaine.', '#e06060');
+    return;
+  }
+  C._boardRequestWeek = C.week;
+
+  const chance = _boardRequestChance(kind);
+  const ok = Math.random() < chance;
+  if(!ok){
+    logEvent('🏛 Les dirigeants déclinent votre demande pour l\'instant.', '#e06060');
+    _boardAdjust(-1, 'demande refusée', '#e06060');
+    saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+    return;
+  }
+
+  if(kind === 'infra'){
+    // Les dirigeants améliorent une infra au hasard (c'est LEUR décision).
+    const infra = C.club.infra || (C.club.infra = {});
+    const keys = ['stadium','training','formation','medical','scout'];
+    const pick = keys[Math.floor(Math.random()*keys.length)];
+    infra[pick] = Math.min(5, (infra[pick]||0) + 1);
+    logEvent('🏛 Les dirigeants investissent : ' + pick + ' amélioré au niveau ' + infra[pick] + ' !', '#18c860');
+    try{ _pressEvent('🏗️ ' + C.club.name + ' investit dans ses infrastructures.', 'good'); }catch(e){}
+  } else if(kind === 'budget'){
+    const add = Math.max(1000, Math.round((C.club.budget||10000) * 0.15 / 100) * 100);
+    C.club.transferBudget = (C.club.transferBudget||0) + add;
+    logEvent('🏛 Les dirigeants débloquent ' + _fmtMoney(add) + ' pour le mercato !', '#18c860');
+  } else if(kind === 'wages'){
+    const add = Math.max(500, Math.round((C.club.wage_budget||10000) * 0.12 / 100) * 100);
+    C.club.wage_budget = (C.club.wage_budget||0) + add;
+    logEvent('🏛 Plafond salarial relevé de ' + _fmtMoney(add) + '.', '#18c860');
+  }
+  saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+}
+
+// Carte « Demandes aux dirigeants » (affichée uniquement en mode manager).
+function _renderBoardRequestsCard(){
+  if(!_isManager()) return '';
+  const C = careerV2;
+  const done = (C._boardRequestWeek === C.week);
+  let h = '<div class="ccard ccard-blue">';
+  h += '<div class="ccard-title">🏛 Demandes aux dirigeants</div>';
+  h += '<div class="ctxt-xs" style="margin-bottom:6px">En tant qu\'entraîneur, vous ne décidez pas des investissements : vous les sollicitez. Les dirigeants tranchent selon leur confiance.</div>';
+  if(done){
+    h += '<div class="ctxt-sm" style="color:#f0c028">Demande déjà soumise cette semaine.</div>';
+  } else {
+    Object.keys(BOARD_REQUESTS).forEach(function(k){
+      const req = BOARD_REQUESTS[k];
+      const ch = Math.round(_boardRequestChance(k) * 100);
+      const col = ch>=60?'#18c860':ch>=35?'#f0c028':'#e06060';
+      h += '<button class="btn" onclick="submitBoardRequest(\'' + k + '\')" style="width:100%;text-align:left;margin-bottom:4px;font-size:9px;padding:6px 8px">';
+      h += '<span style="font-weight:700">' + req.label + '</span> <span style="color:' + col + '">(' + ch + '%)</span>';
+      h += '</button>';
+    });
+  }
   h += '</div>';
   return h;
 }

@@ -36,6 +36,7 @@ const STAFF = (function(){
   const DEPARTMENTS = [
     { key:'direction', label:'Direction sportive', icon:'🧑‍💼', roles:['manager','assistant'] },
     { key:'technique', label:'Encadrement technique', icon:'📋', roles:['coach_phys','coach_tech','coach_gk','coach_setp'] },
+    { key:'lignes',    label:'Entraîneurs par ligne', icon:'📐', roles:['coach_att','coach_mid','coach_def'] },
     { key:'analyse',   label:'Analyse & recrutement', icon:'🔍', roles:['analyst','scout','data'] },
     { key:'perf',      label:'Performance & médical', icon:'🏥', roles:['physio','fitness','psycho'] },
   ];
@@ -48,6 +49,9 @@ const STAFF = (function(){
     coach_tech: { key:'coach_tech', label:'Entraîneur technique', icon:'🎯',   desc:'Travaille le geste : accélère la progression lors des séances techniques (passe, contrôle, finition, dribble).' },
     coach_gk:   { key:'coach_gk',   label:'Entraîneur des gardiens', icon:'🧤',desc:'Spécialiste du poste : accélère la progression des gardiens (réflexes, sorties, jeu au pied).' },
     coach_setp: { key:'coach_setp', label:'Coach coups de pied arrêtés', icon:'🥅', desc:'Travaille les phases arrêtées : améliore vos corners/coups francs et réduit ceux concédés.' },
+    coach_att:  { key:'coach_att',  label:'Entraîneur des attaquants', icon:'⚔️', desc:'Spécialiste offensif : accélère la progression de vos attaquants et milieux offensifs.' },
+    coach_mid:  { key:'coach_mid',  label:'Entraîneur des milieux',    icon:'🎩', desc:'Travaille l\'entrejeu : accélère la progression de vos milieux.' },
+    coach_def:  { key:'coach_def',  label:'Entraîneur des défenseurs', icon:'🛡️', desc:'Spécialiste défensif : accélère la progression de vos défenseurs.' },
     analyst:    { key:'analyst',    label:'Analyste vidéo',       icon:'🎥',   desc:'Décortique l\'adversaire avant le match : vos joueurs démarrent plus concentrés (bonus de première mi-temps).' },
     scout:      { key:'scout',      label:'Recruteur',            icon:'🔭',   desc:'Déniche de meilleurs agents libres et augmente les chances de découvrir une pépite.' },
     data:       { key:'data',       label:'Analyste data',        icon:'📊',   desc:'Modélise les profils : révèle plus fidèlement le potentiel des recrues et jeunes repérés.' },
@@ -176,6 +180,26 @@ const STAFF = (function(){
     const role = FAMILY_COACH[family];
     if(!role) return 1;
     return 1 + rating(club, role) * 0.10;
+  }
+
+  // ── Entraîneurs par LIGNE ────────────────────────────────────────────
+  // À la différence des coachs par TYPE de séance (physique/technique), ces
+  // coachs font progresser les joueurs de LEUR ligne, quel que soit le type
+  // de séance. Un joueur bien encadré des deux côtés (bon coach technique ET
+  // bon coach de sa ligne) progresse nettement plus vite.
+  function _lineOf(pos){
+    if(['ATT','MO','MOG','MOD','BU','AV'].indexOf(pos) >= 0) return 'att';
+    if(['MC','MDC','MOC','MG','MD','MIL'].indexOf(pos) >= 0) return 'mid';
+    if(['DC','DD','DG','DEF','LAT'].indexOf(pos) >= 0)       return 'def';
+    return null; // gardiens : couverts par coach_gk
+  }
+  // Multiplicateur de progression pour UN joueur, selon sa ligne.
+  function lineTrainingMul(club, player){
+    if(!player) return 1;
+    const line = _lineOf(player.pos);
+    if(!line) return 1;
+    const role = { att:'coach_att', mid:'coach_mid', def:'coach_def' }[line];
+    return 1 + rating(club, role) * 0.09;
   }
 
   // Kiné : multiplicateur de risque de blessure (1..0.45) — plus bas = mieux.
@@ -307,6 +331,7 @@ const STAFF = (function(){
     candidatesFor: candidatesFor, makeMember: makeMember, defaultStaff: defaultStaff,
     rating: rating, weeklyWages: weeklyWages, filledCount: filledCount, ensureStaff: ensureStaff,
     trainingQualityMul: trainingQualityMul, familyTrainingMul: familyTrainingMul,
+    lineTrainingMul: lineTrainingMul,
     injuryRiskMul: injuryRiskMul, healBonus: healBonus, fitnessRecovery: fitnessRecovery,
     freeAgentBoost: freeAgentBoost, gemChanceMul: gemChanceMul, dataInsight: dataInsight,
     matchMoraleBonus: matchMoraleBonus, matchCohesionBonus: matchCohesionBonus,

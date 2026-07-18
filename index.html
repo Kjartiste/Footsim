@@ -178,6 +178,26 @@ input[type=color]{width:22px;height:22px;border:none;background:none;cursor:poin
 .cf{background:rgba(224,32,48,.15);color:#f08090;border:1px solid rgba(224,32,48,.3)}
 .ci{background:rgba(24,120,232,.15);color:#80b8ff;border:1px solid rgba(24,120,232,.3)}
 .ct{background:rgba(240,192,40,.15);color:#f8d870;border:1px solid rgba(240,192,40,.3)}
+
+/* ── CARTES CARRIÈRE (classes réutilisables) ──
+   Avant, chaque carte était stylée en inline, répétée ~14× avec des marges
+   incohérentes (8px vs 10px). Ces classes garantissent un padding, une
+   bordure et un rayon identiques partout — cohérence visuelle immédiate. */
+.ccard{background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px}
+.ccard-flush{margin-bottom:0}
+/* Liseré de couleur à gauche selon la nature de la carte : le regard trie
+   plus vite (or=objectif, rouge=rival, vert=positif, bleu=info, violet=offre). */
+.ccard-gold{border-left:3px solid var(--gold)}
+.ccard-red{border-left:3px solid var(--red);background:linear-gradient(135deg,rgba(224,32,48,.1),var(--dark))}
+.ccard-green{border-left:3px solid var(--green)}
+.ccard-blue{border-left:3px solid var(--blue)}
+.ccard-purple{border-left:3px solid var(--purple);background:linear-gradient(135deg,rgba(136,64,224,.12),var(--dark))}
+.ccard-amber{border-left:3px solid var(--gold);background:linear-gradient(135deg,rgba(240,192,40,.14),var(--dark))}
+/* Titre de carte : taille et graisse uniformes. */
+.ccard-title{font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+/* Micro-texte harmonisé (remplace le mélange 7/8/9px arbitraire). */
+.ctxt-sm{font-size:9px;color:var(--muted);line-height:1.4}
+.ctxt-xs{font-size:8px;color:var(--muted);line-height:1.4}
 .ch{background:rgba(24,200,96,.15);color:#80f0a8;border:1px solid rgba(24,200,96,.3)}
 .cte{background:rgba(136,64,224,.15);color:#c088ff;border:1px solid rgba(136,64,224,.3)}
 .cs{background:rgba(64,112,160,.15);color:#90a8c8;border:1px solid rgba(64,112,160,.3)}

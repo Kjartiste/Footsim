@@ -346,6 +346,9 @@ const TRAINING = (function(){
     if(typeof STAFF!=='undefined'){
       q *= STAFF.trainingQualityMul(club);
       if(session && session.family) q *= STAFF.familyTrainingMul(club, session.family);
+      // Entraîneur de la LIGNE du joueur (attaque/milieu/défense) : boost
+      // individuel qui s'ajoute au coach par type de séance.
+      if(typeof STAFF.lineTrainingMul === 'function') q *= STAFF.lineTrainingMul(club, player);
     }
     // Joueur trop fatigué → séance de moins bonne qualité pour lui.
     const fm = (player && player._fm) != null ? player._fm : 0;
