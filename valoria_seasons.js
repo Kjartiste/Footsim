@@ -217,6 +217,26 @@ function valoriaSetupDistrictPlayoffs(C, myDiv, myPos){
   const poolLbl = (myPool===poolA) ? 'poule A' : 'poule B';
   const others = myPool.filter(function(t){ return !t.isPlayer; }); // 3 adversaires réels du joueur
 
+  // ── Résultats des matchs de l'AUTRE poule (le joueur n'y joue pas) :
+  // réglés par force + aléa, pour produire un classement complet à afficher.
+  const otherPool = (myPool===poolA) ? poolB : poolA;
+  function _simPoolTable(pool){
+    const tbl = {}; pool.forEach(function(t){ tbl[t.name]={name:t.name,pts:0,gf:0,ga:0,strength:t.strength,isPlayer:!!t.isPlayer,level:t.level}; });
+    for(let i=0;i<pool.length;i++){
+      for(let j=i+1;j<pool.length;j++){
+        const a=pool[i], b=pool[j];
+        const diff=(a.strength-b.strength)/12;
+        const r=Math.random()*2-1 + diff;
+        // buts approximatifs pour un classement crédible
+        let ga=1+Math.round(Math.max(0,r+0.5)), gb=1+Math.round(Math.max(0,-r+0.5));
+        tbl[a.name].gf+=ga; tbl[a.name].ga+=gb; tbl[b.name].gf+=gb; tbl[b.name].ga+=ga;
+        if(ga>gb) tbl[a.name].pts+=3; else if(gb>ga) tbl[b.name].pts+=3; else { tbl[a.name].pts+=1; tbl[b.name].pts+=1; }
+      }
+    }
+    return Object.keys(tbl).map(function(k){ return tbl[k]; }).sort(function(a,b){ return (b.pts-a.pts)||((b.gf-b.ga)-(a.gf-a.ga)); });
+  }
+  const otherPoolTable = _simPoolTable(otherPool);
+
   // ── Résultats des 3 matchs ENTRE LES AUTRES équipes de la poule (ils ne
   // concernent pas le joueur) : réglés immédiatement par force + aléa.
   const pts = {}; myPool.forEach(function(t){ pts[t.name]=0; });
@@ -246,18 +266,25 @@ function valoriaSetupDistrictPlayoffs(C, myDiv, myPos){
 
   C.playoffs = {
     type:'district', active:true, done:false, promoted:false, detail:null,
+    stage:'pools',                       // 'pools' → 'final'
     myDiv: myDiv, myPos: myPos, poolLabel: poolLbl,
     myName: (C.club&&C.club.name)||'Mon club',
     matches: matches, idx: 0,
     otherPts: pts, // points déjà acquis par les 3 autres équipes de la poule
+    myPoolTeams: myPool.map(function(t){ return { name:t.name, strength:t.strength, isPlayer:!!t.isPlayer }; }),
+    otherPoolLabel: (myPool===poolA)?'poule B':'poule A',
+    otherPoolTable: otherPoolTable,      // classement complet de l'autre poule
   };
 }
 
-// Finalise les barrages de district une fois les 3 matchs du joueur joués :
-// calcule le classement de la poule (points + différence de buts pour le
-// joueur) et détermine la promotion (2 premiers de la poule montent).
+// Finalise l'étape de POULES : calcule le classement de la poule du joueur,
+// puis — conformément au format District → R3 — enchaîne sur une POULE FINALE
+// réunissant les 2 premiers de chaque poule. Seul le VAINQUEUR de la poule
+// finale monte en R3.
 function _valoriaFinalizeDistrictPlayoffs(C){
   const po = C.playoffs; if(!po) return;
+
+  // ── Classement de la poule du joueur (ses 3 matchs joués) ──────────────
   let myPts=0, myGf=0, myGa=0;
   po.matches.forEach(function(m){
     if(!m.played) return;
@@ -265,17 +292,90 @@ function _valoriaFinalizeDistrictPlayoffs(C){
     if(m.scoreMe>m.scoreOpp) myPts+=3;
     else if(m.scoreMe===m.scoreOpp) myPts+=1;
   });
-  const table = po.matches.map(function(m){ return { name:m.oppName, pts:po.otherPts[m.oppName]||0 }; });
-  // Dédoublonne (chaque adversaire n'apparaît qu'une fois).
-  const seen={}; const oppTable=[];
-  table.forEach(function(t){ if(!seen[t.name]){ seen[t.name]=true; oppTable.push(t); } });
-  oppTable.push({ name:po.myName, pts:myPts, gd:myGf-myGa, isPlayer:true });
-  oppTable.sort(function(a,b){ return (b.pts-a.pts) || ((b.gd||0)-(a.gd||0)); });
-  const rank = oppTable.findIndex(function(t){ return t.isPlayer; }) + 1;
-  po.promoted = rank>0 && rank<=2;
-  po.detail = po.poolLabel+', '+rank+(rank===1?'er':'e')+' avec '+myPts+' pts ('+(myGf-myGa>=0?'+':'')+(myGf-myGa)+')';
-  po.done = true;
-  po.active = false;
+  const seen={}; const myPoolTable=[];
+  po.matches.forEach(function(m){
+    if(seen[m.oppName]) return; seen[m.oppName]=true;
+    myPoolTable.push({ name:m.oppName, pts:po.otherPts[m.oppName]||0, gd:0 });
+  });
+  myPoolTable.push({ name:po.myName, pts:myPts, gd:myGf-myGa, isPlayer:true });
+  myPoolTable.sort(function(a,b){ return (b.pts-a.pts) || ((b.gd||0)-(a.gd||0)); });
+  po.myPoolTable = myPoolTable;                        // pour l'affichage complet
+  const myRankPool = myPoolTable.findIndex(function(t){ return t.isPlayer; }) + 1;
+
+  // ── Qualifiés pour la poule finale : top 2 de CHAQUE poule ─────────────
+  const q1 = myPoolTable.slice(0,2).map(function(t){
+    return { name:t.name, isPlayer:!!t.isPlayer,
+             strength: t.isPlayer ? _valPlayerStrength(C) : _valNameStrength(po, t.name) };
+  });
+  const q2 = (po.otherPoolTable||[]).slice(0,2).map(function(t){
+    return { name:t.name, isPlayer:false, strength:t.strength };
+  });
+  const finalists = q1.concat(q2);
+
+  // Le joueur est-il qualifié pour la finale ?
+  if(myRankPool > 2){
+    po.promoted = false;
+    po.detail = po.poolLabel+', '+myRankPool+'e — éliminé en poule.';
+    po.done = true; po.active = false;
+    return;
+  }
+
+  // ── Mise en place de la POULE FINALE (3 nouveaux matchs jouables) ───────
+  const others = finalists.filter(function(t){ return !t.isPlayer; });
+  const base = C.date || {year:1,month:8,day:1};
+  const matches = others.map(function(opp, idx){
+    const d = _addDays(base, (idx+1)*7);
+    return { oppName:opp.name, oppStrength:opp.strength, dateKey:_dateKey(d), date:d,
+             isHome:(idx%2===0), played:false, scoreMe:null, scoreOpp:null };
+  });
+  // Résultats entre les 3 autres finalistes (hors joueur).
+  const fpts = {}; others.forEach(function(t){ fpts[t.name]=0; });
+  for(let i=0;i<others.length;i++){ for(let j=i+1;j<others.length;j++){
+    const a=others[i], b=others[j]; const diff=(a.strength-b.strength)/12; const r=Math.random()*2-1+diff;
+    if(r>0.35) fpts[a.name]+=3; else if(r<-0.35) fpts[b.name]+=3; else { fpts[a.name]+=1; fpts[b.name]+=1; }
+  }}
+
+  po.stage = 'final';
+  po.matches = matches;
+  po.idx = 0;
+  po.otherPts = fpts;
+  po.finalists = finalists.map(function(t){ return { name:t.name, isPlayer:!!t.isPlayer }; });
+  po.detail = 'Qualifié pour la poule finale ! Le 1er monte en R3.';
+  po.active = true; po.done = false;
+}
+
+// Finalise la POULE FINALE : seul le 1er monte.
+function _valoriaFinalizeDistrictFinal(C){
+  const po = C.playoffs; if(!po) return;
+  let myPts=0, myGf=0, myGa=0;
+  po.matches.forEach(function(m){
+    if(!m.played) return;
+    myGf += m.scoreMe||0; myGa += m.scoreOpp||0;
+    if(m.scoreMe>m.scoreOpp) myPts+=3; else if(m.scoreMe===m.scoreOpp) myPts+=1;
+  });
+  const seen={}; const table=[];
+  po.matches.forEach(function(m){ if(seen[m.oppName])return; seen[m.oppName]=true;
+    table.push({ name:m.oppName, pts:po.otherPts[m.oppName]||0, gd:0 }); });
+  table.push({ name:po.myName, pts:myPts, gd:myGf-myGa, isPlayer:true });
+  table.sort(function(a,b){ return (b.pts-a.pts)||((b.gd||0)-(a.gd||0)); });
+  po.finalTable = table;
+  const rank = table.findIndex(function(t){ return t.isPlayer; }) + 1;
+  po.promoted = (rank === 1);                          // SEUL le 1er monte
+  po.detail = 'Poule finale : '+rank+(rank===1?'er':'e')+' avec '+myPts+' pts'+(po.promoted?' — PROMU en R3 !':' — maintien.');
+  po.done = true; po.active = false;
+}
+
+// Force approximative d'une équipe nommée (pour la poule finale).
+function _valNameStrength(po, name){
+  const t = (po.otherPoolTable||[]).find(function(x){ return x.name===name; });
+  if(t) return t.strength;
+  const p = (po.myPoolTeams||[]).find(function(x){ return x.name===name; });
+  return p ? p.strength : 55;
+}
+function _valPlayerStrength(C){
+  const squad=(C.players||[]).concat(C.bench||[]); let sum=0,n=0;
+  squad.forEach(function(p){ const s=p&&p.s; if(!s)return; sum+=((s.tec||50)+(s.spd||50)+(s.sht||50)+(s.def||50)+(s.stam||50)+(s.res||50))/6; n++; });
+  return n?sum/n:55;
 }
 
 // proStandings : classement final de la Pro (trié, dernier = relégué).
@@ -412,6 +512,7 @@ if(typeof window!=='undefined'){
   Object.assign(window,{
     VALORIA_LEVELS, simulateValoriaDivision, valoriaDistrictPlayoffs,
     valoriaSimulateDistrictPlayoffs, valoriaSetupDistrictPlayoffs, _valoriaFinalizeDistrictPlayoffs,
+    _valoriaFinalizeDistrictFinal, _valNameStrength, _valPlayerStrength,
     valoriaR1toPro, valoriaResolvePlayerSeason, valoriaNormalizeLevel, _valRegionName, _valDivName,
   });
 }

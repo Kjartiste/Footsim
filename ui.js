@@ -10685,9 +10685,18 @@ function _recordPlayoffLegResult(myG, oppG){
 
   po.idx++;
   if(po.idx >= po.matches.length){
-    try{ _valoriaFinalizeDistrictPlayoffs(C); }catch(e){ console.error('finalize playoffs:',e); }
-    if(po.promoted){ logEvent('🎉 Barrages de district remportés ! ('+po.detail+')', C.club.color||'#f0c028'); }
-    else { logEvent('⚔️ Barrages de district terminés : '+po.detail+'.', C.club.color||'#f0c028'); }
+    if(po.stage === 'final'){
+      try{ _valoriaFinalizeDistrictFinal(C); }catch(e){ console.error('finalize final:',e); }
+      if(po.promoted){ logEvent('🎉 Poule finale remportée ! '+po.detail, C.club.color||'#f0c028'); }
+      else { logEvent('⚔️ Poule finale terminée : '+po.detail, C.club.color||'#f0c028'); }
+    } else {
+      try{ _valoriaFinalizeDistrictPlayoffs(C); }catch(e){ console.error('finalize playoffs:',e); }
+      if(po.done && !po.promoted){
+        logEvent('⚔️ Barrages de district : '+po.detail, C.club.color||'#f0c028');
+      } else if(po.stage === 'final'){
+        logEvent('🏟️ '+po.detail+' Les matchs de la poule finale arrivent.', C.club.color||'#f0c028');
+      }
+    }
   }
   if(C._pendingMatch) C._pendingMatch = null;
 }
@@ -11419,12 +11428,74 @@ function _renderBarrageBlock(br){
 
 function _renderPlayoffBlock(po){
   let h = '<div class="ccard ccard-amber">';
-  h += '<div class="ccard-title">⚔️ Barrages de promotion</div>';
+  const stageLbl = po.stage==='final' ? 'Poule finale' : 'Barrages de district';
+  h += '<div class="ccard-title">⚔️ '+stageLbl+' → R3</div>';
+  h += '<div class="ctxt-xs" style="margin-bottom:6px">Format : 2 poules de 4 → poule finale des qualifiés (2 premiers de chaque poule). Seul le 1er de la poule finale monte en R3.</div>';
+
   if(po.done){
-    h += '<div class="ctxt-sm" style="color:'+(po.promoted?'#18c860':'#e06060')+';font-weight:700">'+(po.detail||(po.promoted?'Promu !':'Maintien.'))+'</div>';
+    h += '<div class="ctxt-sm" style="color:'+(po.promoted?'#18c860':'#e06060')+';font-weight:700;margin-bottom:6px">'+(po.detail||(po.promoted?'Promu !':'Éliminé.'))+'</div>';
+  }
+
+  // Petit tableau de poule réutilisable.
+  function poolTable(title, rows, qualifyTop){
+    if(!rows || !rows.length) return '';
+    let t = '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted);font-weight:700">'+title+'</div>';
+    rows.forEach(function(r, i){
+      const q = qualifyTop && i < qualifyTop;
+      const me = r.isPlayer;
+      t += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 6px;border-bottom:1px solid var(--b1);'+(me?'background:rgba(240,192,40,.14);border-radius:4px':'')+'">';
+      t += '<span style="color:'+(me?'var(--gold)':q?'#18c860':'var(--fg)')+';font-weight:'+(me||q?'900':'400')+'">'+(i+1)+'. '+r.name+(q?' ✓':'')+'</span>';
+      t += '<span style="font-weight:900">'+(r.pts||0)+' pts</span>';
+      t += '</div>';
+    });
+    return t;
+  }
+
+  if(po.stage === 'final'){
+    // Classement de la poule finale (si calculé) sinon liste des finalistes +
+    // matchs restants du joueur.
+    if(po.finalTable){
+      h += poolTable('Poule finale', po.finalTable, 1);
+    } else {
+      if(Array.isArray(po.finalists)){
+        h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted);font-weight:700">Finalistes</div>';
+        po.finalists.forEach(function(t){
+          h += '<div style="font-size:10px;padding:2px 6px;color:'+(t.isPlayer?'var(--gold)':'var(--fg)')+';font-weight:'+(t.isPlayer?'900':'400')+'">• '+t.name+'</div>';
+        });
+      }
+      // Matchs du joueur dans la poule finale.
+      if(Array.isArray(po.matches)){
+        h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted)">Vos matchs :</div>';
+        po.matches.forEach(function(m){
+          const score = m.played ? (m.scoreMe+'–'+m.scoreOpp) : (m.isHome?'🏠 vs':'✈️ vs');
+          h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 6px;border-bottom:1px solid var(--b1)"><span>'+m.oppName+'</span><span style="font-weight:900;color:var(--muted)">'+score+'</span></div>';
+        });
+      }
+    }
   } else {
-    h += '<div class="ctxt-sm">'+(po.detail||'Barrages en cours.')+'</div>';
-    if(Array.isArray(po.bracket)){ po.bracket.forEach(function(m){ h += _compMatchRow(m); }); }
+    // Étape de poules : afficher LES DEUX poules en entier.
+    if(po.myPoolTable){
+      h += poolTable('Votre '+(po.poolLabel||'poule'), po.myPoolTable, 2);
+    } else {
+      // Poule pas encore finalisée : montrer les équipes + matchs joués.
+      if(Array.isArray(po.myPoolTeams)){
+        h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted);font-weight:700">Votre '+(po.poolLabel||'poule')+'</div>';
+        po.myPoolTeams.forEach(function(t){
+          h += '<div style="font-size:10px;padding:2px 6px;color:'+(t.isPlayer?'var(--gold)':'var(--fg)')+';font-weight:'+(t.isPlayer?'900':'400')+'">• '+t.name+'</div>';
+        });
+      }
+      if(Array.isArray(po.matches)){
+        h += '<div class="ctxt-xs" style="margin:6px 0 2px;color:var(--muted)">Vos matchs :</div>';
+        po.matches.forEach(function(m){
+          const score = m.played ? (m.scoreMe+'–'+m.scoreOpp) : (m.isHome?'🏠 vs':'✈️ vs');
+          h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 6px;border-bottom:1px solid var(--b1)"><span>'+m.oppName+'</span><span style="font-weight:900;color:var(--muted)">'+score+'</span></div>';
+        });
+      }
+    }
+    // L'AUTRE poule, en entier (ce qui manquait).
+    if(po.otherPoolTable){
+      h += poolTable(po.otherPoolLabel||'Autre poule', po.otherPoolTable, 2);
+    }
   }
   h += '</div>';
   return h;
