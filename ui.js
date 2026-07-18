@@ -10889,6 +10889,7 @@ function _recordCareerV2BarrageMatchResult(){
 function endCareerSeasonDirector(){
   if(!careerV2) return;
   const C = careerV2;
+  let _seasonBarrageResolved = false;   // vrai si un barrage/play-off vient d'être joué
   // Des barrages de district sont en cours et pas encore terminés : il faut
   // d'abord les jouer jusqu'au bout avant de pouvoir clôturer la saison.
   if(C.playoffs && C.playoffs.active && !C.playoffs.done){
@@ -10905,12 +10906,25 @@ function endCareerSeasonDirector(){
   // Barrage générique déjà JOUÉ : on applique son verdict et on empêche qu'il
   // soit recréé par la logique de promotion ci-dessous.
   if(C.barrage && C.barrage.generic && C.barrage.done){
-    window._levelBeforeSeasonEnd = C.barrage.promoted ? null : (C.club && C.club.level);
     C._genericBarrage = true;   // marqueur : ne pas régénérer un barrage
+    // Le niveau AVANT le barrage a été mémorisé à sa création (_levelAtStart).
+    // On l'utilise pour détecter correctement la promotion : sinon, comme le
+    // level a déjà changé, la comparaison echouait et la promotion via barrage
+    // n'était PAS reconnue (→ confiance non créditée → licenciement injuste).
+    window._levelBeforeSeasonEnd = C.barrage._levelAtStart || (C.club && C.club.level);
+    _seasonBarrageResolved = true;
+  }
+  // Barrage de district (Valoria) déjà joué : même logique.
+  if(C.playoffs && C.playoffs.done && C.playoffs._levelAtStart){
+    window._levelBeforeSeasonEnd = C.playoffs._levelAtStart;
+    _seasonBarrageResolved = true;
   }
   // Mémorise le niveau AVANT résolution (promo/relégation le modifient) pour
-  // évaluer les objectifs des sponsors en fin de fonction.
-  window._levelBeforeSeasonEnd = C.club && C.club.level;
+  // évaluer les objectifs des sponsors en fin de fonction. On NE l'écrase PAS
+  // si un barrage/play-off vient d'être résolu (on garde le niveau d'avant).
+  if(!_seasonBarrageResolved){
+    window._levelBeforeSeasonEnd = C.club && C.club.level;
+  }
   // ── Contexte figé AVANT résolution, pour l'historique de carrière ──────
   const _histSeasonNumber = C.season;
   const _histDivisionStart = C.divisionName || (C.club && C.club.divisionName) || (C.club && C.club.level) || '?';
@@ -10925,7 +10939,7 @@ function endCareerSeasonDirector(){
   // Si la carrière se déroule en Valoria et que le moteur de saisons dédié est
   // chargé, on applique les règles complètes (R3, play-offs district, équité
   // R1→Pro). Sinon on garde la logique générique (top 2 = montée).
-  if((C.nation==='valoria') && typeof valoriaResolvePlayerSeason==='function' && C.club && C.club.level){
+  if((C.nation==='valoria') && typeof valoriaResolvePlayerSeason==='function' && C.club && C.club.level && !(C.playoffs && C.playoffs.done)){
     try{
       const res = valoriaResolvePlayerSeason(C, myPos, total);
       if(res && res.needsPlayoffs){
@@ -11013,6 +11027,7 @@ function endCareerSeasonDirector(){
         games: [ {isHome:true, played:false}, {isHome:false, played:false}, {isHome:true, played:false} ],
         targetDivName: pyramid[idx-1].name,
         newLevel: levels[idx-1],
+        _levelAtStart: C.club.level,   // niveau avant le barrage, pour détecter la promotion
         message: null,
       };
       window._levelBeforeSeasonEnd = null;
@@ -11149,6 +11164,8 @@ function endCareerSeasonDirector(){
   // Nettoyage des barrages de la saison écoulée (générique).
   C._genericBarrage = false;
   if(C.barrage && C.barrage.generic && C.barrage.done) C.barrage = null;
+  // Nettoyage des barrages de district Valoria une fois la saison bouclée.
+  if(C.playoffs && C.playoffs.done) C.playoffs = null;
   logEvent('Saison '+C.season+' — Nouveau depart !', C.club.color||'#18c860');
   // IA de gestion : les clubs adverses vieillissent, progressent/déclinent et
   // font quelques mouvements de mercato avant que la nouvelle saison démarre.

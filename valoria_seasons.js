@@ -267,6 +267,7 @@ function valoriaSetupDistrictPlayoffs(C, myDiv, myPos){
   C.playoffs = {
     type:'district', active:true, done:false, promoted:false, detail:null,
     stage:'pools',                       // 'pools' → 'final'
+    _levelAtStart: (C.club && C.club.level),  // pour détecter la promotion en fin de saison
     myDiv: myDiv, myPos: myPos, poolLabel: poolLbl,
     myName: (C.club&&C.club.name)||'Mon club',
     matches: matches, idx: 0,
@@ -363,6 +364,21 @@ function _valoriaFinalizeDistrictFinal(C){
   po.promoted = (rank === 1);                          // SEUL le 1er monte
   po.detail = 'Poule finale : '+rank+(rank===1?'er':'e')+' avec '+myPts+' pts'+(po.promoted?' — PROMU en R3 !':' — maintien.');
   po.done = true; po.active = false;
+  // Applique RÉELLEMENT la montée en R3 : sans ça, on gagnait la poule finale
+  // sans changer de division (et la promotion n'était pas reconnue par le
+  // board → licenciement injuste malgré le titre).
+  if(po.promoted && typeof C!=='undefined' && C && C.club){
+    const target = (po.newLevel) || _valDistrictTargetR3(C);
+    if(target){ C.club.level = target; po.newLevel = target; }
+  }
+}
+
+// Détermine le niveau R3 cible pour une montée de district (selon la région).
+function _valDistrictTargetR3(C){
+  const region = (C.club && C.club.region) || '';
+  // Divisions R3 connues par région ; repli générique sinon.
+  const map = { valcourt:'valcourt_r3', brumefer:'brumefer_r3' };
+  return map[region] || 'valcourt_r3';
 }
 
 // Force approximative d'une équipe nommée (pour la poule finale).

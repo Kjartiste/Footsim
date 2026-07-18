@@ -113,7 +113,20 @@ function _boardOnSeasonEnd(ctx){
 // transition de saison et laisser l'écran de licenciement s'afficher).
 function _boardCheckSack(){
   if(!careerV2) return false;
+  // Cohérence des rôles : un DIRIGEANT est propriétaire de son club — personne
+  // ne peut le « virer », le club lui appartient. Seul un ENTRAÎNEUR (manager
+  // salarié) peut être licencié. Pour le dirigeant, une confiance au plus bas
+  // se traduit par une pression/avertissement, pas un renvoi.
+  const isManager = (typeof _isManager === 'function') ? _isManager() : !!careerV2._nomad;
   const conf = _boardConf();
+  if(!isManager){
+    // Dirigeant propriétaire : jamais viré. On prévient seulement.
+    if(conf < BOARD.WARN_THRESHOLD){
+      try{ logEvent('⚠️ La grogne monte autour du projet, mais le club vous ' +
+        'appartient : à vous de redresser la barre.', '#e08040'); }catch(e){}
+    }
+    return false;
+  }
   if(conf > BOARD.SACK_THRESHOLD){
     // Pas viré, mais on prévient si ça sent le roussi.
     if(conf < BOARD.WARN_THRESHOLD){
@@ -127,7 +140,7 @@ function _boardCheckSack(){
     clubName: careerV2.club ? careerV2.club.name : '?',
     confidence: conf,
   };
-  try{ logEvent('❌ Vous avez été licencié par le board du ' +
+  try{ logEvent('❌ Vous avez été licencié par la direction du ' +
     (careerV2.club?careerV2.club.name:'club') + '.', '#e02030'); }catch(e){}
   try{ saveCareerV2(); }catch(e){}
   return true;
@@ -664,21 +677,31 @@ function _renderBoardCard(){
   const C = careerV2;
   const conf = _boardConf();
   const lab = BOARD.label(conf);
-  const danger = conf < BOARD.WARN_THRESHOLD;
+  const isManager = (typeof _isManager === 'function') ? _isManager() : !!(C && C._nomad);
+  // Pour un ENTRAÎNEUR salarié, la sellette existe (il peut être viré). Pour un
+  // DIRIGEANT propriétaire, non : c'est la confiance dans son PROJET (supporters,
+  // partenaires) qui est en jeu, sans licenciement possible.
+  const danger = isManager && conf < BOARD.WARN_THRESHOLD;
+
+  const titleTxt = isManager ? '🏛 Confiance du board' : '📊 Confiance dans votre projet';
 
   let h = '<div style="background:var(--dark);border:1px solid ' + (danger ? '#e02030' : 'var(--b1)') + ';border-radius:8px;padding:10px;margin-bottom:10px">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-  h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🏛 Confiance du board</div>';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">' + titleTxt + '</div>';
   h += '<div style="font-size:10px;font-weight:900;color:' + lab.col + '">' + lab.txt + ' · ' + Math.round(conf) + '/100</div>';
   h += '</div>';
   // Jauge
   h += '<div style="height:8px;background:var(--panel);border-radius:4px;overflow:hidden;position:relative">';
   h += '<div style="height:100%;width:' + Math.max(2, conf) + '%;background:' + lab.col + ';transition:width .3s"></div>';
-  // Repère du seuil de licenciement
-  h += '<div style="position:absolute;left:' + BOARD.SACK_THRESHOLD + '%;top:0;bottom:0;width:1px;background:#e02030"></div>';
+  // Repère du seuil de licenciement (uniquement pour un entraîneur).
+  if(isManager){
+    h += '<div style="position:absolute;left:' + BOARD.SACK_THRESHOLD + '%;top:0;bottom:0;width:1px;background:#e02030"></div>';
+  }
   h += '</div>';
   if(danger){
-    h += '<div style="font-size:9px;color:#e02030;margin-top:6px;line-height:1.5">⚠️ <b>Vous êtes sur la sellette.</b> Sous ' + BOARD.SACK_THRESHOLD + '/100 en fin de saison, le board vous licenciera.</div>';
+    h += '<div style="font-size:9px;color:#e02030;margin-top:6px;line-height:1.5">⚠️ <b>Vous êtes sur la sellette.</b> Sous ' + BOARD.SACK_THRESHOLD + '/100 en fin de saison, la direction vous licenciera.</div>';
+  } else if(!isManager && conf < BOARD.WARN_THRESHOLD){
+    h += '<div style="font-size:9px;color:#e08040;margin-top:6px;line-height:1.5">⚠️ La confiance dans votre projet est au plus bas. Le club vous appartient — personne ne vous démettra, mais il faut redresser la barre.</div>';
   } else {
     h += '<div style="font-size:8px;color:var(--muted);margin-top:5px">Évolue avec vos résultats. Bilan complet en fin de saison.</div>';
   }
