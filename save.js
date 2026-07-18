@@ -714,7 +714,17 @@ function _generateBoardObjectives(club){
     d2:  [{type:'mid_table', desc:'Top 10', reward:15000}],
     d1:  [{type:'top_half', desc:'Top 8', reward:25000}],
   };
-  return levelObjectives[club.level] || [{type:'survive', desc:'Survivre la saison', reward:1000}];
+  const primary = levelObjectives[club.level] || [{type:'survive', desc:'Survivre la saison', reward:1000}];
+  // On ajoute un objectif SECONDAIRE varié (coupe, buts, jeune, série…) pour
+  // que le board juge autre chose que le seul classement.
+  const out = primary.slice();
+  try{
+    if(typeof _secondaryObjective === 'function'){
+      const sec = _secondaryObjective(club);
+      if(sec){ sec._secondary = true; out.push(sec); }
+    }
+  }catch(e){}
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -793,11 +803,16 @@ function _weeklyCareerCosts(){
   // Frais de compétition : divisés sur 8 semaines (saison ~8 semaines)
   total += Math.round((costs.compFee || 0) / 8);
 
-  if(isPro){
-    // Salaires des joueurs
-    const nbP = (C.players||[]).length + (C.bench||[]).length;
-    total += nbP * Math.round(costs.weeklyBase * 0.06);
-  }
+  // ── Salaires des joueurs ─────────────────────────────────────────────
+  // Avant : `nbJoueurs × weeklyBase × 0.06`, soit un FORFAIT par tête. Une
+  // star à 250 000 or coûtait le même salaire qu'un remplaçant à 500 or, et
+  // seuls les clubs pros payaient quoi que ce soit. Résultat : rien ne
+  // dissuadait d'empiler les meilleurs joueurs — le budget d'achat était le
+  // seul frein, et c'est une dépense unique.
+  // Désormais chaque joueur coûte selon SA valeur (donc son poste, ses sorts,
+  // ses traits, son potentiel — cf. _boardPlayerValue), à tous les niveaux.
+  total += _weeklyWageBill();
+
 
   // Coûts infrastructure (chaque niveau coûte plus)
   const infra = C.club.infra || {};
@@ -914,6 +929,77 @@ function _generateYouthIntake(){
 }
 
 // ── Appliquer les revenus/coûts hebdomadaires ─────────────────────────
+// ── Masse salariale hebdomadaire ─────────────────────────────────────────
+// Salaire d'un joueur = sa valeur marchande amortie. On réutilise
+// _boardPlayerValue (poste, sorts, traits, potentiel, âge) pour que le salaire
+// suive exactement ce qui fait la valeur d'un joueur, et non un forfait.
+// Ratio calé sur la V1 (careerWeeklySalary ≈ valeur × 0.12 / 52) : un joueur
+// coûte ~12 % de sa valeur par an en salaire.
+// Valeur brute d'un joueur pour la répartition salariale (poste, sorts,
+// traits, potentiel, âge). On ne convertit PAS en pièces ici : seul le poids
+// RELATIF d'un joueur par rapport à ses coéquipiers nous intéresse.
+function _wageWeight(p){
+  if(!p) return 0;
+  try{
+    if(typeof _boardPlayerValue === 'function') return Math.max(1, _boardPlayerValue(p));
+  }catch(e){}
+  const s = p.s || {};
+  const o = ((s.sht||50)+(s.spd||50)+(s.def||50)+(s.stam||50)+(s.tec||50)+(s.res||50))/6;
+  return Math.max(1, Math.pow(o, 2.6));
+}
+
+// Salaire hebdomadaire d'UN joueur.
+// Principe : on garde l'ENVELOPPE de l'ancien forfait (nbJoueurs × weeklyBase
+// × 0.06), qui était correctement calibrée face aux revenus du club, mais on
+// la RÉPARTIT au prorata de la valeur de chaque joueur au lieu de la diviser
+// à parts égales. Une star coûte ainsi ~2× la moyenne et un remplaçant ~0.4×,
+// sans que le club se retrouve subitement en faillite.
+// Le forfait s'applique désormais à TOUS les niveaux (il était réservé aux
+// clubs pros : en R1/R2/DH les joueurs ne coûtaient rien).
+function careerV2WeeklySalary(p){
+  const C = careerV2;
+  if(!p || !C || !C.club) return 0;
+  // Contrat négocié (semi-pro) : le salaire convenu prime sur l'estimation.
+  // C'est tout l'intérêt de négocier — un bon contrat reste avantageux même
+  // si le joueur progresse ensuite.
+  if(p._contractWage) return Math.max(1, Math.round(p._contractWage));
+  const costs = (typeof LEVEL_COSTS !== 'undefined')
+    ? (LEVEL_COSTS[C.club.level] || LEVEL_COSTS['dh']) : null;
+  if(!costs) return 1;
+  // Amateurs : simples indemnités, pas de vrais salaires. Le taux est bien
+  // plus bas qu'en pro, et calibré pour ne pas mettre le club en déficit
+  // structurel : en R1 un taux de 0.03 creusait ~-250/sem, alors que ces
+  // clubs ne payaient RIEN auparavant. À 0.015 la dépense existe et pèse dans
+  // les choix, sans rendre la survie impossible.
+  const isPro = ['d1','d2','d3'].includes(C.club.level);
+  const perHead = Math.round(costs.weeklyBase * (isPro ? 0.06 : 0.015));
+
+  const squad = [].concat(C.players||[], C.bench||[], C.reserves||[]);
+  if(!squad.length) return perHead;
+  let sum = 0;
+  squad.forEach(function(q){ sum += _wageWeight(q); });
+  const avg = sum / squad.length;
+  if(!avg) return perHead;
+
+  // Rapport à la moyenne, borné : même le meilleur joueur ne peut pas
+  // engloutir toute la masse, ni le pire coûter zéro.
+  const ratio = Math.max(0.35, Math.min(3.0, _wageWeight(p) / avg));
+  return Math.max(1, Math.round(perHead * ratio));
+}
+
+// Total payé chaque semaine pour l'effectif (titulaires + banc + réserves).
+function _weeklyWageBill(){
+  const C = careerV2;
+  if(!C) return 0;
+  let total = 0;
+  ['players','bench','reserves'].forEach(function(grp){
+    (C[grp] || []).forEach(function(p){
+      if(p) total += careerV2WeeklySalary(p);
+    });
+  });
+  return Math.round(total);
+}
+
 function _applyWeeklyEconomy(){
   if(!careerV2 || careerV2.type !== 'director') return;
   const C = careerV2;
@@ -953,6 +1039,11 @@ function _applyWeeklyEconomy(){
   const fixedCost = Math.round(costs.weeklyBase * 0.4);
   const rentCost  = costs.stadiumRent || 0;
   const compCost  = Math.round((costs.compFee||0) / 8);
+  const wageBill = _weeklyWageBill();
+  if(wageBill > 0){
+    const nbP = (C.players||[]).length + (C.bench||[]).length + (C.reserves||[]).length;
+    _addFinanceLog('Masse salariale (' + nbP + ' joueurs)', -wageBill);
+  }
   if(fixedCost > 0) _addFinanceLog('Frais fixes', -fixedCost);
   if(rentCost  > 0) _addFinanceLog('Loyer terrain', -rentCost);
   if(compCost  > 0) _addFinanceLog('Frais competition', -compCost);
@@ -1226,6 +1317,8 @@ function _generateSeasonFixtures(){
   });
 
   _buildRoundRobinFixtures(allClubs);
+  // Désigne (ou reconduit) le rival de la saison une fois le calendrier prêt.
+  try{ if(typeof _assignRival==='function') _assignRival(); }catch(e){ console.error('rival:',e); }
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -69,6 +69,24 @@ function _boardOnSeasonEnd(ctx){
   let delta = 0;
   const bits = [];
 
+  // ── XP de manager ───────────────────────────────────────────────────
+  // Diriger plus bas rapporte moins : sinon on ferait carrière en District
+  // pour décrocher la licence Pro sans jamais se confronter au niveau.
+  try{
+    const lvlRank = _levelRank(careerV2.club && careerV2.club.level);
+    const lvlMul = Math.max(0.35, 1.4 - lvlRank * 0.16);   // D1 ×1.4 … DH ×0.44
+    let xp = 20;                                            // saison terminée
+    // Le label PRÉCISE la division : sans ça le palmarès affichait
+    // « Promotion · Champion · Promotion · Promotion… », illisible.
+    const lvlName = _divShortName(careerV2.club && careerV2.club.level);
+    if(ctx.promoted)      { xp += 90; _mgrAchieve('promo_' + (careerV2.club&&careerV2.club.level), '⬆️ Promu de ' + lvlName); }
+    if(pos === 1)         { xp += 70; _mgrAchieve('title_' + (careerV2.club&&careerV2.club.level), '🏆 Champion ' + lvlName); }
+    else if(total && pos && pos <= Math.ceil(total*0.25)) xp += 35;
+    if(ctx.cupWon)        { xp += 80; _mgrAchieve('cup_S' + (careerV2.season||1), '🏆 Coupe S' + (careerV2.season||1)); }
+    if(ctx.relegated)     xp -= 30;
+    managerAddXp(Math.round(xp * lvlMul), 'saison ' + (careerV2.season||1));
+  }catch(e){ console.error('manager xp:', e); }
+
   if(ctx.promoted){        delta += 20; bits.push('promotion'); }
   else if(ctx.relegated){  delta -= 22; bits.push('relégation'); }
   else if(pos === 1){      delta += 14; bits.push('titre'); }
@@ -213,37 +231,91 @@ function _boardMaybeJobOffer(ctx){
   const levels = pyramid.map(function(p){ return p.id; });
   let idx = levels.indexOf(C.club.level);
   if(idx < 0) idx = levels.length - 1;
-  const targetIdx = (idx > 0 && Math.random() < 0.7) ? idx - 1 : idx;
+  let targetIdx = (idx > 0 && Math.random() < 0.7) ? idx - 1 : idx;
+  // La licence plafonne les clubs qui peuvent vous recruter : c'est ce qui
+  // donne un sens à la progression. Sans elle, on passait de District à D1
+  // sans que rien ne le justifie.
+  while(targetIdx < levels.length && !managerCanManage(levels[targetIdx])) targetIdx++;
+  if(targetIdx >= levels.length) return;
   const target = _boardPickClub(levels[targetIdx]);
   if(!target) return;
 
   const budget = Math.round((C.club.budget || 10000) * (1.2 + Math.random() * 1.6));
-  C.job_offer = {
-    club: target,
+  // ── Un SEUL format d'offre ─────────────────────────────────────────────
+  // Il existait deux systèmes incompatibles : `job_offer` (singulier, budget +
+  // isStepUp) créé ici, et `job_offers` (pluriel, salary + objectives) lu par
+  // l'UI. L'UI ne voyait donc jamais les offres du board. On écrit désormais
+  // dans `job_offers`, au format que l'écran sait afficher et accepter.
+  if(!Array.isArray(C.job_offers)) C.job_offers = [];
+  // Une seule offre à la fois du board en cours de saison (évite le spam).
+  if(C.job_offers.some(function(o){ return o._fromBoard; })) return;
+  C.job_offers.push({
+    club: target.name,
+    region: target.region || C.club.region,
+    level: levels[targetIdx],
+    color: target.color || '#888',
+    badge: target.badge || null,
+    salary: Math.round(budget * 0.002),           // salaire hebdo ≈ 0.2% du budget
+    contract_years: 2,
     budget: budget,
-    season: C.season,
+    objectives: [{ type: (targetIdx < idx ? 'top_half' : 'mid_table'),
+      desc: (targetIdx < idx ? 'Jouer le haut de tableau' : 'Stabiliser le club') }],
     isStepUp: targetIdx < idx,
-  };
+    season: C.season,
+    _fromBoard: true,
+  });
   try{ logEvent('📨 ' + target.name + ' vous propose de prendre les rênes !', '#9c27b0'); }catch(e){}
 }
 
 // Carte d'offre d'emploi (affichée en haut de la Vue).
+// Lit désormais `job_offers` (pluriel) — la liste unifiée — au lieu de
+// `job_offer` (singulier) que plus rien ne remplit.
 function _renderJobOfferCard(){
-  const C = careerV2, o = C.job_offer;
-  if(!o) return '';
-  let h = '<div style="background:linear-gradient(135deg,rgba(156,39,176,0.18),var(--dark));border:1px solid #9c27b0;border-radius:8px;padding:12px;margin-bottom:10px">';
-  h += '<div style="font-size:10px;font-weight:700;color:#9c27b0;margin-bottom:6px">📨 Offre d\'un autre club</div>';
-  h += '<div style="font-size:11px;line-height:1.6;margin-bottom:8px">';
-  h += '<b style="color:' + (o.club.color||'#fff') + '">' + (o.club.badge?o.club.badge+' ':'') + o.club.name + '</b> ';
-  h += '(' + (o.club.divisionName || o.club.level) + ') souhaite vous nommer directeur.';
-  if(o.isStepUp) h += ' <span style="color:#18c860">C\'est un échelon au dessus.</span>';
-  h += '<br><span style="color:var(--muted)">Budget proposé : </span><b style="color:#18c860">' + _fmtMoney(o.budget) + '</b>';
-  h += '</div>';
-  h += '<div style="display:flex;gap:6px">';
-  h += '<button class="btn btng" onclick="acceptJobOffer()" style="flex:1;font-size:9px;padding:5px">✅ Accepter</button>';
-  h += '<button class="btn" onclick="declineJobOffer()" style="flex:1;font-size:9px;padding:5px">✕ Refuser</button>';
-  h += '</div></div>';
+  const C = careerV2;
+  const offers = (C.job_offers || []).filter(function(o){ return o._fromBoard; });
+  if(!offers.length) return '';
+  let h = '';
+  offers.forEach(function(o){
+    const idx = C.job_offers.indexOf(o);
+    h += '<div style="background:linear-gradient(135deg,rgba(156,39,176,0.18),var(--dark));border:1px solid #9c27b0;border-radius:8px;padding:12px;margin-bottom:10px">';
+    h += '<div style="font-size:10px;font-weight:700;color:#9c27b0;margin-bottom:6px">📨 Offre d\'un autre club</div>';
+    h += '<div style="font-size:11px;line-height:1.6;margin-bottom:8px">';
+    h += '<b style="color:' + (o.color||'#fff') + '">' + (o.badge?o.badge+' ':'') + o.club + '</b> ';
+    h += '(' + (o.level||'').toUpperCase() + ') souhaite vous nommer directeur.';
+    if(o.isStepUp) h += ' <span style="color:#18c860">C\'est un échelon au dessus.</span>';
+    h += '<br><span style="color:var(--muted)">Budget proposé : </span><b style="color:#18c860">' + _fmtMoney(o.budget||0) + '</b>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:6px">';
+    h += '<button class="btn btng" onclick="acceptBoardJobOffer(' + idx + ')" style="flex:1;font-size:9px;padding:5px">✅ Accepter</button>';
+    h += '<button class="btn" onclick="declineBoardJobOffer(' + idx + ')" style="flex:1;font-size:9px;padding:5px">✕ Refuser</button>';
+    h += '</div></div>';
+  });
   return h;
+}
+
+// Accepter une offre du board depuis le mode director : on réutilise la
+// bascule complète (nouveau club, effectif, budget) déjà écrite plus bas.
+function acceptBoardJobOffer(idx){
+  const C = careerV2;
+  if(!C || !Array.isArray(C.job_offers)) return;
+  const o = C.job_offers[idx];
+  if(!o) return;
+  // On reconstruit un objet au format attendu par acceptJobOffer.
+  C.job_offer = {
+    club: { name:o.club, color:o.color, badge:o.badge, region:o.region, level:o.level,
+            divisionName:(o.level||'').toUpperCase() },
+    budget: o.budget, isStepUp: o.isStepUp, season: o.season,
+  };
+  C.job_offers.splice(idx, 1);
+  acceptJobOffer();
+}
+function declineBoardJobOffer(idx){
+  const C = careerV2;
+  if(!C || !Array.isArray(C.job_offers)) return;
+  C.job_offers.splice(idx, 1);
+  try{ logEvent('Vous déclinez l\'offre.', '#888'); }catch(e){}
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
 }
 
 function acceptJobOffer(){
@@ -327,6 +399,42 @@ function _startNewSeasonAfterMove(){
 // OFFRES DE MERCATO ENTRANTES (on veut acheter vos joueurs)
 // ═══════════════════════════════════════════════════════════
 
+// ── Valeur d'un joueur ───────────────────────────────────────────────────
+// Ne dépendait que de l'overall et de l'âge : deux joueurs du même effectif
+// avec le même ovr valaient exactement pareil, alors qu'un gardien, un
+// attaquant, un porteur de sort légendaire et un joueur sans trait n'ont rien
+// de comparable. On pondère désormais par tout ce qui fait réellement la
+// valeur d'un joueur dans CE jeu.
+
+// Postes : rareté et impact. Un buteur coûte cher, un gardien est un poste
+// clé mais un marché étroit, un latéral se remplace plus facilement.
+const _POS_VALUE = {
+  ATT:1.35, MO:1.20, MOG:1.15, MOD:1.15, MC:1.10, MDC:1.05,
+  GB:1.00, GK:1.00, DC:0.95, DD:0.88, DG:0.88,
+};
+
+// Valeur ajoutée par les sorts : on somme la RARETÉ (1/prob), pas le nombre.
+// Un sort à prob .01 est 7× plus rare qu'un sort à .07 — et vaut donc bien
+// plus qu'un sort commun.
+function _spellsValueMul(p){
+  const ids = p.spells || [];
+  if(!ids.length || typeof SPELLS === 'undefined') return 1;
+  let score = 0;
+  ids.forEach(function(sid){
+    const sp = SPELLS.find(function(x){ return x.id === sid; });
+    if(!sp) return;
+    const prob = sp.prob || 0.07;
+    score += Math.min(6, 0.07 / Math.max(0.005, prob)); // 1 = commun, ~6 = légendaire
+  });
+  return 1 + Math.min(1.6, score * 0.16);   // plafonné : +160% max
+}
+
+// Traits : chacun apporte un vrai comportement, mais rendement décroissant.
+function _traitsValueMul(p){
+  const n = Array.isArray(p.traits) ? p.traits.length : 0;
+  return 1 + Math.min(0.30, n * 0.09);
+}
+
 function _boardPlayerValue(p){
   const ovr = (typeof _pOvr === 'function') ? _pOvr(p) : 50;
   const age = p.age || 24;
@@ -338,7 +446,13 @@ function _boardPlayerValue(p){
   else if(age <= 29) v *= 1.0;
   else if(age <= 32) v *= 0.6;
   else               v *= 0.3;
-  if(p._potential && p._potential > ovr + 15) v *= 1.3;
+  // Potentiel : progressif plutôt qu'un palier brutal à +15.
+  if(p._potential && p._potential > ovr){
+    v *= 1 + Math.min(0.55, (p._potential - ovr) * 0.022);
+  }
+  v *= _POS_VALUE[p.pos] || 1.0;
+  v *= _spellsValueMul(p);
+  v *= _traitsValueMul(p);
   return Math.max(200, Math.round(v / 100) * 100);
 }
 
@@ -382,7 +496,11 @@ function _boardGenerateOffers(){
   const base = _boardPlayerValue(target);
   // Un club d'un cran au dessus paie plus cher.
   const mult = (buyerIdx < idx ? 1.3 : 1.0) * (0.75 + Math.random() * 0.7);
-  const fee = Math.max(200, Math.round(base * mult / 100) * 100);
+  // Même plafond qu'à l'achat (division de l'ACHETEUR, qui fixe ce qu'il peut
+  // mettre) : sans ça on pourrait vendre un joueur de R1 des millions, et
+  // l'asymétrie achat/vente deviendrait une machine à argent.
+  const capL = (typeof _divPriceCap==='function') ? _divPriceCap(levels[buyerIdx]) : Infinity;
+  const fee = Math.min(capL, Math.max(200, Math.round(base * mult / 100) * 100));
 
   C.mercato.incoming_offers.push({
     id: 'off_' + Math.random().toString(36).slice(2, 8),
@@ -412,6 +530,9 @@ function _boardExpireOffers(){
     } else keep.push(o);
   });
   C.mercato.incoming_offers = keep;
+  // Le marché des transferts respire au même rythme : les annonces périmées
+  // disparaissent, et si le marché se vide il se repeuple.
+  try{ _pruneTransferList(); }catch(e){}
 }
 
 function _boardFindOffer(id){
@@ -555,39 +676,48 @@ function _renderBoardCard(){
     h += '<div style="font-size:8px;color:var(--muted);margin-top:5px">Évolue avec vos résultats. Bilan complet en fin de saison.</div>';
   }
 
-  // ── Objectif de la saison + progression en direct ──────────────────────
-  const obj = (C.club.board_objectives || [])[0];
-  if(obj){
+  // ── Objectifs de la saison + progression en direct ─────────────────────
+  // On affiche TOUS les objectifs (principal + secondaire), pas seulement le
+  // premier : le secondaire était généré et évalué mais jamais montré.
+  const objs = (C.club.board_objectives || []);
+  if(objs.length){
     const st = (C.standings || []).slice().sort(function(a, b){
       return b.Pts - a.Pts || (b.GF - b.GA) - (a.GF - a.GA);
     });
     const pos = st.findIndex(function(s){ return s.isPlayer; }) + 1;
     const total = st.length;
-    // Projection : l'objectif serait-il tenu si la saison s'arrêtait maintenant ?
-    let onTrack = null;
-    if(pos && total){
-      onTrack = _boardObjectiveMet(obj, { rank:pos, total:total, promoted:(pos<=2), relegated:(pos>=total-1) });
-    }
     h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">';
-    h += '<span style="font-size:9px;color:var(--muted)">🎯 Objectif : <b style="color:var(--fg)">' + obj.desc + '</b></span>';
-    if(onTrack !== null){
-      h += '<span style="font-size:8px;font-weight:700;color:' + (onTrack ? '#18c860' : '#e08040') + ';white-space:nowrap">' +
-        (onTrack ? '✓ en bonne voie' : '✗ hors trajectoire') + '</span>';
-    }
-    h += '</div>';
-    if(obj.reward){
-      h += '<div style="font-size:8px;color:var(--muted);margin-top:3px">Prime si atteint : <b style="color:#18c860">' + _fmtMoney(obj.reward) + '</b></div>';
-    }
+    objs.forEach(function(obj, i){
+      // Projection : tenu si la saison s'arrêtait maintenant ?
+      let onTrack = null;
+      if(pos && total){
+        onTrack = _boardObjectiveMet(obj, { rank:pos, total:total, promoted:(pos<=2), relegated:(pos>=total-1) });
+      }
+      const tag = obj._secondary ? '<span style="font-size:7px;color:var(--muted)">2ndaire</span> ' : '';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px' + (i>0?';margin-top:4px':'') + '">';
+      h += '<span style="font-size:9px;color:var(--muted)">' + (i===0?'🎯 ':'➕ ') + tag + '<b style="color:var(--fg)">' + obj.desc + '</b></span>';
+      if(onTrack !== null){
+        h += '<span style="font-size:8px;font-weight:700;color:' + (onTrack ? '#18c860' : '#e08040') + ';white-space:nowrap">' +
+          (onTrack ? '✓ en bonne voie' : '✗ hors trajectoire') + '</span>';
+      }
+      h += '</div>';
+      if(obj.reward){
+        h += '<div style="font-size:8px;color:var(--muted);margin-top:2px">Prime : <b style="color:#18c860">' + _fmtMoney(obj.reward) + '</b></div>';
+      }
+    });
     h += '</div>';
   }
 
-  // Résultat de l'objectif de la saison précédente (une fois, après le bilan).
-  if(C._lastObjective){
-    const lo = C._lastObjective;
-    h += '<div style="margin-top:6px;font-size:8px;color:' + (lo.met ? '#18c860' : '#e06060') + '">';
-    h += (lo.met ? '✓ Saison passée : « ' + lo.desc +' » tenu' + (lo.reward ? ' (+' + _fmtMoney(lo.reward) + ')' : '')
-                 : '✗ Saison passée : « ' + lo.desc + ' » manqué');
+  // Résultats de la saison précédente (principal + secondaire).
+  const lastList = (C._lastObjectives && C._lastObjectives.length) ? C._lastObjectives : (C._lastObjective ? [C._lastObjective] : []);
+  if(lastList.length){
+    h += '<div style="margin-top:6px">';
+    lastList.forEach(function(lo){
+      h += '<div style="font-size:8px;color:' + (lo.met ? '#18c860' : '#e06060') + '">';
+      h += (lo.met ? '✓ Saison passée : « ' + lo.desc +' » tenu' + (lo.reward ? ' (+' + _fmtMoney(lo.reward) + ')' : '')
+                   : '✗ Saison passée : « ' + lo.desc + ' » manqué');
+      h += '</div>';
+    });
     h += '</div>';
   }
   h += '</div>';
@@ -859,6 +989,7 @@ function _renderPrizesCard(){
 
   // Coupe en cours : rappel de la dotation.
   if(C.cup && !C.cup.winner && !C.cup.playerOut){
+    try{ _trackCupRound(C.cup.round || 0); }catch(e){}
     const nextRound = _prizeCupRound(C.cup.round || 0, (C.cup.roundNames || []).length, 'national');
     h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)">';
     h += '<div style="display:flex;justify-content:space-between;font-size:9px;padding:2px 0">';
@@ -1146,13 +1277,39 @@ function _dismissSquadReport(){
 function _boardObjectiveMet(obj, stats){
   if(!obj || !stats) return false;
   const rank = stats.rank || 0, total = stats.total || 0;
+  const ss = (careerV2 && careerV2.season_stats) || {};
   switch(obj.type){
     case 'promotion': return !!stats.promoted;
     case 'top_half':  return rank > 0 && total > 0 && rank <= Math.ceil(total/2);
     case 'mid_table': return !stats.relegated;
     case 'survive':   return !stats.relegated;
+    // ── Objectifs SECONDAIRES (non basés sur le classement) ──────────────
+    case 'cup_run':   return (careerV2 && careerV2._cupBestRound || 0) >= (obj.target || 2);
+    case 'cup_win':   return !!stats.cupWon;
+    case 'goals':     return (ss.goals_for || 0) >= (obj.target || 30);
+    case 'wins':      return (ss.wins || 0) >= (obj.target || 10);
+    case 'unbeaten':  return (careerV2 && careerV2._bestUnbeaten || 0) >= (obj.target || 5);
+    case 'youth':     return (careerV2 && careerV2._youthPromotedThisSeason || 0) >= (obj.target || 1);
+    case 'finance':   return (careerV2 && careerV2.club && (careerV2.club.budget || 0) >= (obj.target || 0));
     default:          return false;
   }
+}
+
+// Objectif secondaire, tiré d'un pool adapté au niveau. C'est ce qui sort le
+// board du seul classement : un parcours en coupe, un buteur prolifique, une
+// éclosion de jeune, une série d'invincibilité, un club dans le vert.
+function _secondaryObjective(club){
+  const lvl = club.level;
+  const isPro = ['d1','d2','d3'].includes(lvl);
+  const pool = [
+    { type:'cup_run', target:2, desc:'Atteindre les 8es de coupe',        reward: isPro?6000:1500 },
+    { type:'goals',   target:isPro?40:25, desc:'Marquer ' + (isPro?40:25) + ' buts en championnat', reward: isPro?5000:1200 },
+    { type:'wins',    target:isPro?12:8,  desc:'Remporter ' + (isPro?12:8) + ' matchs',              reward: isPro?5000:1200 },
+    { type:'unbeaten',target:5,  desc:'Une série de 5 matchs sans défaite', reward: isPro?7000:1800 },
+    { type:'youth',   target:1,  desc:'Faire éclore un jeune de l\'académie', reward: isPro?8000:2500 },
+  ];
+  if(isPro) pool.push({ type:'cup_win', desc:'Remporter la coupe', reward:20000 });
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // Évalue l'objectif de la saison écoulée, verse la prime, ajuste la confiance,
@@ -1160,20 +1317,25 @@ function _boardObjectiveMet(obj, stats){
 function _boardCheckObjectives(stats){
   const C = careerV2;
   if(!C || !C.club) return;
-  const obj = (C.club.board_objectives || [])[0];
-
-  if(obj){
+  const objs = (C.club.board_objectives || []);
+  C._lastObjectives = [];
+  objs.forEach(function(obj, i){
+    if(!obj) return;
     const met = _boardObjectiveMet(obj, stats);
+    // L'objectif principal pèse plus lourd que le secondaire.
+    const weight = obj._secondary ? 5 : 8;
     if(met){
       if(obj.reward){
-        try{ _prizePay(obj.reward, 'Prime d\'objectif du board — ' + obj.desc, '#18c860'); }catch(e){}
+        try{ _prizePay(obj.reward, 'Prime d\'objectif — ' + obj.desc, '#18c860'); }catch(e){}
       }
-      _boardAdjust(8, 'objectif tenu : ' + obj.desc, '#18c860');
+      _boardAdjust(weight, 'objectif tenu : ' + obj.desc, '#18c860');
     } else {
-      _boardAdjust(-8, 'objectif manqué : ' + obj.desc, '#e06060');
+      _boardAdjust(-weight, 'objectif manqué : ' + obj.desc, '#e06060');
     }
-    C._lastObjective = { desc: obj.desc, met: met, reward: met ? (obj.reward || 0) : 0 };
-  }
+    C._lastObjectives.push({ desc: obj.desc, met: met, reward: met ? (obj.reward || 0) : 0, secondary: !!obj._secondary });
+  });
+  // Compat : l'ancien champ singulier reste renseigné (objectif principal).
+  if(C._lastObjectives.length) C._lastObjective = C._lastObjectives[0];
 
   // Nouvel objectif, calé sur le niveau actuel (post promotion/relégation).
   try{
@@ -1321,7 +1483,7 @@ function _renderFocusSelector(p){
     if(typeof p.s[o.key] !== 'number') return;
     const on = cur === o.key;
     h += '<button class="btn' + (on ? ' btng' : '') + '" onclick="setPlayerFocus(\'' +
-      String(p.name).replace(/'/g, "\\'") + '\',\'' + o.key + '\')" ' +
+      String(p.name).replace(/'/g, "\'") + '\',\'' + o.key + '\')" ' +
       'style="font-size:8px;padding:2px 6px' + (on ? '' : ';opacity:.75') + '" ' +
       'title="' + o.label + ' — actuel ' + p.s[o.key] + '">' + o.icon + ' ' + p.s[o.key] + '</button>';
   });
@@ -1329,6 +1491,1406 @@ function _renderFocusSelector(p){
   h += '<div style="font-size:8px;color:var(--muted);margin-top:4px">' +
     (cur ? 'Travaille <b style="color:#00bcd4">' + _focusLabel(cur) + '</b> — progresse plus vite sur cet attribut, un peu moins sur les autres.'
          : 'Aucun focus : progression équilibrée. Cliquez un attribut pour le prioriser.') + '</div>';
+  h += '</div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MARCHÉ DES TRANSFERTS (achats)
+// ═══════════════════════════════════════════════════════════
+// Le mercato était à sens unique : des clubs venaient acheter VOS joueurs
+// (incoming_offers), mais rien ne permettait d'en acheter. `transferBudget`
+// était affiché dans 4 écrans, crédité à chaque vente… et jamais dépensé :
+// le jeu montrait un budget inutilisable, pendant que les effectifs PNJ, eux,
+// se régénéraient (_evolvePlayerSquad). Les onglets Semi-Pro et Pro
+// annonçaient d'ailleurs « Marché — à développer prochainement ».
+//
+// On réutilise ici EXACTEMENT les briques existantes, pour que l'économie
+// reste symétrique avec la vente :
+//   • _boardPlayerValue()   → même barème que les offres entrantes
+//   • careerV2.opponentSquads → les VRAIS effectifs adverses, persistants et
+//     vieillissants : le joueur acheté quitte réellement son club. Un marché
+//     qui génère des joueurs à la volée n'est qu'un catalogue.
+//   • region.wealth (1..5)  → l'argent de la LIGUE fixe les prix, pas le seul
+//     niveau sportif : une petite division riche coûte plus qu'une grande
+//     division pauvre (cf. Transfermarkt).
+//   • STAFF.gemChanceMul()  → le recruteur sert enfin à ça
+// ═══════════════════════════════════════════════════════════
+
+// ── Échelle économique du marché ─────────────────────────────────────────
+// _boardPlayerValue() a été calibré pour la VENTE (on encaisse). Réutilisé tel
+// quel à l'achat, il rendait le marché inutilisable en bas de pyramide : le
+// barème `ovr^2.6` produit ~36k pour un joueur de R1, face à un budget
+// transferts de 32k → strictement AUCUNE recrue abordable en R1, R2, R3 et DH.
+// Or c'est là que les carrières commencent.
+//
+// On ancre donc le prix sur le budget du club plutôt que sur une constante :
+// une recrue « au niveau du club » coûte ~1/4 du budget transferts, quel que
+// soit l'échelon. Le marché reste tendu (on ne s'offre pas tout l'effectif)
+// mais il existe partout. Les écarts de qualité entre joueurs, eux, restent
+// pilotés par _boardPlayerValue : on ne fait que changer l'ÉCHELLE, pas la
+// hiérarchie des prix.
+function _marketScale(){
+  const C = careerV2;
+  if(!C || !C.club) return 1;
+  const tb = C.club.transferBudget || 0;
+  // Valeur de référence : un joueur typique du niveau du club.
+  const ovrRef = _levelRefOvr(C.club.level);
+  const ref = Math.pow(Math.max(1, ovrRef), 2.6) * 0.9;
+  if(ref <= 0) return 1;
+  // Cible : ~4 recrues de référence avec le budget plein.
+  // On divise par la richesse de MA région : sinon un club riche et un club
+  // pauvre du même niveau auraient la même échelle, et l'écart de richesse
+  // — pourtant le cœur du sujet — s'annulerait. Ici, être riche veut dire
+  // pouvoir s'offrir des joueurs venus de régions plus riches que la sienne.
+  const myWealth = _regionWealth(C.nation || 'panthalassa', C.club.region);
+  const target = Math.max(300, tb / 4);
+  return Math.max(0.02, Math.min(3, (target / ref) / _wealthMul(myWealth)));
+}
+
+// Overall typique d'un joueur au niveau donné (dérivé de _cupTeamStrength,
+// qui sert déjà de référence de force ailleurs dans le jeu).
+function _levelRefOvr(level){
+  const st = (typeof _cupTeamStrength === 'function') ? _cupTeamStrength(level) : 0.5;
+  return Math.max(20, Math.round(st * 85));
+}
+
+// Prime demandée par un club vendeur : au-dessus de la valeur nue, car un club
+// ne brade pas un joueur sous contrat (miroir du bonus qu'on touche en vendant
+// à un club d'un cran au-dessus).
+// ── Plafond ABSOLU par division ──────────────────────────────────────────
+// _marketScale() est une échelle RELATIVE (ancrée sur le budget) : rien n'y
+// borne le prix dans l'absolu. Un joueur de R1 d'une région riche pouvait
+// ainsi atteindre 222 000 or, soit 22 M€ — grotesque pour du national amateur.
+// Ces plafonds sont exprimés en OR (1 or ≈ 100 €) et bornent le prix selon la
+// division où le joueur ÉVOLUE réellement.
+const _DIV_PRICE_CAP = {
+  d1: 250000,   // 25 M€ — une star de l'élite
+  d2: 40000,    // 4 M€
+  d3: 8000,     // 800 k€
+  r1: 1500,     // 150 k€ — national amateur
+  r2: 400,      // 40 k€
+  r3: 120,      // 12 k€
+  dh: 40,       // 4 k€ — district
+};
+// Compression asymptotique vers un plafond : conserve les écarts relatifs.
+function _compressToCap(raw, cap){
+  raw = Math.max(0, raw);
+  return Math.max(300, Math.round((cap * raw / (raw + cap)) / 100) * 100);
+}
+function _divPriceCap(level){
+  if(_DIV_PRICE_CAP[level] != null) return _DIV_PRICE_CAP[level];
+  // Niveaux dérivés (dh_1, dh_2…) : on retombe sur la base avant l'underscore.
+  const base = String(level || '').split('_')[0];
+  return _DIV_PRICE_CAP[base] != null ? _DIV_PRICE_CAP[base] : 1500;
+}
+
+// `wealth` = richesse (1..5) de la région du club VENDEUR. Un club riche
+// n'a pas besoin de vendre : il exige une prime. Un club pauvre brade.
+// `level` = division du vendeur, qui borne le prix dans l'absolu.
+function _askingPrice(p, wealth, level){
+  const base = _boardPlayerValue(p) * _marketScale() * _wealthMul(wealth);
+  const mult = 1.12 * (0.9 + Math.random() * 0.35);
+  let raw = Math.max(300, base * mult);
+  // ── Compression vers le plafond (et non troncature) ────────────────────
+  // Un plafond DUR écrasait toute la hiérarchie : en R1, un vétéran médiocre
+  // et une pépite tapaient tous les deux exactement 1500 or. On compresse donc
+  // de façon asymptotique : le prix approche le plafond sans jamais le
+  // dépasser, mais les écarts entre joueurs subsistent.
+  //   f(x) = cap * x / (x + cap)  → f(0)=0, f(cap)=cap/2, f(∞)→cap
+  const cap = _divPriceCap(level);
+  const fee = cap * raw / (raw + cap);
+  return Math.max(300, Math.round(fee / 100) * 100);
+}
+
+// ── Richesse d'une région (1..5) ─────────────────────────────────────────
+// Les régions portent déjà un `wealth` utilisé par sponsors.js et par
+// WORLDS.startBudget() (5k..300k, soit un facteur 60 entre la région la plus
+// pauvre et la plus riche). Le marché des transferts DOIT s'y adosser : sans
+// ça, un effectif d'une petite division riche coûterait autant qu'un effectif
+// d'une grande division pauvre, ce qui est faux (une D1 galloise vaut une
+// fraction d'une L2 française, alors qu'elle joue l'Europe).
+function _regionWealth(nation, regionId){
+  try{
+    const r = WORLDS.getRegion(nation, regionId);
+    if(r && r.wealth) return r.wealth;
+  }catch(e){}
+  return 2;
+}
+// Multiplicateur économique dérivé de la richesse. Calé sur la même échelle
+// que WORLDS.startBudget() : c'est l'argent de la LIGUE qui fixe les prix,
+// pas seulement le niveau sportif des joueurs.
+function _wealthMul(wealth){
+  return ({1:0.35, 2:0.6, 3:1.0, 4:1.8, 5:3.2})[wealth] || 0.6;
+}
+
+// ── Vivier réel : les effectifs PNJ persistants ──────────────────────────
+// careerV2.opponentSquads contient les VRAIS effectifs adverses, keyés par nom
+// de club, qui vieillissent et évoluent d'une saison à l'autre (_evolvePlayerSquad
+// côté PNJ). C'est là qu'il faut piocher : un marché qui invente des joueurs à
+// la volée n'est pas un marché, c'est un catalogue — le joueur acheté ne
+// manquerait à personne et personne d'autre ne pourrait l'acheter.
+function _marketCandidates(){
+  const C = careerV2;
+  const out = [];
+  const squads = C.opponentSquads || {};
+  const myClub = C.club ? C.club.name : '';
+  Object.keys(squads).forEach(function(clubName){
+    if(clubName === myClub) return;
+    const entry = squads[clubName];
+    if(!entry || !entry.squad) return;
+    // On ne pioche que dans les joueurs réellement remplaçables : un club ne
+    // vend pas ses 11 titulaires. Banc et réserves d'abord, quelques
+    // titulaires ensuite (les moins bons).
+    const pool = [];
+    (entry.squad.bench || []).forEach(function(p){ pool.push(p); });
+    (entry.squad.reserves || []).forEach(function(p){ pool.push(p); });
+    const starters = (entry.squad.players || []).slice().sort(function(a,b){ return _pOvr(a)-_pOvr(b); });
+    starters.slice(0, 3).forEach(function(p){ pool.push(p); });
+    pool.forEach(function(p){
+      if(p) out.push({ p: p, clubName: clubName, entry: entry });
+    });
+  });
+  return out;
+}
+
+// Retire réellement un joueur de l'effectif de son club vendeur.
+function _removeFromOpponentSquad(clubName, player){
+  const C = careerV2;
+  const entry = (C.opponentSquads || {})[clubName];
+  if(!entry || !entry.squad) return false;
+  let done = false;
+  // On retire TOUTES les occurrences, sans s'arrêter à la première : si un
+  // joueur figurait à la fois dans `players` et `bench` (données remaniées,
+  // sauvegarde ancienne), une référence résiduelle le laisserait dans les deux
+  // effectifs — il vieillirait deux fois et serait clone chez le vendeur.
+  ['players','bench','reserves'].forEach(function(grp){
+    const list = entry.squad[grp];
+    if(!Array.isArray(list)) return;
+    for(let i = list.length - 1; i >= 0; i--){
+      if(list[i] === player){ list.splice(i, 1); done = true; }
+    }
+  });
+  return done;
+}
+
+// Génère la liste des joueurs à vendre sur le marché, adaptée au niveau du
+// club. On pioche dans les VRAIS effectifs adverses ; le prix dépend de la
+// richesse de la région du club vendeur.
+function generateTransferList(){
+  if(!careerV2) return;
+  const C = careerV2;
+  if(!C.mercato) C.mercato = {};
+  const nation = C.nation || 'panthalassa';
+
+  const cands = _marketCandidates();
+  if(!cands.length){ C.mercato.transfer_list = []; return; }
+
+  const scoutMul = (typeof STAFF !== 'undefined') ? STAFF.gemChanceMul(C.club) : 1;
+  const nb = Math.min(cands.length, 6 + Math.floor(Math.random() * 3) + (scoutMul > 1.4 ? 2 : scoutMul > 1.1 ? 1 : 0));
+
+  // Mélange puis prise des N premiers : chaque club ne propose pas tout.
+  const shuffled = cands.slice().sort(function(){ return Math.random() - 0.5; });
+  const list = [];
+  const seen = {};
+
+  for(let i = 0; i < shuffled.length && list.length < nb; i++){
+    const c = shuffled[i];
+    if(seen[c.clubName]) continue;      // une annonce par club au maximum
+    if(!c.p || !c.p.name) continue;
+    seen[c.clubName] = true;
+
+    const sellerRegion = c.entry.region;
+    const wealth = _regionWealth(nation, sellerRegion);
+    const fee = _askingPrice(c.p, wealth, c.entry.level);
+    let sellerCol = '#888', sellerDiv = c.entry.level;
+    try{
+      const info = _boardPickClub(c.entry.level);
+      if(info && info.divisionName) sellerDiv = info.divisionName;
+    }catch(e){}
+
+    list.push({
+      id: 'tl_' + Math.random().toString(36).slice(2, 8),
+      player: c.p,
+      playerName: c.p.name,
+      sellerName: c.clubName,
+      sellerColor: sellerCol,
+      sellerLevel: sellerDiv,
+      sellerWealth: wealth,
+      fee: fee,
+      value: _compressToCap(_boardPlayerValue(c.p) * _marketScale() * _wealthMul(wealth), _divPriceCap(c.entry.level)),
+      negotiated: false,
+      expiresWeek: (C.week || 0) + 3,
+    });
+  }
+  C.mercato.transfer_list = list;
+}
+
+// Purge des annonces expirées (appelé au fil des semaines).
+function _pruneTransferList(){
+  const C = careerV2;
+  if(!C || !C.mercato || !Array.isArray(C.mercato.transfer_list)) return;
+  const before = C.mercato.transfer_list.length;
+  C.mercato.transfer_list = C.mercato.transfer_list.filter(function(t){
+    return (t.expiresWeek || 0) > (C.week || 0);
+  });
+  if(C.mercato.transfer_list.length < before && C.mercato.transfer_list.length === 0){
+    generateTransferList();
+  }
+}
+
+// ── Négocier le prix d'une recrue ────────────────────────────────────────
+// Miroir exact de la négociation de vente (_boardNegotiate) : on peut faire
+// baisser le prix, mais le vendeur peut se braquer et retirer le joueur.
+function negotiateTransferBuy(id){
+  const C = careerV2;
+  if(!C || !C.mercato) return;
+  const t = (C.mercato.transfer_list || []).find(function(x){ return x.id === id; });
+  if(!t) return;
+  if(t.negotiated){ logEvent('Vous avez déjà négocié pour ' + t.player.name + '.', '#e06060'); return; }
+
+  const offer = Math.round(t.fee * 0.82 / 100) * 100;
+  if(!confirm('Proposer ' + _fmtMoney(offer) + ' au lieu de ' + _fmtMoney(t.fee) + ' pour ' + t.player.name + ' ?\n\nRisque : le club peut retirer le joueur du marché.')) return;
+
+  t.negotiated = true;
+  const roll = Math.random();
+  if(roll < 0.45){
+    t.fee = offer;
+    logEvent('🤝 ' + t.sellerName + ' accepte ' + _fmtMoney(offer) + ' pour ' + t.player.name + '.', '#18c860');
+  } else if(roll < 0.80){
+    const mid = Math.round((t.fee + offer) / 2 / 100) * 100;
+    t.fee = mid;
+    logEvent('💬 ' + t.sellerName + ' contre-propose ' + _fmtMoney(mid) + ' pour ' + t.player.name + '.', '#f0c028');
+  } else {
+    C.mercato.transfer_list = C.mercato.transfer_list.filter(function(x){ return x.id !== id; });
+    logEvent('❌ ' + t.sellerName + ' retire ' + t.player.name + ' du marché.', '#e02030');
+  }
+  saveCareerV2();
+  try{ renderCareerDirectorTab('mercato'); }catch(e){}
+}
+
+// ── Acheter un joueur ────────────────────────────────────────────────────
+// C'est ICI que `transferBudget` est enfin dépensé.
+function buyTransferTarget(id){
+  const C = careerV2;
+  if(!C || !C.mercato) return;
+  const t = (C.mercato.transfer_list || []).find(function(x){ return x.id === id; });
+  if(!t){ logEvent('Annonce expirée.', '#e02030'); return; }
+
+  // 1) Fenêtre de mercato (les clubs pros ne recrutent pas n'importe quand).
+  if(C.mercato.window_open === false){
+    logEvent('🔴 Fenêtre de transfert fermée.', '#e02030'); return;
+  }
+  // 2) Place dans l'effectif.
+  const total = (C.players || []).length + (C.bench || []).length;
+  const max = (typeof _careerSquadMax === 'function') ? _careerSquadMax() : 18;
+  if(total >= max){ logEvent('Effectif plein ! (max ' + max + ')', '#e02030'); return; }
+  // 3) Budget — le contrôle qui manquait.
+  const budget = C.club.transferBudget || 0;
+  if(t.fee > budget){
+    logEvent('💸 Budget transferts insuffisant : ' + _fmtMoney(t.fee) + ' demandés, ' + _fmtMoney(budget) + ' disponibles.', '#e02030');
+    return;
+  }
+  // 4) Plafond salarial : acheter, c'est aussi payer chaque semaine.
+  const futureWage = (typeof careerV2WeeklySalary === 'function') ? careerV2WeeklySalary(t.player) : 0;
+  if(!canAffordWage(futureWage)){
+    logEvent('📉 Masse salariale : impossible d\'ajouter ' + _fmtMoney(futureWage) + '/sem sans dépasser le plafond du board.', '#e02030');
+    return;
+  }
+  if(!confirm('Recruter ' + t.player.name + ' pour ' + _fmtMoney(t.fee) + ' ?\n\nSalaire estimé : ' + _fmtMoney(futureWage) + '/sem\nBudget restant après : ' + _fmtMoney(budget - t.fee))) return;
+
+  // Le joueur QUITTE réellement son club : c'est ce qui distingue un marché
+  // d'un catalogue. Si le retrait échoue (effectif remanié entre-temps,
+  // joueur déjà parti à la retraite), on annule la transaction plutôt que de
+  // cloner le joueur dans deux effectifs.
+  if(!_removeFromOpponentSquad(t.sellerName, t.player)){
+    logEvent('⌛ ' + (t.playerName || 'Ce joueur') + ' n\'est plus disponible.', '#e06060');
+    C.mercato.transfer_list = C.mercato.transfer_list.filter(function(x){ return x.id !== id; });
+    saveCareerV2();
+    try{ renderCareerDirectorTab('mercato'); }catch(e){}
+    return;
+  }
+
+  C.club.transferBudget = budget - t.fee;
+  const p = t.player;
+  p.onBench = true;
+  if(!C.bench) C.bench = [];
+  C.bench.push(p);
+  C.mercato.transfer_list = C.mercato.transfer_list.filter(function(x){ return x.id !== id; });
+
+  try{ _addFinanceLog('Achat de ' + p.name + ' (' + t.sellerName + ')', -t.fee); }catch(e){}
+
+  // Le board juge le recrutement : payer bien plus que la valeur agace,
+  // faire une bonne affaire rassure. Même barème que pour les ventes.
+  const ratio = t.fee / Math.max(1, t.value);
+  if(ratio <= 0.85)     _boardAdjust(2,  'belle recrue : ' + p.name, '#18c860');
+  else if(ratio > 1.45) _boardAdjust(-2, p.name + ' payé trop cher', '#e06060');
+
+  logEvent('✅ ' + p.name + ' rejoint le club pour ' + _fmtMoney(t.fee) + ' !', '#18c860');
+  // Une recrue chère fait la une.
+  try{
+    if(typeof _pressEvent==='function' && t.fee >= (C.club.budget||0) * 0.15){
+      _pressEvent('💰 Coup sur le marché : ' + C.club.name + ' s\'offre ' + p.name + ' pour ' + _fmtMoney(t.fee) + '.', 'good');
+    }
+  }catch(e){}
+  saveCareerV2();
+  try{ renderCareerDirectorTab('mercato'); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONTRATS (semi-pro : R1 / R2)
+// ═══════════════════════════════════════════════════════════
+// En semi-pro, un club n'a pas les moyens d'aligner des indemnités de
+// transfert : il convainc les joueurs avec un CONTRAT (salaire + durée + prime
+// à la signature). C'est le levier de recrutement propre à cet échelon, entre
+// l'amateur (les joueurs viennent gratuitement) et le pro (on achète).
+//
+// Le joueur accepte ou non selon :
+//   • le salaire proposé face à ce qu'il estime valoir ;
+//   • la réputation du club (un club respecté peut payer un peu moins) ;
+//   • la durée (un long contrat rassure un vétéran, effraie un jeune espoir).
+
+// Salaire hebdomadaire qu'un joueur RÉCLAME (sa demande, pas ce qu'on paie).
+function contractAskingWage(p){
+  const C = careerV2;
+  if(!C || !C.club) return 1;
+  const base = (typeof careerV2WeeklySalary === 'function') ? careerV2WeeklySalary(p) : 1;
+  // Un joueur libre demande un peu plus que le salaire "de marché" de
+  // l'effectif : c'est sa marge de négociation.
+  return Math.max(1, Math.round(base * 1.15));
+}
+
+// Probabilité d'acceptation (0..1) d'une offre de contrat.
+function contractAcceptChance(p, wage, years){
+  const C = careerV2;
+  if(!C || !C.club) return 0;
+  const ask = contractAskingWage(p);
+  // Rapport salaire proposé / demandé : c'est le facteur dominant.
+  const ratio = wage / Math.max(1, ask);
+  let chance = Math.max(0, Math.min(1, (ratio - 0.6) / 0.7));  // 0.6x → 0%, 1.3x → 100%
+  // Réputation du club : de -12% (inconnu) à +12% (respecté).
+  const rep = (C.club.reputation || 20);
+  chance += (rep - 50) / 400;
+  // Durée : un jeune veut rester libre, un vétéran veut la sécurité.
+  const age = p.age || 24;
+  if(years >= 3)      chance += (age >= 30) ? 0.10 : -0.08;
+  else if(years <= 1) chance += (age >= 30) ? -0.06 : 0.05;
+  return Math.max(0.02, Math.min(0.97, chance));
+}
+
+// Proposer un contrat à un joueur libre (semi-pro).
+function offerContract(idx, wage, years){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  const p = (C.freeAgents || [])[idx];
+  if(!p){ logEvent('Joueur introuvable', '#e02030'); return; }
+
+  const total = (C.players||[]).length + (C.bench||[]).length;
+  const max = (typeof _careerSquadMax === 'function') ? _careerSquadMax() : 16;
+  if(total >= max){ logEvent('Effectif plein ! (max ' + max + ')', '#e02030'); return; }
+
+  wage = Math.max(1, Math.round(wage));
+  years = Math.max(1, Math.min(4, Math.round(years)));
+
+  // Prime à la signature = 4 semaines de salaire (comme en V1).
+  const bonus = wage * 4;
+  const budget = C.club.transferBudget || 0;
+  if(bonus > budget){
+    logEvent('💸 Prime à la signature : ' + _fmtMoney(bonus) + ' demandés, ' + _fmtMoney(budget) + ' disponibles.', '#e02030');
+    return;
+  }
+
+  if(!canAffordWage(wage)){
+    logEvent('📉 Ce salaire ferait dépasser le plafond salarial fixé par le board.', '#e02030');
+    return;
+  }
+  const chance = contractAcceptChance(p, wage, years);
+  if(!confirm('Proposer à ' + p.name + ' :\n\n' + _fmtMoney(wage) + '/semaine sur ' + years + ' an(s)\nPrime à la signature : ' + _fmtMoney(bonus) + '\n\nChances d\'acceptation : ' + Math.round(chance*100) + '%')) return;
+
+  if(Math.random() > chance){
+    // Refus : le joueur peut se braquer et quitter le marché local.
+    logEvent('❌ ' + p.name + ' refuse votre offre.', '#e06060');
+    if(Math.random() < 0.3){
+      C.freeAgents.splice(idx, 1);
+      logEvent('⌛ ' + p.name + ' signe ailleurs.', '#888');
+    }
+    saveCareerV2();
+    try{ renderCareerDirectorTab('mercato'); }catch(e){}
+    return;
+  }
+
+  C.club.transferBudget = budget - bonus;
+  p.onBench = true;
+  p._contractWage = wage;
+  p._contractYears = years;
+  if(!C.bench) C.bench = [];
+  C.bench.push(p);
+  C.freeAgents.splice(idx, 1);
+  try{ _addFinanceLog('Prime à la signature — ' + p.name, -bonus); }catch(e){}
+  logEvent('✅ ' + p.name + ' signe pour ' + years + ' an(s) (' + _fmtMoney(wage) + '/sem) !', '#18c860');
+  saveCareerV2();
+  try{ renderCareerDirectorTab('mercato'); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
+// CARRIÈRE DU MANAGER — licence, réputation, palmarès
+// ═══════════════════════════════════════════════════════════
+// `careerV2.manager` était déclaré avec 7 champs (name, reputation, license,
+// age, history, achievements, contract) dont AUCUN n'était lu : 0 occurrence
+// pour manager.license, manager.reputation, manager.age… Le commentaire
+// « license: 'C',  // C → B → A → Pro » décrivait une progression entière,
+// jamais implémentée. Le jeu utilisait `director_reputation` à la place.
+//
+// On branche donc ce qui était promis : une licence qui se gagne et qui
+// conditionne les clubs pouvant vous embaucher. Sans elle, on pouvait passer
+// de District à D1 sans que rien ne le justifie.
+
+const MANAGER_LICENSES = {
+  C:   { id:'C',   label:'Licence C', desc:'Amateur — District et Régional 3.',        maxLevel:'r3', xpNeeded:0   },
+  B:   { id:'B',   label:'Licence B', desc:'Régional — jusqu\'en R1.',                 maxLevel:'r1', xpNeeded:120 },
+  A:   { id:'A',   label:'Licence A', desc:'National — jusqu\'en D3.',                 maxLevel:'d3', xpNeeded:400 },
+  PRO: { id:'PRO', label:'Licence Pro', desc:'Élite — aucun plafond.',                 maxLevel:'d1', xpNeeded:1000 },
+};
+const _LICENSE_ORDER = ['C','B','A','PRO'];
+
+// Nom court et lisible d'une division, pour le palmarès.
+function _divShortName(level){
+  const base = String(level||'').split('_')[0];
+  return ({d1:'D1', d2:'D2', d3:'D3', r1:'R1', r2:'R2', r3:'R3', dh:'District'})[base] || base.toUpperCase();
+}
+
+// Rang d'une division (0 = D1, plus le chiffre est haut, plus c'est bas).
+function _levelRank(level){
+  const order = ['d1','d2','d3','r1','r2','r3','dh'];
+  const base = String(level||'').split('_')[0];
+  const i = order.indexOf(base);
+  return i < 0 ? order.length - 1 : i;
+}
+
+function _mgr(){
+  const C = careerV2;
+  if(!C) return null;
+  if(!C.manager) C.manager = { name:'Vous', reputation:20, license:'C', age:35, history:[], achievements:[], xp:0 };
+  if(C.manager.xp == null) C.manager.xp = 0;
+  if(!C.manager.license) C.manager.license = 'C';
+  if(!Array.isArray(C.manager.achievements)) C.manager.achievements = [];
+  // Une SEULE réputation : `manager.reputation` reflète `director_reputation`
+  // (la confiance réellement utilisée par le jeu). Avant, les deux existaient
+  // et seule celle du director vivait — l'écran manager affichait un 20 figé.
+  if(typeof C.director_reputation === 'number') C.manager.reputation = Math.round(C.director_reputation);
+  return C.manager;
+}
+
+// Licence maximale atteignable avec l'XP courante.
+function _licenseForXp(xp){
+  let best = 'C';
+  _LICENSE_ORDER.forEach(function(id){
+    if(xp >= MANAGER_LICENSES[id].xpNeeded) best = id;
+  });
+  return best;
+}
+
+// Le manager peut-il diriger un club de ce niveau ?
+function managerCanManage(level){
+  const m = _mgr();
+  if(!m) return true;
+  const lic = MANAGER_LICENSES[m.license] || MANAGER_LICENSES.C;
+  // On compare les rangs : un rang plus PETIT = division plus haute.
+  return _levelRank(level) >= _levelRank(lic.maxLevel);
+}
+
+// Gain d'XP de manager. Appelé en fin de saison avec le contexte du board.
+function managerAddXp(amount, reason){
+  const m = _mgr();
+  if(!m || !amount) return;
+  m.xp = Math.max(0, Math.round((m.xp||0) + amount));
+  const newLic = _licenseForXp(m.xp);
+  if(newLic !== m.license && _LICENSE_ORDER.indexOf(newLic) > _LICENSE_ORDER.indexOf(m.license)){
+    m.license = newLic;
+    const L = MANAGER_LICENSES[newLic];
+    try{
+      logEvent('🎓 Vous obtenez la ' + L.label + ' ! ' + L.desc, '#f0c028');
+      _mgrAchieve('license_' + newLic, '🎓 ' + L.label);
+    }catch(e){}
+  }
+  if(reason){ try{ logEvent('📈 +' + amount + ' XP manager (' + reason + ')', '#00bcd4'); }catch(e){} }
+}
+
+// Palmarès : un fait marquant, enregistré une seule fois.
+function _mgrAchieve(id, label){
+  const m = _mgr();
+  if(!m) return;
+  if(m.achievements.some(function(a){ return a.id === id; })) return;
+  m.achievements.push({ id:id, label:label, season:(careerV2.season||1) });
+}
+
+// ═══════════════════════════════════════════════════════════
+// PLAFOND SALARIAL (wage_budget)
+// ═══════════════════════════════════════════════════════════
+// `wage_budget` (45 % du budget) était écrit dans save.js:544 et board.js:267,
+// et lu NULLE PART. Rien n'empêchait de dépasser sa masse salariale : le
+// plafond était une décoration. Maintenant que les salaires dépendent de la
+// valeur de chaque joueur, ce plafond devient l'arbitrage central du mercato.
+
+// Masse salariale projetée sur UNE SAISON.
+// Attention au piège : le calendrier du jeu tourne sur ~8 semaines par saison,
+// pas 52. Projeter les salaires hebdo sur une année civile donnait 148 % du
+// plafond dès l'effectif de départ — le club aurait été en infraction avant
+// même de recruter. `wage_budget` est un budget de saison : on compare donc
+// une saison à une saison.
+function wageBillAnnual(){
+  const w = (typeof _weeklyWageBill === 'function') ? _weeklyWageBill() : 0;
+  const weeks = (typeof _WEEKS_PER_SEASON !== 'undefined') ? _WEEKS_PER_SEASON : 8;
+  return Math.round(w * weeks);
+}
+// Ratio masse/plafond. > 1 = dépassement.
+function wageLoadRatio(){
+  const C = careerV2;
+  if(!C || !C.club) return 0;
+  const cap = C.club.wage_budget || 0;
+  if(cap <= 0) return 0;
+  return wageBillAnnual() / cap;
+}
+// Le club peut-il encore absorber ce salaire hebdomadaire supplémentaire ?
+function canAffordWage(extraWeekly){
+  const C = careerV2;
+  if(!C || !C.club) return true;
+  const cap = C.club.wage_budget || 0;
+  if(cap <= 0) return true;
+  const weeks = (typeof _WEEKS_PER_SEASON !== 'undefined') ? _WEEKS_PER_SEASON : 8;
+  return (wageBillAnnual() + Math.round((extraWeekly||0) * weeks)) <= cap * 1.10; // 10% de tolérance
+}
+// Vérification hebdomadaire : le board réagit au dépassement.
+function _boardCheckWageBill(){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  const r = wageLoadRatio();
+  if(r <= 1.10) { C._wageWarned = false; return; }
+  if(C._wageWarned) return;             // une alerte par épisode de dépassement
+  C._wageWarned = true;
+  const over = Math.round((r - 1) * 100);
+  _boardAdjust(-4, 'masse salariale dépassée de ' + over + '%', '#e06060');
+  try{ logEvent('⚠️ Masse salariale dépassée de ' + over + '% — le board s\'inquiète.', '#e06060'); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
+// VIE DES CONTRATS (expiration, prolongation)
+// ═══════════════════════════════════════════════════════════
+// `_contractYears` était stocké à la signature… et jamais décompté : un
+// contrat de 3 ans ne se terminait jamais. C'était un chiffre décoratif — le
+// défaut exact qu'on corrige partout ailleurs. On le fait donc vivre :
+// il se consomme au fil des saisons, alerte quand il touche à sa fin, puis
+// libère le joueur s'il n'est pas prolongé.
+
+// Semaines par saison (le calendrier tourne autour de ~8 semaines/saison).
+const _WEEKS_PER_SEASON = 8;
+
+// Décompte hebdomadaire (appelé par _runWeeklySystems).
+function _tickContracts(){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  const squad = [].concat(C.players||[], C.bench||[]);
+  squad.forEach(function(p){
+    if(!p || !p._contractYears) return;
+    p._contractWeeks = (p._contractWeeks == null)
+      ? p._contractYears * _WEEKS_PER_SEASON
+      : p._contractWeeks - 1;
+    if(p._contractWeeks === 4){
+      try{ logEvent('📄 Le contrat de ' + p.name + ' expire dans 4 semaines.', '#f0c028'); }catch(e){}
+    }
+    if(p._contractWeeks <= 0){
+      _expireContract(p);
+    }
+  });
+}
+
+// Fin de contrat : le joueur part libre (il rejoint le vivier local, où on
+// peut encore le re-signer… en négociant à nouveau).
+function _expireContract(p){
+  const C = careerV2;
+  ['players','bench'].forEach(function(grp){
+    const list = C[grp];
+    if(!Array.isArray(list)) return;
+    const i = list.indexOf(p);
+    if(i >= 0) list.splice(i, 1);
+  });
+  delete p._contractWage; delete p._contractYears; delete p._contractWeeks;
+  if(!C.freeAgents) C.freeAgents = [];
+  C.freeAgents.push(p);
+  try{ logEvent('📄 ' + p.name + ' arrive en fin de contrat et quitte le club.', '#e06060'); }catch(e){}
+}
+
+// Prolonger un contrat avant son terme (bouton dans l'effectif).
+function renewContract(playerName){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  const p = [].concat(C.players||[], C.bench||[]).find(function(x){ return x && x.name === playerName; });
+  if(!p){ logEvent('Joueur introuvable', '#e02030'); return; }
+  const ask = (typeof contractAskingWage === 'function') ? contractAskingWage(p) : 1;
+  // Prolonger coûte plus cher que signer : le joueur est en position de force.
+  const wage = Math.round(ask * 1.1);
+  if(!canAffordWage(wage - (p._contractWage||0))){
+    logEvent('📉 Prolongation impossible : plafond salarial atteint.', '#e02030');
+    return;
+  }
+  if(!confirm('Prolonger ' + p.name + ' de 2 ans à ' + _fmtMoney(wage) + '/sem ?')) return;
+  const chance = (typeof contractAcceptChance === 'function') ? contractAcceptChance(p, wage, 2) : 0.6;
+  if(Math.random() > chance){
+    logEvent('❌ ' + p.name + ' refuse de prolonger pour l\'instant.', '#e06060');
+    return;
+  }
+  p._contractWage = wage;
+  p._contractYears = 2;
+  p._contractWeeks = 2 * _WEEKS_PER_SEASON;
+  logEvent('✅ ' + p.name + ' prolonge de 2 ans (' + _fmtMoney(wage) + '/sem).', '#18c860');
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
+// MERCATO PNJ (les clubs adverses s'échangent des joueurs)
+// ═══════════════════════════════════════════════════════════
+// Vous étiez le SEUL acteur du mercato : aucune cible ne disparaissait avant
+// que vous décidiez, et les effectifs adverses ne bougeaient qu'au
+// vieillissement. Ici, chaque semaine, quelques clubs PNJ se volent des
+// joueurs entre eux. Conséquences concrètes : une cible du marché peut
+// partir ailleurs, et la hiérarchie des effectifs évolue sans vous.
+function _runNpcTransfers(){
+  const C = careerV2;
+  if(!C || !C.opponentSquads) return;
+  const names = Object.keys(C.opponentSquads).filter(function(n){
+    return !C.club || n !== C.club.name;
+  });
+  if(names.length < 2) return;
+
+  // 0 à 2 transferts PNJ par semaine : assez pour que le marché respire,
+  // assez peu pour ne pas dissoudre les effectifs.
+  const nb = Math.random() < 0.55 ? (Math.random() < 0.3 ? 2 : 1) : 0;
+  for(let k = 0; k < nb; k++){
+    const buyerName = names[Math.floor(Math.random() * names.length)];
+    const sellerName = names[Math.floor(Math.random() * names.length)];
+    if(buyerName === sellerName) continue;
+    const buyer = C.opponentSquads[buyerName], seller = C.opponentSquads[sellerName];
+    if(!buyer || !seller || !buyer.squad || !seller.squad) continue;
+
+    // Un club achète chez un club de niveau égal ou inférieur (rang plus haut).
+    if(_levelRank(seller.level) < _levelRank(buyer.level)) continue;
+
+    const pool = [].concat(seller.squad.bench||[], seller.squad.reserves||[]);
+    if(!pool.length) continue;
+    const p = pool[Math.floor(Math.random() * pool.length)];
+    if(!p) continue;
+    // Le club vendeur doit garder un effectif viable…
+    const sellerTotal = (seller.squad.players||[]).length + (seller.squad.bench||[]).length;
+    if(sellerTotal <= 12) continue;
+    // …et l'acheteur ne peut pas empiler indéfiniment : sans plafond, un club
+    // gonflait à 20+ joueurs pendant qu'un autre tombait à 13.
+    const buyerTotal = (buyer.squad.players||[]).length + (buyer.squad.bench||[]).length;
+    if(buyerTotal >= 18) continue;
+
+    // Transfert effectif.
+    if(!_removeFromOpponentSquad(sellerName, p)) continue;
+    if(!Array.isArray(buyer.squad.bench)) buyer.squad.bench = [];
+    buyer.squad.bench.push(p);
+
+    // Si le joueur était sur VOTRE marché, l'annonce disparaît : la cible
+    // vous a filé sous le nez.
+    if(C.mercato && Array.isArray(C.mercato.transfer_list)){
+      const idx = C.mercato.transfer_list.findIndex(function(t){ return t.player === p; });
+      if(idx >= 0){
+        C.mercato.transfer_list.splice(idx, 1);
+        try{ logEvent('⌛ ' + p.name + ' signe à ' + buyerName + ' — vous l\'avez laissé filer.', '#e06060'); }catch(e){}
+      }
+    }
+  }
+}
+
+
+// Carte « Votre carrière » : licence, progression, palmarès.
+function _renderManagerCard(){
+  const C = careerV2;
+  const m = _mgr();
+  if(!m) return '';
+  const lic = MANAGER_LICENSES[m.license] || MANAGER_LICENSES.C;
+  const nextId = _LICENSE_ORDER[_LICENSE_ORDER.indexOf(m.license) + 1];
+  const next = nextId ? MANAGER_LICENSES[nextId] : null;
+  const xp = m.xp || 0;
+
+  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🎓 Votre carrière</div>';
+  h += '<div style="font-size:11px;font-weight:900;color:#f0c028">' + lic.label + '</div>';
+  h += '</div>';
+  h += '<div style="font-size:8px;color:var(--muted);margin-bottom:6px">' + lic.desc + '</div>';
+
+  if(next){
+    const span = Math.max(1, next.xpNeeded - lic.xpNeeded);
+    const pct = Math.max(0, Math.min(100, Math.round((xp - lic.xpNeeded) / span * 100)));
+    h += '<div style="font-size:8px;color:var(--muted);display:flex;justify-content:space-between">';
+    h += '<span>' + xp + ' XP</span><span>' + next.label + ' à ' + next.xpNeeded + '</span></div>';
+    h += '<div style="height:5px;background:var(--panel);border-radius:3px;overflow:hidden;margin-top:2px">';
+    h += '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#f0c028,#18c860)"></div></div>';
+  } else {
+    h += '<div style="font-size:8px;color:#18c860">' + xp + ' XP — licence maximale atteinte.</div>';
+  }
+
+  const ach = m.achievements || [];
+  if(ach.length){
+    h += '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px">';
+    ach.slice(-8).forEach(function(a){
+      h += '<span style="font-size:7px;background:var(--panel);border:1px solid var(--b1);border-radius:4px;padding:2px 5px" title="Saison ' + a.season + '">' + a.label + '</span>';
+    });
+    h += '</div>';
+  }
+
+  // Masse salariale vs plafond du board — l'info qui manquait.
+  const ratio = (typeof wageLoadRatio === 'function') ? wageLoadRatio() : 0;
+  if(ratio > 0){
+    const pct = Math.round(ratio * 100);
+    const col = ratio > 1.1 ? '#e02030' : ratio > 0.9 ? '#f0c028' : '#18c860';
+    h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--b1)">';
+    h += '<div style="font-size:8px;color:var(--muted);display:flex;justify-content:space-between">';
+    h += '<span>Masse salariale</span><span style="color:' + col + ';font-weight:900">' + pct + '% du plafond</span></div>';
+    h += '<div style="height:4px;background:var(--panel);border-radius:2px;overflow:hidden;margin-top:2px">';
+    h += '<div style="height:100%;width:' + Math.min(100, pct) + '%;background:' + col + '"></div></div>';
+    h += '</div>';
+  }
+
+  // ── Pécule personnel + académie du manager ─────────────────────────────
+  // Le salaire du manager s'accumule ici et sert à financer SON académie.
+  const wallet = m.wallet || 0;
+  h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--b1)">';
+  h += '<div style="font-size:8px;color:var(--muted);display:flex;justify-content:space-between">';
+  h += '<span>💰 Pécule personnel</span><span style="color:#f0c028;font-weight:900">' + _fmtMoney(wallet) + '</span></div>';
+
+  const acad = C.manager_academy;
+  if(!acad){
+    h += '<button class="btn" onclick="openManagerAcademy()" style="width:100%;margin-top:6px;font-size:8px;padding:5px">🏫 Ouvrir mon académie (' + _fmtMoney(MANAGER_ACADEMY.openCost) + ')</button>';
+    h += '<div style="font-size:7px;color:var(--muted);margin-top:2px;font-style:italic">Un centre de formation personnel, qui vous suit de club en club.</div>';
+  } else {
+    const nProsp = (acad.prospects||[]).length;
+    h += '<div style="margin-top:6px;font-size:8px;color:var(--muted);display:flex;justify-content:space-between">';
+    h += '<span>🏫 Académie niv. ' + acad.level + '</span><span>' + nProsp + ' prospect' + (nProsp>1?'s':'') + '</span></div>';
+    (acad.prospects||[]).forEach(function(pr, i){
+      const ov = (typeof _pOvr==='function') ? _pOvr(pr) : 40;
+      h += '<div style="display:flex;align-items:center;gap:6px;font-size:8px;padding:3px 0;border-bottom:1px solid var(--b1)">';
+      h += '<span style="flex:1">' + (pr.name||'?') + ' <span style="color:var(--muted)">' + (pr.pos||'') + ' · pot ' + (pr._potential||'?') + '</span></span>';
+      h += '<button class="btn btng" onclick="promoteManagerProspect(' + i + ')" style="font-size:7px;padding:1px 6px">↑</button>';
+      h += '</div>';
+    });
+    if(acad.level < MANAGER_ACADEMY.maxLevel){
+      h += '<button class="btn" onclick="upgradeManagerAcademy()" style="width:100%;margin-top:4px;font-size:7px;padding:4px">⬆ Améliorer (' + _fmtMoney(MANAGER_ACADEMY.upgradeCostBase * acad.level) + ')</button>';
+    }
+    h += '<div style="font-size:7px;color:var(--muted);margin-top:2px">Entretien : ' + _fmtMoney(MANAGER_ACADEMY.weeklyCost) + '/sem sur le pécule.</div>';
+  }
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONTRAT DU MANAGER (salaire, objectifs personnels, offres)
+// ═══════════════════════════════════════════════════════════
+// `manager.contract` (salaire, durée, objectifs) et `_nomad` étaient stockés à
+// l'embauche puis JAMAIS lus : le manager ne touchait pas son salaire, ses
+// objectifs contractuels n'étaient jamais évalués, et une fois embauché il ne
+// recevait plus d'offres. On rend tout ça vivant.
+
+// Salaire hebdomadaire du manager, versé sur son pécule personnel (distinct du
+// budget du club — c'est SON argent, pas celui du club).
+function _managerWeeklyPay(){
+  const C = careerV2;
+  if(!C || !C.manager || !C.manager.contract) return;
+  const sal = C.manager.contract.salary || 0;
+  if(sal <= 0) return;
+  C.manager.wallet = (C.manager.wallet || 0) + sal;
+}
+
+// Objectif personnel du contrat : évalué en fin de saison, séparément du board.
+// Le tenir renforce la réputation et prolonge la confiance ; le rater
+// rapproche du licenciement.
+function _managerContractReview(ctx){
+  const C = careerV2;
+  if(!C || !C.manager || !C.manager.contract) return;
+  const k = C.manager.contract;
+  k.years = (k.years == null ? 2 : k.years) - 1;
+
+  const objs = k.objectives || [];
+  let met = true;
+  objs.forEach(function(o){
+    if(!_managerObjectiveMet(o, ctx)) met = false;
+  });
+  if(objs.length){
+    if(met){
+      managerAddXp(40, 'objectif de contrat tenu');
+      _boardAdjust(6, 'objectif personnel tenu', '#18c860');
+    } else {
+      _boardAdjust(-6, 'objectif personnel manqué', '#e06060');
+    }
+  }
+
+  if(k.years <= 0){
+    // Fin de contrat : selon la confiance, le club prolonge ou vous laisse
+    // partir (vous redevenez nomade, les offres reprennent).
+    const conf = _boardConf();
+    if(conf >= 45){
+      k.years = 2;
+      try{ logEvent('📄 Le club vous prolonge de 2 ans.', '#18c860'); }catch(e){}
+    } else {
+      C.manager.unemployed = true;
+      C.manager.contract = null;
+      try{ logEvent('📄 Votre contrat n\'est pas prolongé. Vous êtes libre.', '#f0c028'); }catch(e){}
+    }
+  }
+}
+
+function _managerObjectiveMet(o, ctx){
+  if(!o || !o.type) return true;
+  switch(o.type){
+    case 'promotion': return !!ctx.promoted;
+    case 'survive':   return !ctx.relegated;
+    case 'top_half':  return ctx.total && ctx.rank && ctx.rank <= Math.ceil(ctx.total/2);
+    case 'mid_table': return !ctx.relegated;
+    case 'cup':       return !!ctx.cupWon;
+    default:          return true;
+  }
+}
+
+
+// ── Suivi de la série d'invincibilité (pour l'objectif 'unbeaten') ───────
+function _trackUnbeaten(win, draw){
+  const C = careerV2;
+  if(!C) return;
+  if(win || draw){
+    C._curUnbeaten = (C._curUnbeaten || 0) + 1;
+    C._bestUnbeaten = Math.max(C._bestUnbeaten || 0, C._curUnbeaten);
+  } else {
+    C._curUnbeaten = 0;
+  }
+}
+// Meilleur tour de coupe atteint (pour 'cup_run' / 'cup_win').
+function _trackCupRound(round){
+  const C = careerV2;
+  if(!C) return;
+  C._cupBestRound = Math.max(C._cupBestRound || 0, round || 0);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ÉVÉNEMENTS DE SAISON
+// ═══════════════════════════════════════════════════════════
+// Une saison était une suite de matchs sans récit : le board sanctionnait,
+// mais rien ne se PASSAIT entre les journées. On ajoute des événements
+// hebdomadaires — certains à choix (dilemmes), d'autres automatiques (faits
+// marquants) — qui touchent le vestiaire, les finances, la réputation ou un
+// joueur. Chaque événement puise dans l'état réel du club (un vrai joueur de
+// l'effectif, la trésorerie, le classement), pas dans du vide.
+
+// Tire un joueur au hasard dans l'effectif (pour personnaliser un événement).
+function _eventPickPlayer(){
+  const C = careerV2;
+  const squad = [].concat(C.players||[], C.bench||[]);
+  if(!squad.length) return null;
+  return squad[Math.floor(Math.random() * squad.length)];
+}
+
+// Applique un effet {conf, budget, morale, repute, playerStat} à l'état.
+function _applyEventEffect(fx){
+  const C = careerV2;
+  if(!fx) return;
+  if(fx.conf)   { try{ _boardAdjust(fx.conf, fx.reason || 'événement', fx.conf>0?'#18c860':'#e06060'); }catch(e){} }
+  if(fx.budget) { try{ C.club.budget = (C.club.budget||0) + fx.budget; _addFinanceLog(fx.reason||'Événement', fx.budget); }catch(e){} }
+  if(fx.morale) {
+    // Applique un delta de moral (_fm) à tout l'effectif, borné.
+    [].concat(C.players||[], C.bench||[]).forEach(function(p){
+      if(p) p._fm = Math.max(-10, Math.min(10, (p._fm||0) + fx.morale));
+    });
+  }
+  if(fx.repute && typeof C.director_reputation === 'number'){
+    C.director_reputation = Math.max(0, Math.min(100, C.director_reputation + fx.repute));
+  }
+  if(fx.player && fx.playerStat){
+    const p = fx.player, st = fx.playerStat;
+    if(p.s && p.s[st.key] != null){
+      p.s[st.key] = Math.max(1, Math.min(99, p.s[st.key] + st.delta));
+    }
+  }
+}
+
+// Catalogue d'événements. `when(C)` filtre selon l'état ; `build(C)` produit
+// l'événement personnalisé (texte + choix + effets).
+const SEASON_EVENTS = [
+  {
+    id:'locker_dispute', weight:3,
+    when:function(C){ return ([].concat(C.players||[],C.bench||[])).length >= 4; },
+    build:function(C){
+      const p = _eventPickPlayer();
+      return {
+        title:'🗣️ Tension au vestiaire',
+        text: p.name + ' conteste ouvertement vos choix tactiques. Le vestiaire observe votre réaction.',
+        choices:[
+          { label:'Le recadrer fermement', fx:{ morale:-1, conf:2, reason:'autorité affirmée' } },
+          { label:'Discuter en privé',     fx:{ morale:1, reason:'apaisement' } },
+          { label:'L\'ignorer',            fx:{ morale:-2, reason:'malaise persistant' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'sponsor_bonus', weight:2,
+    when:function(C){ return true; },
+    build:function(C){
+      const amt = Math.max(500, Math.round((C.club.budget||10000) * 0.05 / 100) * 100);
+      return {
+        title:'🤝 Proposition d\'un sponsor',
+        text:'Une marque locale propose ' + _fmtMoney(amt) + ' en échange d\'un maillot floqué à son logo pour un match.',
+        choices:[
+          { label:'Accepter (' + _fmtMoney(amt) + ')', fx:{ budget:amt, repute:-1, reason:'accord sponsor' } },
+          { label:'Refuser (image préservée)',          fx:{ repute:1, reason:'refus sponsor' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'wonderkid_interest', weight:2,
+    when:function(C){ return (C.youthPool||[]).length > 0; },
+    build:function(C){
+      const y = C.youthPool[0];
+      const amt = Math.max(3000, Math.round((C.club.budget||10000)*0.15/100)*100);
+      return {
+        title:'👀 Un grand club s\'intéresse à votre pépite',
+        text: (y.name||'Un jeune') + ' de votre académie attire l\'œil. On vous propose ' + _fmtMoney(amt) + '.',
+        choices:[
+          { label:'Vendre (' + _fmtMoney(amt) + ')', fx:{ budget:amt, morale:-1, reason:'vente d\'un espoir' },
+            extra:function(C){ if(C.youthPool && C.youthPool.length) C.youthPool.shift(); } },
+          { label:'Refuser, le garder',              fx:{ morale:1, repute:1, reason:'fidélité au projet' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'injury_scare', weight:2,
+    when:function(C){ return ([].concat(C.players||[])).length >= 3; },
+    build:function(C){
+      const p = _eventPickPlayer();
+      return {
+        title:'🏥 Alerte à l\'entraînement',
+        text: p.name + ' ressent une gêne musculaire. Le staff médical est partagé.',
+        choices:[
+          { label:'Le ménager (repos préventif)', fx:{ reason:'prudence' },
+            extra:function(){ p._injWeeks = Math.max(p._injWeeks||0, 1); p._missNextMatch = true; } },
+          { label:'Le faire jouer quand même',    fx:{ conf:1, reason:'pari tenu' },
+            extra:function(){ if(Math.random()<0.4){ p._injWeeks = Math.max(p._injWeeks||0, 3); p._missNextMatch = true; } } },
+        ],
+      };
+    },
+  },
+  {
+    id:'fan_pressure', weight:1,
+    when:function(C){ return _boardConf() < 40; },
+    build:function(C){
+      return {
+        title:'📣 Grogne des supporters',
+        text:'Les résultats déçoivent. Les supporters réclament des explications.',
+        choices:[
+          { label:'Rassurer publiquement', fx:{ repute:1, conf:1, reason:'communication' } },
+          { label:'Rester silencieux',     fx:{ conf:-2, reason:'silence mal perçu' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'hot_streak', weight:1, auto:true,
+    when:function(C){ return (C._curUnbeaten||0) >= 4; },
+    build:function(C){
+      return {
+        title:'🔥 Série en cours !',
+        text:'Votre équipe reste sur ' + C._curUnbeaten + ' matchs sans défaite. Le vestiaire est galvanisé.',
+        auto:{ morale:1, conf:2, reason:'dynamique positive' },
+      };
+    },
+  },
+];
+
+// Déclenche (au plus) un événement par semaine. Probabilité modérée pour ne
+// pas noyer le joueur.
+function _maybeSeasonEvent(){
+  const C = careerV2;
+  if(!C || !C.club || C.type !== 'director') return;
+  if(C.pending_event) return;                 // un seul à la fois
+  if(Math.random() > 0.28) return;            // ~1 semaine sur 3-4
+
+  const eligible = SEASON_EVENTS.filter(function(e){
+    try{ return e.when(C); }catch(err){ return false; }
+  });
+  if(!eligible.length) return;
+
+  // Tirage pondéré.
+  let totW = 0; eligible.forEach(function(e){ totW += (e.weight||1); });
+  let r = Math.random() * totW, pick = eligible[0];
+  for(let i=0;i<eligible.length;i++){ r -= (eligible[i].weight||1); if(r<=0){ pick = eligible[i]; break; } }
+
+  let ev;
+  try{ ev = pick.build(C); }catch(err){ return; }
+  if(!ev) return;
+  ev.id = pick.id;
+
+  if(ev.auto || pick.auto){
+    // Événement automatique : effet immédiat, simple notification.
+    _applyEventEffect(ev.auto || {});
+    try{ logEvent(ev.title + ' — ' + ev.text, '#00bcd4'); }catch(e){}
+    return;
+  }
+  // Événement à choix : mis en attente, l'UI l'affiche et le joueur tranche.
+  C.pending_event = ev;
+  try{ logEvent('📌 ' + ev.title + ' — une décision vous attend.', '#f0c028'); }catch(e){}
+}
+
+// Résolution d'un choix (appelé par l'UI).
+function resolveSeasonEvent(choiceIdx){
+  const C = careerV2;
+  if(!C || !C.pending_event) return;
+  const ev = C.pending_event;
+  const ch = (ev.choices || [])[choiceIdx];
+  if(ch){
+    _applyEventEffect(Object.assign({}, ch.fx, { }));
+    if(typeof ch.extra === 'function'){ try{ ch.extra(C); }catch(e){} }
+    try{ logEvent('✔️ ' + ev.title + ' : ' + ch.label, '#18c860'); }catch(e){}
+  }
+  C.pending_event = null;
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
+
+// Carte de l'événement en attente (dilemme à trancher).
+function _renderSeasonEventCard(){
+  const C = careerV2;
+  if(!C || !C.pending_event) return '';
+  const ev = C.pending_event;
+  let h = '<div style="background:linear-gradient(135deg,rgba(240,192,40,0.16),var(--dark));border:1px solid #f0c028;border-radius:8px;padding:12px;margin-bottom:10px">';
+  h += '<div style="font-size:12px;font-weight:900;margin-bottom:4px">' + ev.title + '</div>';
+  h += '<div style="font-size:10px;color:var(--fg);line-height:1.5;margin-bottom:8px">' + ev.text + '</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:5px">';
+  (ev.choices || []).forEach(function(ch, i){
+    // Aperçu de l'effet, pour que le choix soit informé.
+    const hints = [];
+    const fx = ch.fx || {};
+    if(fx.budget) hints.push((fx.budget>0?'+':'') + _fmtMoney(fx.budget));
+    if(fx.conf)   hints.push((fx.conf>0?'+':'') + fx.conf + ' confiance');
+    if(fx.morale) hints.push((fx.morale>0?'moral +':'moral ') + fx.morale);
+    if(fx.repute) hints.push((fx.repute>0?'+':'') + fx.repute + ' réputation');
+    h += '<button class="btn" onclick="resolveSeasonEvent(' + i + ')" style="text-align:left;font-size:10px;padding:7px 10px">';
+    h += '<span style="font-weight:700">' + ch.label + '</span>';
+    if(hints.length) h += ' <span style="color:var(--muted);font-size:8px">(' + hints.join(' · ') + ')</span>';
+    h += '</button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ACADÉMIE PERSONNELLE DU MANAGER (financée par le pécule)
+// ═══════════════════════════════════════════════════════════
+// Le salaire du manager (manager.wallet) était crédité chaque semaine et JAMAIS
+// dépensé ni affiché — un compteur fantôme. On lui donne un usage : le manager
+// peut ouvrir SA propre académie de foot, avec son argent personnel. C'est une
+// version « en moins bien » du centre de formation du club :
+//   • le club forme des jeunes de la région, gratuitement, à haut niveau ;
+//   • l'académie perso coûte cher au manager, produit moins et moins bon,
+//     MAIS le suit de club en club (c'est SON académie, pas celle du club).
+// Elle devient utile en carrière nomade : un patrimoine qui reste à toi.
+
+const MANAGER_ACADEMY = {
+  openCost: 15000,          // coût d'ouverture (pécule)
+  weeklyCost: 300,          // entretien hebdomadaire
+  upgradeCostBase: 8000,    // coût d'amélioration (× niveau)
+  maxLevel: 3,
+};
+
+function _mgrAcademy(){
+  const C = careerV2;
+  if(!C) return null;
+  return C.manager_academy || null;
+}
+
+// Ouvrir l'académie (dépense du pécule).
+function openManagerAcademy(){
+  const C = careerV2;
+  const m = _mgr();
+  if(!C || !m) return;
+  if(C.manager_academy){ logEvent('Vous avez déjà une académie.', '#e06060'); return; }
+  const cost = MANAGER_ACADEMY.openCost;
+  if((m.wallet || 0) < cost){
+    logEvent('💸 Il vous faut ' + _fmtMoney(cost) + ' de pécule personnel (vous avez ' + _fmtMoney(m.wallet||0) + ').', '#e02030');
+    return;
+  }
+  if(!confirm('Ouvrir votre académie de foot pour ' + _fmtMoney(cost) + ' ?\n\nEntretien : ' + _fmtMoney(MANAGER_ACADEMY.weeklyCost) + '/semaine (sur votre pécule).\nElle vous suivra de club en club.')) return;
+  m.wallet -= cost;
+  C.manager_academy = { level: 1, prospects: [], founded: C.season || 1 };
+  logEvent('🏫 Votre académie de foot ouvre ses portes !', '#18c860');
+  _mgrAchieve('academy_open', '🏫 Fondateur d\'académie');
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
+
+// Améliorer l'académie (meilleur potentiel des prospects).
+function upgradeManagerAcademy(){
+  const C = careerV2;
+  const m = _mgr();
+  const a = _mgrAcademy();
+  if(!C || !m || !a) return;
+  if(a.level >= MANAGER_ACADEMY.maxLevel){ logEvent('Académie déjà au niveau maximum.', '#e06060'); return; }
+  const cost = MANAGER_ACADEMY.upgradeCostBase * a.level;
+  if((m.wallet || 0) < cost){
+    logEvent('💸 Amélioration : ' + _fmtMoney(cost) + ' requis.', '#e02030');
+    return;
+  }
+  if(!confirm('Améliorer l\'académie au niveau ' + (a.level+1) + ' pour ' + _fmtMoney(cost) + ' ?')) return;
+  m.wallet -= cost;
+  a.level++;
+  logEvent('🏫 Académie améliorée au niveau ' + a.level + ' !', '#18c860');
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
+
+// Entretien hebdomadaire + production de prospects (appelé chaque semaine).
+function _tickManagerAcademy(){
+  const C = careerV2;
+  const m = _mgr();
+  const a = _mgrAcademy();
+  if(!C || !m || !a) return;
+
+  // Entretien proportionnel au niveau du club : un manager amateur gagne peu,
+  // son académie doit rester abordable. On indexe sur le salaire du contrat
+  // (≈ ce qu'il touche), plafonné par le coût de référence.
+  const sal = (m.contract && m.contract.salary) || 0;
+  const upkeep = Math.max(40, Math.min(MANAGER_ACADEMY.weeklyCost, Math.round(sal * 0.3)));
+  m.wallet = (m.wallet || 0) - upkeep;
+  if(m.wallet < 0){
+    m.wallet = 0;
+    C.manager_academy = null;
+    try{ logEvent('🏫 Faute de moyens, votre académie a fermé.', '#e06060'); }catch(e){}
+    return;
+  }
+
+  // Production : rare, et bien plus faible que le centre du club.
+  // ~1 prospect toutes ~6 semaines, plafonné à 4 en réserve.
+  if((a.prospects||[]).length >= 4) return;
+  if(Math.random() > 0.16 + a.level * 0.04) return;
+
+  try{
+    const nation = C.nation || 'panthalassa';
+    const region = (C.club && C.club.region) || 'r';
+    const positions = ['MC','ATT','DC','DD','MC'];
+    const pos = positions[Math.floor(Math.random()*positions.length)];
+    const p = WORLDS.generatePlayer(nation, region, pos, null, 'dh');
+    if(!p) return;
+    // Potentiel PLUS FAIBLE que le club (base 10-25 + petit bonus de niveau,
+    // contre 15-45 pour le club). C'est la version « en moins bien ».
+    let pot = 10 + Math.floor(Math.random()*15) + a.level*3;
+    // Chance très faible d'un bon potentiel (bien moindre que le club).
+    if(Math.random() < 0.003 * a.level){
+      pot = 45 + Math.floor(Math.random()*15);
+      try{ logEvent('⭐ Un prospect prometteur émerge de votre académie !', '#f0c028'); }catch(e){}
+    }
+    p._potential = Math.min(80, pot);
+    p._age = 15 + Math.floor(Math.random()*3);
+    p._isYouth = true;
+    p._fromMgrAcademy = true;
+    a.prospects.push(p);
+  }catch(e){}
+}
+
+// Faire monter un prospect de l'académie perso dans l'effectif du club.
+function promoteManagerProspect(idx){
+  const C = careerV2;
+  const a = _mgrAcademy();
+  if(!C || !a) return;
+  const p = (a.prospects||[])[idx];
+  if(!p) return;
+  const total = (C.players||[]).length + (C.bench||[]).length;
+  const max = (typeof _careerSquadMax === 'function') ? _careerSquadMax() : 18;
+  if(total >= max){ logEvent('Effectif plein !', '#e02030'); return; }
+  p.onBench = true;
+  if(!C.bench) C.bench = [];
+  C.bench.push(p);
+  a.prospects.splice(idx, 1);
+  if(C) C._youthPromotedThisSeason = (C._youthPromotedThisSeason || 0) + 1;
+  logEvent('🎓 ' + p.name + ' rejoint l\'effectif depuis votre académie !', '#18c860');
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
+// RIVALITÉS
+// ═══════════════════════════════════════════════════════════
+// Une saison n'avait aucun match qui compte PLUS qu'un autre. On désigne un
+// club rival au sein de la division : les matchs contre lui portent un enjeu
+// accru (moral, confiance du board, réputation selon le résultat) et
+// alimentent la presse. Un embryon existait déjà (event 'derby_fervor' dans
+// Rorang) — on en fait un vrai système.
+//
+// Le rival est choisi une fois par saison, de préférence un club de niveau
+// proche (un « voisin » au classement, pas le plus faible ni le plus fort),
+// et il PERSISTE d'une saison à l'autre tant qu'on reste dans la même division
+// (une rivalité se construit dans la durée).
+
+function _assignRival(){
+  const C = careerV2;
+  if(!C || !C.standings || C.type !== 'director') return;
+  const others = C.standings.filter(function(s){ return !s.isPlayer; });
+  if(!others.length){ C.rival = null; return; }
+
+  // Rivalité persistante : si le rival actuel est toujours dans la division,
+  // on le garde (la rivalité s'ancre dans le temps).
+  if(C.rival){
+    const still = others.find(function(s){ return s.id === C.rival.id || s.name === C.rival.name; });
+    if(still){
+      C.rival = { id:still.id, name:still.name, color:still.color||C.rival.color, badge:still.badge||C.rival.badge,
+                  intensity:C.rival.intensity || 1, since:C.rival.since || C.season, wins:C.rival.wins||0, losses:C.rival.losses||0, draws:C.rival.draws||0 };
+      return;
+    }
+  }
+
+  // Nouveau rival : un club au hasard, pondéré vers ceux de force proche.
+  // On n'a pas encore de résultats cette saison, donc on tire simplement un
+  // adversaire, en évitant de reprendre un ancien rival juste quitté.
+  const pool = others.filter(function(s){ return !C._exRival || s.name !== C._exRival; });
+  const pick = (pool.length ? pool : others)[Math.floor(Math.random() * (pool.length ? pool.length : others.length))];
+  C.rival = { id:pick.id, name:pick.name, color:pick.color||'#e02030', badge:pick.badge||null,
+              intensity:1, since:C.season, wins:0, losses:0, draws:0 };
+  try{ logEvent('🔥 Nouvelle rivalité : ' + pick.name + ' devient votre rival de la saison.', '#e02030'); }catch(e){}
+}
+
+// Un fixture oppose-t-il le joueur à son rival ?
+function isRivalFixture(fix){
+  const C = careerV2;
+  if(!C || !C.rival || !fix) return false;
+  const oppId = fix.homeIsPlayer ? fix.away : fix.home;
+  const oppName = fix.homeIsPlayer ? fix.awayName : fix.homeName;
+  return oppId === C.rival.id || oppName === C.rival.name;
+}
+
+// Résultat d'un derby : enjeu accru. Appelé après un match du joueur si
+// l'adversaire est le rival.
+function _resolveRivalResult(myG, oppG){
+  const C = careerV2;
+  if(!C || !C.rival) return;
+  const r = C.rival;
+  if(myG > oppG){
+    r.wins = (r.wins||0) + 1;
+    r.intensity = Math.min(5, (r.intensity||1) + 1);
+    _boardAdjust(6, 'victoire dans le derby contre ' + r.name, '#18c860');
+    if(typeof C.director_reputation === 'number') C.director_reputation = Math.min(100, C.director_reputation + 3);
+    [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.min(10, (p._fm||0) + 2); });
+    try{ logEvent('🔥 Vous dominez le derby contre ' + r.name + ' ! Le vestiaire exulte.', '#18c860'); }catch(e){}
+    _mgrAchieve('derby_win_' + r.name, '🔥 Bourreau de ' + r.name);
+  } else if(myG < oppG){
+    r.losses = (r.losses||0) + 1;
+    r.intensity = Math.min(5, (r.intensity||1) + 1);
+    _boardAdjust(-6, 'défaite dans le derby contre ' + r.name, '#e06060');
+    if(typeof C.director_reputation === 'number') C.director_reputation = Math.max(0, C.director_reputation - 2);
+    [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.max(-10, (p._fm||0) - 2); });
+    try{ logEvent('💔 Défaite dans le derby contre ' + r.name + '. Le vestiaire est abattu.', '#e06060'); }catch(e){}
+  } else {
+    r.draws = (r.draws||0) + 1;
+    try{ logEvent('🤝 Match nul dans le derby contre ' + r.name + '.', '#f0c028'); }catch(e){}
+  }
+}
+
+// Carte rivalité (affichée dans la Vue). Montre le rival et le bilan.
+function _renderRivalCard(){
+  const C = careerV2;
+  if(!C || !C.rival) return '';
+  const r = C.rival;
+  const flames = '🔥'.repeat(Math.max(1, Math.min(5, r.intensity||1)));
+  // Prochain derby ?
+  let nextDerby = null;
+  (C.fixtures || []).forEach(function(f){
+    if(!f.played && isRivalFixture(f) && nextDerby === null) nextDerby = f.week;
+  });
+  let h = '<div style="background:linear-gradient(135deg,rgba(224,32,48,0.16),var(--dark));border:1px solid #e02030;border-radius:8px;padding:10px;margin-bottom:10px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+  h += '<div style="font-size:10px;font-weight:700;color:#e02030">' + flames + ' Rival : <b style="color:var(--fg)">' + r.name + '</b></div>';
+  h += '<div style="font-size:8px;color:var(--muted)">depuis S' + (r.since||C.season) + '</div>';
+  h += '</div>';
+  const tot = (r.wins||0)+(r.losses||0)+(r.draws||0);
+  if(tot){
+    h += '<div style="font-size:8px;color:var(--muted);margin-top:3px">Bilan : <span style="color:#18c860">' + (r.wins||0) + 'V</span> · <span style="color:#f0c028">' + (r.draws||0) + 'N</span> · <span style="color:#e06060">' + (r.losses||0) + 'D</span></div>';
+  }
+  if(nextDerby !== null){
+    h += '<div style="font-size:9px;color:#e08040;margin-top:4px;font-weight:700">⚔️ Prochain derby : journée ' + nextDerby + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PRESSE
+// ═══════════════════════════════════════════════════════════
+// Le board sanctionnait, les événements survenaient, mais rien ne RACONTAIT la
+// saison. On ajoute une couche de presse : après les matchs marquants (gros
+// score, derby, série, exploit ou humiliation), un titre est généré et archivé.
+// C.press garde les derniers titres, affichés dans la Vue — la carrière devient
+// un récit, pas une suite de résultats.
+
+function _pressAdd(headline, tone){
+  const C = careerV2;
+  if(!C) return;
+  if(!Array.isArray(C.press)) C.press = [];
+  C.press.unshift({ text:headline, tone:tone||'neutral', week:C.week||0, season:C.season||1 });
+  if(C.press.length > 12) C.press.length = 12;  // on garde les 12 derniers
+}
+
+// Génère (ou non) un titre après un match du joueur.
+function _pressAfterMatch(fix, myG, oppG){
+  const C = careerV2;
+  if(!C || C.type !== 'director') return;
+  const club = C.club.name;
+  const oppName = fix.homeIsPlayer ? fix.awayName : fix.homeName;
+  const diff = myG - oppG;
+  const isDerby = (typeof isRivalFixture==='function') && isRivalFixture(fix);
+  const streak = C._curUnbeaten || 0;
+
+  // Priorité au derby (le plus « racontable »).
+  if(isDerby){
+    if(diff > 0)      _pressAdd('🔥 DERBY — ' + club + ' fait tomber ' + oppName + ' (' + myG + '-' + oppG + ') !', 'good');
+    else if(diff < 0) _pressAdd('💔 DERBY — ' + oppName + ' humilie ' + club + ' (' + oppG + '-' + myG + ')', 'bad');
+    else              _pressAdd('🤝 DERBY — ' + club + ' et ' + oppName + ' se neutralisent (' + myG + '-' + oppG + ')', 'neutral');
+    return;
+  }
+  // Résultats marquants uniquement (on ne commente pas chaque match anodin).
+  if(diff >= 4){
+    _pressAdd('🎉 Démonstration : ' + club + ' écrase ' + oppName + ' ' + myG + '-' + oppG + ' !', 'good');
+  } else if(diff <= -4){
+    _pressAdd('😱 Naufrage : ' + club + ' sombre ' + oppG + '-' + myG + ' face à ' + oppName + '.', 'bad');
+  } else if(streak === 5){
+    _pressAdd('📈 En feu : ' + club + ' reste sur 5 matchs sans défaite.', 'good');
+  } else if(streak >= 8 && diff >= 0){
+    _pressAdd('🚀 ' + club + ' impressionne : ' + streak + ' matchs sans perdre !', 'good');
+  } else if(diff > 0 && Math.random() < 0.15){
+    _pressAdd('✅ ' + club + ' s\'impose ' + myG + '-' + oppG + ' contre ' + oppName + '.', 'good');
+  } else if(diff < 0 && Math.random() < 0.15){
+    _pressAdd('❌ ' + club + ' chute ' + oppG + '-' + myG + ' à ' + oppName + '.', 'bad');
+  }
+}
+
+// Titres liés aux temps forts hors match (transferts, board, événements).
+function _pressEvent(headline, tone){ _pressAdd(headline, tone); }
+
+// Carte presse (les 4 derniers titres).
+function _renderPressCard(){
+  const C = careerV2;
+  if(!C || !Array.isArray(C.press) || !C.press.length) return '';
+  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:10px">';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:6px">📰 La presse en parle</div>';
+  C.press.slice(0, 4).forEach(function(p){
+    const col = p.tone==='good' ? '#18c860' : p.tone==='bad' ? '#e06060' : 'var(--muted)';
+    h += '<div style="font-size:9px;color:var(--fg);padding:4px 0;border-bottom:1px solid var(--b1);line-height:1.4">';
+    h += '<span style="color:' + col + '">▍</span> ' + p.text;
+    h += ' <span style="font-size:7px;color:var(--muted)">S' + p.season + ' J' + p.week + '</span>';
+    h += '</div>';
+  });
   h += '</div>';
   return h;
 }

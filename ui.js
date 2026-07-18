@@ -7684,7 +7684,11 @@ function _renderDirectorOverview(){
   let h = '';
 
   // ── Offre d'un autre club (prioritaire : décision à prendre) ─────────
+  try{ if(typeof _renderSeasonEventCard==='function') h += _renderSeasonEventCard(); }catch(e){ console.error('event card:',e); }
+  try{ if(typeof _renderRivalCard==='function') h += _renderRivalCard(); }catch(e){ console.error('rival card:',e); }
+  try{ if(typeof _renderPressCard==='function') h += _renderPressCard(); }catch(e){ console.error('press card:',e); }
   try{ if(typeof _renderJobOfferCard==='function') h += _renderJobOfferCard(); }catch(e){ console.error('job offer card:',e); }
+  try{ if(typeof _renderManagerCard==='function') h += _renderManagerCard(); }catch(e){ console.error('manager card:',e); }
   // ── Pépite en attente à l'académie (visibilité — facile à manquer) ──
   try{
     const _gem = (C.youthPool||[]).find(function(p){ return p && p._isPotentialPro; });
@@ -7764,6 +7768,12 @@ function _renderDirectorOverview(){
         h += '<div style="background:linear-gradient(135deg,'+accentCol+'22,var(--panel));border:2px solid '+accentCol+';border-radius:10px;padding:14px;margin-bottom:12px">';
         h += '<div style="font-size:12px;font-weight:900;color:'+accentCol+';margin-bottom:6px">⚽ Match aujourd\'hui — J'+nextFix.week+'</div>';
         h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:10px">'+(isHome?club.name+' <span style="color:var(--muted)">vs</span> '+opp:opp+' <span style="color:var(--muted)">vs</span> '+club.name)+' '+(isHome?'🏠':'✈️')+'</div>';
+        // ── PRÉPARATION : choix de l'approche tactique ─────────────────────
+        // Avant, le joueur cliquait « Jouer » et sa stratégie était figée à
+        // 3-2-1 (équilibré). Il choisit désormais une approche, qui pose une
+        // vraie formation (STRATS) avec un effet réel sur le match. On stocke
+        // le choix dans C.club.strat, lu par playCareerMatchV2 (team 0).
+        h += _renderMatchTacticPicker(club);
         h += '<div style="display:flex;gap:8px">';
         h += '<button class="btn btng" onclick="playCareerMatchV2()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
         h += '<button class="btn" onclick="simCareerMatchDirector()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
@@ -8225,7 +8235,9 @@ function _renderDirectorMercato(){
         const vals = Object.values(p.s||{});
         const ovr = vals.length ? Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length) : 10;
         const ovrCol = ovr>=20?'#f0c028':ovr>=15?'#e06060':'#888';
-        const canSign = (C.players||[]).length + (C.bench||[]).length < 16;
+        const _fee = (typeof _freeAgentFee==='function') ? _freeAgentFee(p) : 0;
+        const _afford = _fee <= (club.transferBudget || 0);
+        const canSign = ((C.players||[]).length + (C.bench||[]).length < 16) && _afford;
         h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)">';
         h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + p.pos + '</div>';
         h += '<div style="flex:1"><div style="font-size:10px;font-weight:700">' + p.name + '</div>';
@@ -8234,7 +8246,8 @@ function _renderDirectorMercato(){
         if(p._isPotentialPro){
           h += '<div style="font-size:8px;color:#9c27b0" title="Potentiel pro détecté !">💎</div>';
         }
-        h += '<button class="btn btng" onclick="signFreeAgent(' + i + ')" style="font-size:8px;padding:2px 6px;' + (!canSign?'opacity:.4;pointer-events:none':'') + '">' + (canSign?'Signer':'Plein') + '</button>';
+        h += '<div style="width:52px;text-align:right;font-size:8px;font-weight:900;color:' + (_afford?'#f0c028':'#e06060') + '">' + _fmtMoney(_fee) + '</div>';
+        h += '<button class="btn btng" onclick="signFreeAgent(' + i + ')" style="font-size:8px;padding:2px 6px;' + (!canSign?'opacity:.4;pointer-events:none':'') + '">' + (canSign?'Signer':(!_afford?'💸':'Plein')) + '</button>';
         h += '</div>';
       });
     }
@@ -8246,7 +8259,8 @@ function _renderDirectorMercato(){
     h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:4px">⚽ Recrutement Semi-Pro</div>';
     h += '<div style="font-size:9px;color:var(--muted)">Budget mercato : <b>🪙 ' + _fmtMoney(club.transferBudget) + '</b> · Indemnités de transfert faibles possibles.</div>';
     h += '</div>';
-    h += '<div style="font-size:9px;color:var(--muted);padding:8px">Marché semi-pro — à développer prochainement.</div>';
+    h += _contractsHTML(C, club);
+    h += _transferMarketHTML(C, club, true);
 
   } else {
     // ── MODE PRO (D1/D2/D3) ────────────────────────────────────────
@@ -8255,11 +8269,127 @@ function _renderDirectorMercato(){
     h += '<div style="font-size:10px;color:' + (wopen?'#18c860':'#e06060') + ';font-weight:700">' + (wopen?'🟢 Fenêtre ouverte':'🔴 Fenêtre fermée') + '</div>';
     h += '<div style="font-size:9px;color:var(--muted);margin-top:4px">Budget transferts : 🪙 ' + _fmtMoney(club.transferBudget) + '</div>';
     h += '</div>';
-    h += '<div style="font-size:9px;color:var(--muted);padding:8px">Marché pro — à développer prochainement.</div>';
+    h += _transferMarketHTML(C, club, wopen !== false);
   }
 
   h += '</div>';
   return h;
+}
+
+// ── Contrats (semi-pro) ──────────────────────────────────────────────────
+// En R1/R2 le club n'a pas les moyens d'indemnités : il recrute en NÉGOCIANT
+// un contrat (salaire + durée). Chaque joueur libre a une exigence salariale ;
+// proposer moins fait chuter les chances, proposer plus les garantit mais
+// pèse chaque semaine sur la masse salariale.
+function _contractsHTML(C, club){
+  const list = C.freeAgents || [];
+  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:2px">📝 Proposer un contrat</div>';
+  h += '<div style="font-size:8px;color:var(--muted);margin-bottom:8px">Salaire hebdomadaire + durée. Prime à la signature = 4 semaines de salaire.</div>';
+
+  if(!list.length){
+    h += '<div style="font-size:9px;color:var(--muted)">Aucun joueur libre. Avancez d\'une semaine.</div></div>';
+    return h;
+  }
+
+  list.forEach(function(p, i){
+    const ovr = (typeof _pOvr==='function') ? _pOvr(p) : 50;
+    const ask = (typeof contractAskingWage==='function') ? contractAskingWage(p) : 1;
+    const ovrCol = ovr>=60?'#f0c028':ovr>=45?'#18c860':'#888';
+    h += '<div style="padding:6px 0;border-bottom:1px solid var(--b1)">';
+    h += '<div style="display:flex;align-items:center;gap:8px">';
+    h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + (p.pos||'?') + '</div>';
+    h += '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:700">' + p.name + '</div>';
+    h += '<div style="font-size:8px;color:var(--muted)">' + (p.age?p.age+' ans · ':'') + 'demande ~' + _fmtMoney(ask) + '/sem</div></div>';
+    h += '<div style="font-size:11px;font-weight:900;color:' + ovrCol + ';width:24px;text-align:center">' + ovr + '</div>';
+    h += '</div>';
+    // Trois offres pré-calculées : le joueur voit tout de suite l'arbitrage
+    // entre coût hebdomadaire et probabilité de signature.
+    h += '<div style="display:flex;gap:4px;margin-top:4px">';
+    [['Ric.', Math.round(ask*1.25), 3], ['Juste', Math.round(ask*1.0), 2], ['Serré', Math.round(ask*0.78), 1]].forEach(function(o){
+      const ch = (typeof contractAcceptChance==='function') ? contractAcceptChance(p, o[1], o[2]) : 0.5;
+      const col = ch>=0.7?'#18c860':ch>=0.4?'#f0c028':'#e06060';
+      h += '<button class="btn" onclick="offerContract(' + i + ',' + o[1] + ',' + o[2] + ')" style="flex:1;font-size:7px;padding:3px 2px;border-color:' + col + '">';
+      h += '<div style="font-weight:900;color:' + col + '">' + o[0] + ' ' + Math.round(ch*100) + '%</div>';
+      h += '<div style="color:var(--muted)">' + _fmtMoney(o[1]) + '/sem · ' + o[2] + 'a</div>';
+      h += '</button>';
+    });
+    h += '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+// ── Liste des transferts (achats) ────────────────────────────────────────
+// Remplace les deux « Marché — à développer prochainement » (semi-pro et pro).
+// `windowOpen` : en pro, hors fenêtre de mercato on affiche mais on bloque.
+function _transferMarketHTML(C, club, windowOpen){
+  if(!C.mercato) C.mercato = {};
+  // Première visite : on peuple le marché.
+  if(!Array.isArray(C.mercato.transfer_list)){
+    try{ generateTransferList(); }catch(e){ C.mercato.transfer_list = []; }
+  }
+  const list = C.mercato.transfer_list || [];
+  const budget = club.transferBudget || 0;
+  const total = (C.players||[]).length + (C.bench||[]).length;
+  const max = _careerSquadMax();
+  const squadFull = total >= max;
+
+  let h = '<div style="background:var(--dark);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--gold)">🔁 Joueurs à vendre</div>';
+  h += '<button class="btn" onclick="refreshTransferList()" style="font-size:8px;padding:2px 8px">🔄 Actualiser</button>';
+  h += '</div>';
+
+  if(!list.length){
+    h += '<div style="font-size:9px;color:var(--muted)">Aucun joueur sur le marché pour l\'instant. Les clubs adverses mettent des joueurs en vente au fil des semaines.</div>';
+    h += '</div>';
+    return h;
+  }
+
+  list.forEach(function(t){
+    const p = t.player || {};
+    const ovr = (typeof _pOvr==='function') ? _pOvr(p) : 50;
+    const ovrCol = ovr>=75?'#f0c028':ovr>=60?'#18c860':ovr>=45?'#e06060':'#888';
+    const tooPricey = t.fee > budget;
+    const blocked = tooPricey || squadFull || !windowOpen;
+    // Une bonne affaire est signalée : le prix demandé est sous la valeur.
+    const bargain = t.fee < t.value * 0.9;
+
+    h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1)">';
+    h += '<div style="width:24px;font-size:8px;color:var(--muted)">' + (p.pos||'?') + '</div>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:10px;font-weight:700">' + (p.name||'?') + (p._potential && p._potential > ovr+12 ? ' <span title="Fort potentiel">💎</span>' : '') + '</div>';
+    // 💰 = richesse de la région du vendeur : c'est elle qui explique qu'un
+    // joueur d'une petite division riche coûte plus qu'une star d'une grande
+    // division pauvre.
+    const _w = t.sellerWealth || 2;
+    h += '<div style="font-size:8px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.age?p.age+' ans · ':'') + '<span style="color:' + t.sellerColor + '">' + t.sellerName + '</span> · ' + t.sellerLevel + ' <span title="Richesse de la région du club vendeur">' + '💰'.repeat(_w) + '</span></div>';
+    h += '</div>';
+    h += '<div style="font-size:11px;font-weight:900;color:' + ovrCol + ';width:24px;text-align:center">' + ovr + '</div>';
+    h += '<div style="width:64px;text-align:right">';
+    h += '<div style="font-size:9px;font-weight:900;color:' + (tooPricey?'#e06060':'#f0c028') + '">' + _fmtMoney(t.fee) + '</div>';
+    if(bargain) h += '<div style="font-size:7px;color:#18c860">bonne affaire</div>';
+    h += '</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:2px">';
+    h += '<button class="btn btng" onclick="buyTransferTarget(\'' + t.id + '\')" style="font-size:8px;padding:2px 6px;' + (blocked?'opacity:.4;pointer-events:none':'') + '">' + (squadFull?'Plein':(!windowOpen?'Fermé':(tooPricey?'Trop cher':'Recruter'))) + '</button>';
+    if(!t.negotiated && windowOpen && !squadFull){
+      h += '<button class="btn" onclick="negotiateTransferBuy(\'' + t.id + '\')" style="font-size:7px;padding:1px 6px">Négocier</button>';
+    }
+    h += '</div>';
+    h += '</div>';
+  });
+
+  h += '<div style="font-size:8px;color:#666;margin-top:6px;font-style:italic">Négocier fait baisser le prix, mais le club peut retirer le joueur.</div>';
+  h += '</div>';
+  return h;
+}
+
+function refreshTransferList(){
+  if(!careerV2) return;
+  try{ generateTransferList(); }catch(e){}
+  saveCareerV2();
+  renderCareerDirectorTab('mercato');
 }
 
 // Taille d'effectif maximale autorisée selon le niveau du club (titulaires +
@@ -8272,6 +8402,18 @@ function _careerSquadMax(){
   return MAX[C.club.level] || 18;
 }
 
+// Prime à la signature d'un agent libre. Un joueur libre n'a pas d'indemnité
+// de transfert (c'est tout l'intérêt), mais il ne signe pas pour rien : on
+// paie une prime, bien moins chère que sa valeur marchande.
+function _freeAgentFee(p){
+  let v = (typeof _boardPlayerValue==='function') ? _boardPlayerValue(p) : 1000;
+  // Même échelle que le marché des transferts (cf. _marketScale dans board.js),
+  // sinon la prime serait hors de prix en bas de pyramide alors que les
+  // transferts, eux, seraient ajustés.
+  if(typeof _marketScale==='function') v *= _marketScale();
+  return Math.max(100, Math.round(v * 0.18 / 100) * 100);
+}
+
 function signFreeAgent(idx){
   if(!careerV2) return;
   const p = (careerV2.freeAgents||[])[idx];
@@ -8280,11 +8422,24 @@ function signFreeAgent(idx){
   const _maxSquad = _careerSquadMax();
   if(total >= _maxSquad){ logEvent('Effectif plein ! (max '+_maxSquad+')','#e02030'); return; }
 
+  // Prime de signature : signer était jusqu'ici entièrement GRATUIT, ce qui
+  // rendait le budget mercato décoratif et les agents libres toujours
+  // préférables à un transfert. Une prime modeste rétablit l'arbitrage.
+  const fee = _freeAgentFee(p);
+  const budget = careerV2.club.transferBudget || 0;
+  if(fee > budget){
+    logEvent('💸 Prime de signature : ' + _fmtMoney(fee) + ' demandés, ' + _fmtMoney(budget) + ' disponibles.', '#e02030');
+    return;
+  }
+  if(!confirm('Signer ' + p.name + ' ?\n\nPrime de signature : ' + _fmtMoney(fee) + '\nBudget restant après : ' + _fmtMoney(budget - fee))) return;
+  careerV2.club.transferBudget = budget - fee;
+  try{ _addFinanceLog('Prime de signature — ' + p.name, -fee); }catch(e){}
+
   p.onBench = true;
   if(!careerV2.bench) careerV2.bench = [];
   careerV2.bench.push(p);
   careerV2.freeAgents.splice(idx, 1);
-  logEvent('✅ ' + p.name + ' rejoint le club !', '#18c860');
+  logEvent('✅ ' + p.name + ' rejoint le club (' + _fmtMoney(fee) + ') !', '#18c860');
   saveCareerV2();
   renderCareerDirectorTab('mercato');
 }
@@ -8301,6 +8456,7 @@ function promoteYouth(idx){
   if(!careerV2.bench) careerV2.bench = [];
   careerV2.bench.push(p);
   careerV2.youthPool.splice(idx, 1);
+  careerV2._youthPromotedThisSeason = (careerV2._youthPromotedThisSeason || 0) + 1;
   logEvent('🎓 ' + p.name + ' intègre l\'équipe première !', '#18c860');
   saveCareerV2();
   renderCareerDirectorTab('academy');
@@ -9404,6 +9560,18 @@ function _runWeeklySystems(){
   }
 
   _applyWeeklyEconomy();
+  // Le board surveille la masse salariale (plafond wage_budget).
+  try{ if(typeof _boardCheckWageBill==='function') _boardCheckWageBill(); }catch(e){ console.error('wage bill:',e); }
+  // Décompte des contrats (semi-pro) : expirations, départs libres.
+  try{ if(typeof _tickContracts==='function') _tickContracts(); }catch(e){ console.error('contracts:',e); }
+  // Les clubs PNJ s'échangent des joueurs : le marché vit sans vous.
+  try{ if(typeof _runNpcTransfers==='function') _runNpcTransfers(); }catch(e){ console.error('npc transfers:',e); }
+  // Salaire personnel du manager (son pécule, distinct du budget du club).
+  try{ if(typeof _managerWeeklyPay==='function') _managerWeeklyPay(); }catch(e){ console.error('manager pay:',e); }
+  // Événement de saison éventuel (dilemme ou fait marquant).
+  try{ if(typeof _maybeSeasonEvent==='function') _maybeSeasonEvent(); }catch(e){ console.error('season event:',e); }
+  // Académie personnelle du manager (entretien + prospects).
+  try{ if(typeof _tickManagerAcademy==='function') _tickManagerAcademy(); }catch(e){ console.error('mgr academy:',e); }
 
   // ── Simulation automatique en fond de TOUS les matchs PNJ échus ──────────
   // Le classement reste vivant journée après journée sans action du joueur.
@@ -9650,17 +9818,43 @@ function acceptManagerJob(i){
   if(!careerV2 || careerV2.type !== 'manager') return;
   const offer = careerV2.job_offers[i];
   if(!offer) return;
-  careerV2.manager.unemployed = false;
-  careerV2.manager.contract = offer;
-  careerV2.club = {
-    id: 'mgr_club',
-    name: offer.club,
-    region: offer.region,
-    level: offer.level,
-    color: WORLDS.getRegion('panthalassa',offer.region)?.color || '#888',
-  };
-  careerV2.job_offers = [];
-  logEvent('✅ Contrat signe avec '+offer.club+'!','#18c860');
+
+  // ── UNIFICATION DES DEUX CARRIÈRES ─────────────────────────────────────
+  // Avant : accepter une offre créait un club SQUELETTE (nom, région, niveau,
+  // couleur — et RIEN d'autre : ni effectif, ni budget, ni mercato, ni board).
+  // Le mode « manager » n'avait donc aucun gameplay une fois embauché, et tout
+  // le mode carrière riche (effectif, finances, licence, board) vivait
+  // uniquement côté « director ». Deux carrières parallèles, une seule jouable.
+  //
+  // On unifie : accepter une offre lance une VRAIE carrière de directeur au
+  // club proposé, en conservant la progression du manager (licence, XP,
+  // palmarès, historique). Le « manager nomade » devient ainsi une couche
+  // par-dessus le mode director — on dirige un vrai club, et les offres
+  // permettent d'en changer.
+  const carriedManager = careerV2.manager;         // licence, xp, palmarès
+  const carriedHistory = careerV2.history || [];
+  const nation = careerV2.nation || 'panthalassa';
+
+  // Construit une carrière director complète au club de l'offre.
+  startCareerDirector(offer.region, offer.club, nation);
+  if(!careerV2 || careerV2.type !== 'director'){
+    logEvent('❌ Impossible de rejoindre '+offer.club, '#e02030');
+    return;
+  }
+
+  // Reprise de la carrière personnelle du manager par-dessus le nouveau club.
+  if(carriedManager){
+    careerV2.manager = carriedManager;
+    careerV2.manager.unemployed = false;
+    careerV2.manager.contract = { club: offer.club, salary: offer.salary, years: offer.contract_years || 2, objectives: offer.objectives || [] };
+  }
+  // On garde la trace des clubs précédents.
+  careerV2.history = carriedHistory;
+  // On mémorise qu'on est en carrière « manager nomade » (les offres
+  // continueront d'arriver, cf. _boardMaybeJobOffer, désormais unifié).
+  careerV2._nomad = true;
+
+  logEvent('✅ Vous prenez les rênes de '+offer.club+' !','#18c860');
   saveCareerV2();
   renderCareerV2();
 }
@@ -9855,6 +10049,11 @@ function _recordCareerV2MatchResult(){
   if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
   else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
   else { C.season_stats.losses++; }
+  try{ if(typeof _trackUnbeaten==='function') _trackUnbeaten(myG>aiG, myG===aiG); }catch(e){}
+  // Derby : enjeu accru si l'adversaire est le rival.
+  try{ if(typeof isRivalFixture==='function' && isRivalFixture(fix) && typeof _resolveRivalResult==='function') _resolveRivalResult(myG, aiG); }catch(e){ console.error('derby:',e); }
+  // Presse : titre généré selon le résultat et le contexte.
+  try{ if(typeof _pressAfterMatch==='function') _pressAfterMatch(fix, myG, aiG); }catch(e){ console.error('press:',e); }
   // Confiance du board : petite variation à chaque match (silencieuse).
   try{ if(typeof _boardOnMatch==='function') _boardOnMatch(myG, aiG); }catch(e){ console.error('board match:',e); }
 
@@ -10221,6 +10420,11 @@ function simCareerMatchDirector(){
   if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
   else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
   else { C.season_stats.losses++; }
+  try{ if(typeof _trackUnbeaten==='function') _trackUnbeaten(myG>aiG, myG===aiG); }catch(e){}
+  // Derby : enjeu accru si l'adversaire est le rival.
+  try{ if(typeof isRivalFixture==='function' && isRivalFixture(fix) && typeof _resolveRivalResult==='function') _resolveRivalResult(myG, aiG); }catch(e){ console.error('derby:',e); }
+  // Presse : titre généré selon le résultat et le contexte.
+  try{ if(typeof _pressAfterMatch==='function') _pressAfterMatch(fix, myG, aiG); }catch(e){ console.error('press:',e); }
   // Confiance du board : petite variation à chaque match (silencieuse).
   try{ if(typeof _boardOnMatch==='function') _boardOnMatch(myG, aiG); }catch(e){ console.error('board match:',e); }
 
@@ -10781,6 +10985,9 @@ function endCareerSeasonDirector(){
                               wins:(C.season_stats&&C.season_stats.wins)||0 });
     }
     if(typeof _boardOnSeasonEnd==='function') _boardOnSeasonEnd(ctx);
+    // Bilan du contrat personnel du manager (salaire déjà versé, objectifs
+    // évalués, prolongation ou fin de contrat).
+    if(typeof _managerContractReview==='function') _managerContractReview(ctx);
     // Licenciement : on stoppe tout, la carrière s'arrête ici.
     if(typeof _boardCheckSack==='function' && _boardCheckSack()){
       saveCareerV2();
@@ -10796,6 +11003,8 @@ function endCareerSeasonDirector(){
   C.seasonStartDate = null; // ré-ancrée par _generateSeasonFixtures() ci-dessous
   C.dayPlans = {}; // planning de la saison écoulée purgé
   C.season_stats = {wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0, scorers:{}};
+  // Remise à zéro des compteurs d'objectifs secondaires.
+  C._curUnbeaten = 0; C._bestUnbeaten = 0; C._cupBestRound = 0; C._youthPromotedThisSeason = 0;
   logEvent('Saison '+C.season+' — Nouveau depart !', C.club.color||'#18c860');
   // IA de gestion : les clubs adverses vieillissent, progressent/déclinent et
   // font quelques mouvements de mercato avant que la nouvelle saison démarre.
@@ -10845,3 +11054,37 @@ function _reputationLabel(rep){
 // ═══════════════════════════════════════════════════════════
 // EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════════
+// ── Sélecteur d'approche tactique avant un match de carrière ────────────
+// Trois approches lisibles (défensif / équilibré / offensif) qui mappent sur
+// des formations réelles du moteur (STRATS). L'effet passe par C.club.strat,
+// injecté dans team0 par playCareerMatchV2. Le style n'est PAS gratuit : une
+// approche offensive marque plus mais encaisse plus, et inversement.
+function _renderMatchTacticPicker(club){
+  const cur = club.strat || '321';
+  // On propose un sous-ensemble parlant des STRATS, du plus prudent au plus fou.
+  const options = [
+    { id:'411', icon:'🛡️', label:'Défensif',  desc:'Bloc bas, on protège le résultat' },
+    { id:'321', icon:'⚖️', label:'Équilibré', desc:'Le standard, sans prise de risque' },
+    { id:'231', icon:'🎯', label:'Possession',desc:'Milieu renforcé, on garde le ballon' },
+    { id:'33',  icon:'⚔️', label:'Offensif',  desc:'Pressing haut, on cherche à marquer' },
+  ];
+  let h = '<div style="margin-bottom:10px">';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:4px;font-weight:700">🧠 Votre approche</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+  options.forEach(function(o){
+    const on = o.id === cur;
+    h += '<button onclick="setMatchTactic(\'' + o.id + '\')" style="text-align:left;padding:6px 8px;border-radius:8px;cursor:pointer;border:2px solid ' + (on?'var(--gold)':'var(--b1)') + ';background:' + (on?'rgba(240,192,40,.14)':'var(--dark)') + ';color:' + (on?'var(--gold)':'var(--muted)') + '">';
+    h += '<div style="font-size:10px;font-weight:900">' + o.icon + ' ' + o.label + '</div>';
+    h += '<div style="font-size:7px;color:var(--muted);margin-top:1px;line-height:1.3">' + o.desc + '</div>';
+    h += '</button>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function setMatchTactic(stratId){
+  if(!careerV2 || !careerV2.club) return;
+  careerV2.club.strat = stratId;
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
