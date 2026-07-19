@@ -9570,6 +9570,21 @@ function _runWeeklySystems(){
   if(!careerV2) return;
   const C = careerV2;
 
+  // ── RÉCUPÉRATION DES BLESSURES (carrière V2) ───────────────────────────
+  // Le décompte hebdomadaire n'existait que pour l'ancienne carrière (V1) :
+  // en V2, un joueur blessé restait indisponible INDÉFINIMENT. On décrémente
+  // ici chaque semaine et on rétablit le joueur quand le compteur atteint 0.
+  [].concat(C.players||[], C.bench||[], C.reserves||[]).forEach(function(p){
+    if(!p || !(p._injWeeks>0)) return;
+    p._injWeeks--;
+    if(p._injWeeks<=0){
+      p._injWeeks=0; p._missNextMatch=false; p.injLevel=0; p.injT=0; p._injLevelCareer=0;
+      try{ logEvent('✅ '+p.name+' est rétabli et de nouveau disponible.', '#18c860'); }catch(e){}
+    } else {
+      p._missNextMatch=true;
+    }
+  });
+
   if(!C.freeAgents || C.freeAgents.length === 0){
     _generateFreeAgents();
   }
@@ -11598,8 +11613,6 @@ function _buildReserveSquad(C){
     C.bench   = (res.bench||[]).slice();
     C.reserves = [];
     C.club.level = res.level || C.club.level;   // niveau réel de la réserve (souvent DH)
-    C.club.reserveOf = C.club.name;
-    C._reserveScope = true;
     // Cette équipe n'est plus listée comme affiliée (on la dirige).
     C.affiliates = affs.filter(function(a){ return a !== res; });
     return;
@@ -11620,5 +11633,4 @@ function _buildReserveSquad(C){
       }
     }
   }catch(e){ console.error('reserve squad gen:', e); }
-  C._reserveScope = true;
 }

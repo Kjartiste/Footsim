@@ -175,6 +175,36 @@ function _passLanesBlocked(carrier,ati){
   return top.every(o=>o.blocked>=1);
 }
 
+// ── INTELLIGENCE DE L'IA SELON LA DIFFICULTÉ ─────────────────────────────
+// La difficulté ne doit PAS se contenter de gonfler l'OVR adverse (une IA qui
+// « triche »). On donne à l'IA adverse un vrai niveau de JEU : elle réfléchit
+// mieux, réagit plus vite, gaspille moins de ballons, tente des actions plus
+// pertinentes. Ces facteurs modulent ses probabilités de décision — sans jamais
+// toucher l'équipe humaine (team 0).
+//
+//   skill   : qualité globale de décision (0.80 → 1.25)
+//   react   : vivacité de réaction/pressing
+//   care    : soin dans la conservation (moins de pertes de balle)
+//   ambition: propension à tenter l'action tranchante au bon moment
+const _AI_SKILL = {
+  easy:   { skill:0.80, react:0.78, care:0.82, ambition:0.85 },
+  normal: { skill:1.00, react:1.00, care:1.00, ambition:1.00 },
+  hard:   { skill:1.12, react:1.12, care:1.10, ambition:1.10 },
+  legend: { skill:1.25, react:1.25, care:1.20, ambition:1.22 },
+};
+function _aiSkill(){
+  let id = 'normal';
+  try{ if(typeof difficultyLevel==='function') id = difficultyLevel(); }catch(e){}
+  return _AI_SKILL[id] || _AI_SKILL.normal;
+}
+// L'IA ne contrôle QUE l'équipe adverse (team 1). Pour l'équipe humaine
+// (team 0), tous les facteurs valent 1 : on ne dégrade jamais le joueur.
+function _aiFactor(ti, key){
+  if(ti === 0) return 1;                 // équipe humaine : jamais modifiée
+  const s = _aiSkill();
+  return s[key] != null ? s[key] : 1;
+}
+
 function aiDecide(dt=0.016){
   if(G.phase==='HALFTIME'||G.phase==='END'||G._celebrating)return;
   G.phTick++;
@@ -593,7 +623,11 @@ function aiDecide(dt=0.016){
       const _pressD=(strat(dti).press!=null?strat(dti).press:0.5);
       let _interW = 0.08 * (0.7+_pressD*0.6);
       _interW *= (0.75+_verticalReady*0.5); // une chaîne longue s'expose un peu plus
-      _interW = Math.max(0.04, Math.min(0.13, _interW));
+      // INTELLIGENCE IA : quand c'est l'IA qui défend (team 1), sa vivacité de
+      // réaction augmente les interceptions selon la difficulté — elle presse
+      // et lit mieux le jeu, sans qu'on gonfle ses stats.
+      _interW *= _aiFactor(dti,'react');
+      _interW = Math.max(0.04, Math.min(0.16, _interW));
 
       // Long ballon / bascule directe : n'ouvrent vraiment qu'avec une chaîne
       // déjà installée (sinon on garde et on construit).
@@ -796,6 +830,10 @@ function aiDecide(dt=0.016){
       // Occasion nette (≤1 adversaire dans l'axe) → bonus ; couloir bouché → malus.
       const _laneMul = _blockersToGoal<=1 ? 1.15 : _blockersToGoal===2 ? 0.85 : 0.6;
       _shootFreq *= _chainShotMul * _laneMul;
+      // INTELLIGENCE IA : sur une occasion nette, une IA plus habile ose
+      // davantage ; sur un couloir bouché, elle tempère (ne gâche pas).
+      if(_blockersToGoal<=1) _shootFreq *= _aiFactor(ati,'ambition');
+      else _shootFreq *= (2 - _aiFactor(ati,'skill'));   // skill haut → tire moins dans le mur
       const shootBase=(canShoot?_shootFreq:0)*_attackEdge(ati,dti);
       // Fenêtre de dribble selon poste + style + trait
       let _dribWindow = 0.14 * _tend.drib * _STYLE_TEND.drib;
@@ -803,6 +841,9 @@ function aiDecide(dt=0.016){
       // Fenêtre de PASSE : base 0.42 modulée par le poste et le style. Un MDC en
       // possession passe énormément ; un ATT en jeu direct passe peu.
       let _passWindow = 0.42 * _tend.pass * _STYLE_TEND.pass;
+      // INTELLIGENCE IA : une IA plus soignée privilégie la passe (conserve le
+      // ballon) plutôt que le dribble hasardeux.
+      _passWindow *= _aiFactor(ati,'care');
       _passWindow = Math.max(0.15, Math.min(0.75, _passWindow));
       if(r<shootBase){
         doShot(carrier,ati,dti,opp,gk,oppGoalX);

@@ -28,11 +28,14 @@ let activeProfileId = null; // profil actif
 // l'effet est immédiat, prévisible, et se voit direct dans l'OVR adverse
 // affiché à l'avant-match — donc "lisible" pour le joueur.
 // N'affecte JAMAIS l'effectif du joueur, le mercato, ni l'académie de jeunes.
+// La difficulté agit désormais surtout sur l'INTELLIGENCE de jeu de l'IA
+// (voir _AI_SKILL dans ia.js) ; le multiplicateur d'OVR ci-dessous n'est plus
+// qu'un léger complément, pour éviter une IA qui « triche » par les stats.
 const DIFFICULTY_LEVELS = {
-  easy:   { id:'easy',   label:'🟢 Facile',     mult:0.90, desc:"Adversaires ~10% plus faibles que leur niveau réel. Idéal pour découvrir la carrière sans pression." },
-  normal: { id:'normal', label:'🟡 Normal',     mult:1.00, desc:'Niveau fidèle à la division adverse, sans avantage ni désavantage.' },
-  hard:   { id:'hard',   label:'🟠 Difficile',  mult:1.08, desc:'Adversaires ~8% plus forts. Chaque match demande une vraie tactique.' },
-  legend: { id:'legend', label:'🔴 Légendaire', mult:1.18, desc:'Adversaires ~18% plus forts. Réservé aux managers qui veulent souffrir.' },
+  easy:   { id:'easy',   label:'🟢 Facile',     mult:0.94, desc:"Adversaires un peu plus tendres et moins inspirés dans leurs choix. Idéal pour découvrir." },
+  normal: { id:'normal', label:'🟡 Normal',     mult:1.00, desc:'Niveau et intelligence de jeu fidèles à la division adverse.' },
+  hard:   { id:'hard',   label:'🟠 Difficile',  mult:1.04, desc:'L\'IA lit mieux le jeu, presse plus fort et gâche moins. Il faut une vraie tactique.' },
+  legend: { id:'legend', label:'🔴 Légendaire', mult:1.08, desc:'IA au sommet : décisions tranchantes, pressing constant, conservation soignée.' },
 };
 const DIFFICULTY_ORDER = ['easy','normal','hard','legend'];
 

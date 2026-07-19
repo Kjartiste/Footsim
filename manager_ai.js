@@ -140,13 +140,46 @@ function _mgrApplyMentality(ti){
 // « tactiques » l'IA a faits pour ne pas vider tout le banc.
 function _mgrCanSubNow(ti){
   const mn=_mgrMinute();
-  if(mn<55) return false;                 // pas de changement tactique avant l'heure de jeu
+  const tier=_mgrTier();
+  // Un coach plus relevé intervient plus tôt et enchaîne plus vite.
+  const minMinute = tier>=3 ? 40 : tier>=2 ? 50 : 58;
+  const spacing   = tier>=3 ? 8  : tier>=2 ? 10 : 14;
+  if(mn<minMinute) return false;
   if(!G._mgrSubAt) G._mgrSubAt=[-99,-99];
-  if(mn - G._mgrSubAt[ti] < 12) return false; // espacer les changements
+  if(mn - G._mgrSubAt[ti] < spacing) return false;
   if(!G._mgrSubCount) G._mgrSubCount=[0,0];
-  const maxSubs = window.gameMode==='11v11' ? 3 : 3; // borne raisonnable
+  const maxSubs = 3;
   if(G._mgrSubCount[ti] >= maxSubs) return false;
   return true;
+}
+
+// Un joueur GRAVEMENT blessé (injLevel>=2) doit sortir immédiatement, quelle
+// que soit la cadence — comme un vrai coach face à une blessure. Renvoie true
+// si un remplacement d'urgence a été effectué.
+function _mgrEmergencyInjurySub(ti){
+  const starters=(teams[ti]&&teams[ti].players)||[];
+  let worstIdx=-1, worstLvl=0;
+  starters.forEach(function(p, i){
+    if(p && p.pos!=='GB' && !p.subbedOut && (p.injLevel||0)>=2 && (p.injLevel||0)>worstLvl){
+      worstLvl=p.injLevel; worstIdx=i;
+    }
+  });
+  if(worstIdx<0) return false;
+  if(!G._mgrSubCount) G._mgrSubCount=[0,0];
+  if(G._mgrSubCount[ti] >= 3) return false;         // banc épuisé : on serre les dents
+  const outP=starters[worstIdx];
+  const inn=_mgrBestBenchFor(ti, outP.pos);
+  if(!inn) return false;
+  try{
+    doSub(ti, worstIdx, inn.bi, 'bench');
+    if(!G._mgrSubAt) G._mgrSubAt=[-99,-99];
+    G._mgrSubAt[ti]=_mgrMinute();
+    G._mgrSubCount[ti]++;
+    const name=(teams[ti]&&teams[ti].name)||'L\'adversaire';
+    const col=(teams[ti]&&teams[ti].color)||'#8090a0';
+    try{ logEvent('🚑 '+name+' — sortie sur blessure ('+outP.name+').', col); }catch(e){}
+    return true;
+  }catch(e){ console.error('emergency sub:', e); return false; }
 }
 
 // Trouve le meilleur remplaçant du banc pour un poste donné (ou proche).
@@ -297,6 +330,97 @@ function _mgrApplyKickoffPlan(ti){
   try{ if(typeof _tacTi!=='undefined' && _tacTi===ti && typeof updateTacBtnColors==='function') updateTacBtnColors(); }catch(e){}
 }
 
+// ── NIVEAU DE COACHING SELON LA DIFFICULTÉ ───────────────────────────────
+// L'intelligence de banc dépend de la difficulté. En Facile, le coach IA est
+// passif (mentalité basique, peu de changements). En Légendaire, il exploite
+// TOUS les leviers : philosophie de jeu (direct/possession/contre), consignes
+// individuelles, remplacements proactifs (fatigue/blessure), au meilleur moment.
+//   tier 0 = easy, 1 = normal, 2 = hard, 3 = legend
+function _mgrTier(){
+  let id='normal';
+  try{ if(typeof difficultyLevel==='function') id=difficultyLevel(); }catch(e){}
+  return {easy:0, normal:1, hard:2, legend:3}[id] != null ? {easy:0,normal:1,hard:2,legend:3}[id] : 1;
+}
+
+// ── PHILOSOPHIE DE JEU (direct / possession / contre) ────────────────────
+// Disponible à partir de « Difficile ». Le coach adapte le STYLE selon le
+// contexte : mené tard → direct (jeu vertical), en tête → contre (bloc + trans-
+// itions), possession pour endormir une large avance à égalité de niveau.
+function _mgrDesiredStyle(ti){
+  if(_mgrTier() < 2) return null;                 // seulement hard/legend
+  const gd=_mgrGoalDiff(ti), mn=_mgrMinute();
+  const late = mn>=68;
+  if(gd<=-1 && late)  return 'direct';            // mené tard : on balance devant
+  if(gd<=-2)          return 'direct';
+  if(gd>=1 && late)   return 'counter';           // on tient : contres
+  if(gd>=2)           return 'counter';
+  if(gd===0 && mn>=75 && _mgrTier()>=3) return 'possession'; // legend : gère le nul
+  return 'normal';
+}
+function _mgrApplyStyle(ti){
+  const want=_mgrDesiredStyle(ti);
+  if(want==null) return;
+  if(!G.tacSliders || !G.tacSliders[ti]) return;
+  const prev=G.tacSliders[ti].style;
+  if(want===prev) return;
+  G.tacSliders[ti].style = want;
+  if(!G._mgrLastStyle) G._mgrLastStyle=[undefined,undefined];
+  if(G._mgrLastStyle[ti]!==undefined && G._mgrLastStyle[ti]!==want){
+    const lbl={direct:'joue plus direct',counter:'passe en contre-attaque',possession:'temporise en possession',normal:'revient à un jeu équilibré'}[want]||'';
+    const name=(teams[ti]&&teams[ti].name)||'L\'adversaire';
+    const col=(teams[ti]&&teams[ti].color)||'#8090a0';
+    try{ logEvent('📋 '+name+' '+lbl+'.', col); }catch(e){}
+  }
+  G._mgrLastStyle[ti]=want;
+}
+
+// ── CONSIGNES INDIVIDUELLES (axe d'agressivité par joueur) ────────────────
+// Disponible en « Légendaire ». Le coach pousse ses milieux/attaquants en mode
+// offensif quand il est mené, et bascule ses joueurs en mode défensif quand il
+// protège un résultat. Utilise G.playerRoles[ti] (déjà lu par le moteur).
+function _mgrApplyIndividualInstructions(ti){
+  if(_mgrTier() < 3) return;                      // legend uniquement
+  if(!G.playerRoles) G.playerRoles=[[],[]];
+  const roles=G.playerRoles[ti]||(G.playerRoles[ti]=[]);
+  const gd=_mgrGoalDiff(ti), mn=_mgrMinute();
+  const pushing = gd<=-1;                         // mené : on pousse
+  const holding = gd>=1 && mn>=70;                // on protège tard
+  const onPitch=(teams[ti]&&teams[ti].players)||[];
+  let changed=false;
+  onPitch.forEach(function(p, i){
+    if(!p || p.pos==='GB') return;
+    const cat=_posCat(p.pos);
+    let want='normal';
+    if(pushing){
+      // Milieux et attaquants plus offensifs ; défenseurs restent stables.
+      if(cat==='att'||cat==='mid') want='atk';
+    } else if(holding){
+      // On resserre : milieux et défenseurs plus prudents.
+      if(cat==='def'||cat==='mid') want='def';
+    }
+    if(roles[i]!==want){ roles[i]=want; changed=true; }
+  });
+  if(changed){
+    if(!G._mgrLastInstr) G._mgrLastInstr=[0,0];
+    // Log très espacé pour ne pas spammer (au plus une fois par mi-temps).
+    if(mn - (G._mgrLastInstr[ti]||-99) >= 20){
+      G._mgrLastInstr[ti]=mn;
+      const name=(teams[ti]&&teams[ti].name)||'L\'adversaire';
+      const col=(teams[ti]&&teams[ti].color)||'#8090a0';
+      const txt = (gd<=-1) ? 'ordonne à ses milieux de se projeter' : 'demande à son bloc de se resserrer';
+      try{ logEvent('🗣️ '+name+' '+txt+'.', col); }catch(e){}
+    }
+  }
+}
+
+// Catégorie de poste simplifiée (att/mid/def/gk).
+function _posCat(pos){
+  if(['ATT','ATT2','BU','AV','MO','MOG','MOD','AG','AD'].indexOf(pos)>=0) return 'att';
+  if(['MC','MDC','MOC','MG','MD','MIL','MCD','MCG'].indexOf(pos)>=0) return 'mid';
+  if(['DC','DD','DG','DEF','LAT','LB','RB','DCD','DCG'].indexOf(pos)>=0) return 'def';
+  return 'mid';
+}
+
 // ── POINT D'ENTRÉE (appelé ~1×/minute simulée depuis la boucle) ───────────
 // Ne lève jamais : une erreur du coach IA ne doit pas casser le match.
 function managerAiTick(){
@@ -309,7 +433,10 @@ function managerAiTick(){
       if(hum[ti]) continue;            // équipe humaine : le coach IA n'y touche pas
       _mgrApplyKickoffPlan(ti);        // plan d'entame (une fois, au coup d'envoi)
       _mgrApplyMentality(ti);          // ajuste la mentalité au score/temps
-      _mgrMaybeSub(ti);                // éventuel changement tactique
+      _mgrApplyStyle(ti);              // philosophie de jeu (hard+)
+      _mgrApplyIndividualInstructions(ti); // consignes individuelles (legend)
+      // Blessure grave : sortie d'urgence à toutes les difficultés.
+      if(!_mgrEmergencyInjurySub(ti)) _mgrMaybeSub(ti); // sinon, changement normal
     }
   }catch(e){ console.error('managerAiTick:', e); }
 }
@@ -323,6 +450,8 @@ function resetManagerAi(){
     G._mgrSubCount=[0,0];
     G._mgrPlanSet=[false,false];
     G._mgrPlan=[null,null];
+    G._mgrLastStyle=[undefined,undefined];
+    G._mgrLastInstr=[0,0];
   }catch(e){}
 }
 
