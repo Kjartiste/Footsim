@@ -10062,29 +10062,46 @@ function playCareerMatchV2(){
   // l'affichage « infirmerie », mais jamais dans teams[0].
   const _isUnavailable = function(p){ return p && ((p._injWeeks||0) > 0 || p._missNextMatch || (p.yc>=2) || p.red); };
   const injuredOut = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]).filter(_isUnavailable);
-  // Le vivier inclut titulaires + banc + RÉSERVISTES sains : si des blessures
-  // dépeuplent l'effectif de départ, des réservistes valides peuvent monter
-  // plutôt que de jouer en infériorité. Les indisponibles sont exclus partout.
-  const fullSquad = (C.players||[]).map(function(p){ return Object.assign({}, p); })
-    .concat((C.bench||[]).map(function(p){ return Object.assign({}, p); }))
-    .concat((C.reserves||[]).map(function(p){ return Object.assign({}, p); }))
-    .filter(function(p){ return !_isUnavailable(p); });
-  const gkPool = fullSquad.filter(function(p){ return p && p.pos==='GB'; })
-    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
-  const outfieldPool = fullSquad.filter(function(p){ return p && p.pos!=='GB'; })
-    .sort(function(a,b){ return _playerOvr(b)-_playerOvr(a); });
 
+  // ── ON RESPECTE LA SÉLECTION MANUELLE DU JOUEUR ────────────────────────
+  // C.players = tes titulaires choisis dans l'onglet Effectif, C.bench = ton
+  // banc, C.reserves = écartés (jamais alignés). AVANT, on fusionnait tout et
+  // on re-triait par OVR → tes choix étaient ignorés. Maintenant, on part de
+  // TA compo : titulaires sains d'abord, puis banc, puis réservistes en
+  // dernier recours (si des blessures dépeuplent l'effectif). L'ordre que tu
+  // as défini est conservé.
+  const clone = function(p){ return Object.assign({}, p); };
+  const chosenStarters = (C.players||[]).filter(function(p){ return !_isUnavailable(p); }).map(clone);
+  const chosenBench    = (C.bench||[]).filter(function(p){ return !_isUnavailable(p); }).map(clone);
+  const chosenReserves = (C.reserves||[]).filter(function(p){ return !_isUnavailable(p); }).map(clone);
+
+  // Titulaires : d'abord TES titulaires, complétés depuis le banc puis la
+  // réserve UNIQUEMENT s'il en manque (blessures, format plus grand).
   const starters = [];
-  if(gkPool[0]) starters.push(gkPool[0]);
-  outfieldPool.forEach(function(p){ if(starters.length < xiSize) starters.push(p); });
+  const _pushUnique = function(p){ if(p && starters.indexOf(p)<0 && starters.length<xiSize) starters.push(p); };
+  chosenStarters.forEach(_pushUnique);
+  // S'il manque des titulaires (indisponibilités), on complète par le banc puis la réserve.
+  if(starters.length < xiSize){ chosenBench.forEach(_pushUnique); }
+  if(starters.length < xiSize){ chosenReserves.forEach(_pushUnique); }
+  // Filet de sécurité gardien : si aucun GB titulaire, on en fait monter un.
+  if(!starters.some(function(p){ return p.pos==='GB'; })){
+    const gk = chosenBench.concat(chosenReserves).find(function(p){ return p.pos==='GB'; });
+    if(gk){ if(starters.length>=xiSize) starters.pop(); starters.unshift(gk); }
+  }
 
-  const leftoverGk  = gkPool.slice(1); // gardiens non titulaires (remplaçant prioritaire)
-  const leftoverOut = outfieldPool.filter(function(p){ return starters.indexOf(p) < 0; });
+  // Banc du match : TON banc uniquement (moins ceux montés titulaires). On NE
+  // remonte PAS les réservistes sur le banc — tu les as écartés volontairement.
+  // La réserve ne sert qu'à compléter le XI en cas de blessures (ci-dessus).
+  const usedForXI = starters.slice();
   const matchBench = [];
-  if(leftoverGk[0]) matchBench.push(leftoverGk[0]);
-  leftoverGk.slice(1).concat(leftoverOut).forEach(function(p){ if(matchBench.length < benchSize) matchBench.push(p); });
+  const _pushBench = function(p){ if(p && usedForXI.indexOf(p)<0 && matchBench.indexOf(p)<0 && matchBench.length<benchSize) matchBench.push(p); };
+  chosenBench.forEach(_pushBench);
+  // Si tu as désigné plus de titulaires que le format n'en accueille, le surplus
+  // va sur le banc (c'est TON choix). Les réservistes, eux, n'y vont jamais.
+  if(matchBench.length < benchSize){ chosenStarters.forEach(_pushBench); }
 
   const usedIds = starters.concat(matchBench);
+  const fullSquad = chosenStarters.concat(chosenBench, chosenReserves);
   const surplus = fullSquad.filter(function(p){ return usedIds.indexOf(p) < 0; });
 
   // IMPORTANT : (ré)initialiser onBench/subbedOut sur les joueurs qu'on vient
