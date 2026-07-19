@@ -1997,6 +1997,24 @@ function _levelRank(level){
   return i < 0 ? order.length - 1 : i;
 }
 
+// ── COUVERTURE MÉDIATIQUE SELON LE NIVEAU ────────────────────────────────
+// Le foot amateur (District, Régional) n'a quasiment pas de presse ni de
+// conférences : titres rares, pas d'interviews formelles. Le pro (D1-D3) est
+// sur-médiatisé. Ce facteur (0..1) module la FRÉQUENCE de la presse, des
+// interviews et des tweets « médias » selon la division.
+//   d1=1.0  d2=0.9  d3=0.75  r1=0.45  r2=0.30  r3=0.18  dh=0.08
+function _mediaCoverage(){
+  const C = careerV2;
+  const lvl = C && C.club && C.club.level;
+  const factor = { 0:1.0, 1:0.9, 2:0.75, 3:0.45, 4:0.30, 5:0.18, 6:0.08 };
+  return factor[_levelRank(lvl)] != null ? factor[_levelRank(lvl)] : 0.5;
+}
+// Vrai « média » (presse écrite, conférences) : réservé au niveau semi-pro et
+// au-dessus. En dessous, il n'y a pas de journalistes qui suivent le club.
+function _hasFormalMedia(){
+  return _levelRank(careerV2 && careerV2.club && careerV2.club.level) <= 3; // r1 et mieux
+}
+
 function _mgr(){
   const C = careerV2;
   if(!C) return null;
@@ -2958,10 +2976,19 @@ function _pressAdd(headline, tone){
 function _pressAfterMatch(fix, myG, oppG){
   const C = careerV2;
   if(!C || !C.club) return;
+  // Couverture presse selon la division : au niveau amateur, seuls les faits
+  // VRAIMENT marquants (gros score, derby) percent, et encore rarement. Le pro
+  // est couvert en continu.
+  const cover = (typeof _mediaCoverage==='function') ? _mediaCoverage() : 1;
   const club = C.club.name;
   const oppName = fix.homeIsPlayer ? fix.awayName : fix.homeName;
   const diff = myG - oppG;
   const isDerby = (typeof isRivalFixture==='function') && isRivalFixture(fix);
+  // En amateur, on filtre : un match ordinaire ne fait jamais la une, et même
+  // un fait marquant n'est couvert qu'en proportion de la médiatisation.
+  const bigEvent = isDerby || Math.abs(diff)>=4;
+  if(!bigEvent && Math.random() > cover) return;         // ordinaire : selon couverture
+  if(bigEvent && Math.random() > Math.max(0.3, cover)) return; // marquant : au moins 30%
   const streak = C._curUnbeaten || 0;
 
   // Priorité au derby (le plus « racontable »).
@@ -3310,11 +3337,18 @@ function _interviewQuestions(ctx){
 function _maybeInterview(fix, myG, oppG){
   const C = careerV2;
   if(!C || !C.club || C.pending_interview) return;
+  // Pas de conférence de presse dans le foot amateur (District/Régional bas) :
+  // il n'y a pas de journalistes qui attendent le coach au micro.
+  if(typeof _hasFormalMedia==='function' && !_hasFormalMedia()) return;
+  const cover = (typeof _mediaCoverage==='function') ? _mediaCoverage() : 1;
   const diff = myG - oppG;
   const isDerby = (typeof isRivalFixture==='function') && isRivalFixture(fix);
   const notable = isDerby || Math.abs(diff)>=3 || (C._curUnbeaten||0)>=3;
-  if(!notable && Math.random()>0.15) return;    // matchs ordinaires : rare
-  if(!isDerby && Math.abs(diff)<3 && Math.random()>0.5) return;
+  // Fréquence pondérée par la couverture : en R1 (~0.45) c'est deux fois plus
+  // rare qu'en D1, et inexistant plus bas.
+  if(!notable && Math.random()>0.15*cover) return;
+  if(!isDerby && Math.abs(diff)<3 && Math.random()>0.5*cover) return;
+  if(notable && Math.random()>cover) return;   // même un derby ne fait pas la une en R1
   const ctx = {
     result: diff>0?'win':diff<0?'loss':'draw', diff:diff,
     oppName:(fix.homeIsPlayer?fix.awayName:fix.homeName)||'l adversaire',
@@ -3361,5 +3395,174 @@ function _renderInterviewCard(){
     h += '<button class="btn" onclick="answerInterview(' + i + ')" style="text-align:left;font-size:10px;padding:7px 10px;line-height:1.4">' + o.label + '</button>';
   });
   h += '</div></div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHAÎNE VIDÉO DU CLUB (« MatchTube ») — actif à gérer
+// ═══════════════════════════════════════════════════════════
+// La chaîne n'est PAS un compteur qui monte tout seul : publier est une vraie
+// décision hebdomadaire, avec un coût et un arbitrage (abonnés vs moral vs
+// réputation). Les abonnés génèrent un revenu, mais plafonné par la
+// médiatisation du niveau (invisible en amateur, lucratif en montant). Ne rien
+// publier = stagnation puis déclin. C'est ce qui en fait un actif, pas un cadeau.
+
+const CHANNEL = {
+  createCost: 3000,           // coût de lancement
+  // Types de contenu : coût de production, gain d'abonnés (×médiatisation),
+  // et effets secondaires. `perf` = dépend des résultats sportifs.
+  content: {
+    recap:    { label:'📹 Résumé de match', cost:200,  subs:[80,220],  desc:'Sûr et pas cher. Gain modéré d\'abonnés.' },
+    short:    { label:'⚡ Short', cost:100,  subs:[120,320], desc:'Format court et viral : peu cher, gros potentiel de portée.' },
+    analysis: { label:'📊 Analyse tactique', cost:500,  subs:[40,400],  perf:true, desc:'Gros gain si l\'équipe brille, flop sinon.' },
+    challenge:{ label:'🎯 Défi / Challenge', cost:600,  subs:[250,650], morale:1, desc:'Les joueurs relèvent un défi : fédérateur, bon pour le vestiaire.' },
+    vlog:     { label:'🎬 Vlog coulisses',   cost:800,  subs:[200,500], morale:-1, desc:'Beaucoup d\'abonnés, mais pèse sur le vestiaire.' },
+    clickbait:{ label:'🔥 Contenu choc',      cost:400,  subs:[300,800], repute:-2, desc:'Explosion d\'abonnés au prix de votre image.' },
+  },
+};
+
+function _channel(){ return careerV2 ? careerV2.channel : null; }
+
+// Revenu par abonné et par semaine, modulé par la médiatisation du niveau.
+function _channelRevPerSub(){
+  const cover = (typeof _mediaCoverage==='function') ? _mediaCoverage() : 0.5;
+  return 0.02 * cover;        // 100k abonnés en D1 ≈ 2000/sem ; quasi nul en amateur
+}
+
+// Créer la chaîne (dépense du budget du club).
+function createChannel(){
+  const C = careerV2;
+  if(!C || !C.club) return;
+  if(C.channel){ logEvent('Vous avez déjà une chaîne.', '#e06060'); return; }
+  if((C.club.budget||0) < CHANNEL.createCost){
+    logEvent('💸 Il faut ' + _fmtMoney(CHANNEL.createCost) + ' pour lancer la chaîne.', '#e02030'); return;
+  }
+  if(!confirm('Lancer la chaîne vidéo du club pour ' + _fmtMoney(CHANNEL.createCost) + ' ?\n\nPubliez du contenu chaque semaine pour gagner des abonnés — et des revenus une fois le club médiatisé.')) return;
+  C.club.budget -= CHANNEL.createCost;
+  try{ _addFinanceLog('Lancement chaîne vidéo', -CHANNEL.createCost); }catch(e){}
+  C.channel = { subs:0, videos:0, publishedWeek:-1, lastGain:0, history:[] };
+  logEvent('📺 La chaîne vidéo du club est en ligne !', '#18c860');
+  saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+}
+
+// Publier une vidéo (une par semaine). Décision réelle : coût + arbitrage.
+function publishVideo(type){
+  const C = careerV2;
+  const ch = _channel();
+  if(!C || !ch) return;
+  const def = CHANNEL.content[type];
+  if(!def){ return; }
+  if(ch.publishedWeek === C.week){
+    logEvent('Vous avez déjà publié cette semaine.', '#e06060'); return;
+  }
+  if((C.club.budget||0) < def.cost){
+    logEvent('💸 Production trop chère (' + _fmtMoney(def.cost) + ' requis).', '#e02030'); return;
+  }
+  C.club.budget -= def.cost;
+  try{ _addFinanceLog('Production vidéo (' + type + ')', -def.cost); }catch(e){}
+  ch.publishedWeek = C.week;
+  ch.videos++;
+
+  // Gain d'abonnés : base aléatoire × médiatisation × (perf si analyse).
+  const cover = (typeof _mediaCoverage==='function') ? _mediaCoverage() : 0.5;
+  let gain = def.subs[0] + Math.random()*(def.subs[1]-def.subs[0]);
+  if(def.perf){
+    // Dépend de la forme récente (série d'invincibilité).
+    const form = Math.min(1.5, 0.5 + (C._curUnbeaten||0)*0.2);
+    gain *= form;
+  }
+  gain = Math.round(gain * (0.3 + cover));      // médiatisation : peu d'abonnés en amateur
+  ch.subs = Math.max(0, ch.subs + gain);
+  ch.lastGain = gain;
+
+  // Effets secondaires du type de contenu.
+  if(def.morale) [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.max(-10, (p._fm||0) + def.morale); });
+  if(def.repute && typeof C.director_reputation==='number') C.director_reputation = Math.max(0, Math.min(100, C.director_reputation + def.repute));
+
+  // La chaîne poste aussi sur le fil Z (option A : contenu vidéo dans le feed).
+  try{
+    if(typeof _socialAdd==='function'){
+      const titles = {
+        recap:    'NOUVELLE VIDÉO 📹 Résumé du dernier match, ça vaut le détour !',
+        short:    'NOUVEAU SHORT ⚡ 30 secondes de folie, à voir absolument 👀',
+        analysis: 'NOUVELLE VIDÉO 📊 On décrypte la tactique du coach 👀',
+        challenge:'NOUVELLE VIDÉO 🎯 Les joueurs relèvent le défi, fou rire garanti 😂',
+        vlog:     'NOUVELLE VIDÉO 🎬 Immersion dans les coulisses du club !',
+        clickbait:'NOUVELLE VIDÉO 🔥 CE QUE PERSONNE NE VOUS DIT SUR CE CLUB 😱',
+      };
+      _socialAdd(titles[type] || 'Nouvelle vidéo en ligne !', 'good');
+    }
+  }catch(e){}
+
+  logEvent('📺 Vidéo publiée (+' + gain + ' abonnés).', '#18c860');
+  saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+}
+
+// Revenu hebdomadaire de la chaîne (appelé par l'économie). Déclin léger si on
+// ne publie pas (l'algorithme n'aime pas l'inactivité).
+function _channelWeeklyRevenue(){
+  const C = careerV2;
+  const ch = _channel();
+  if(!C || !ch) return 0;
+  // Inactivité : si aucune vidéo depuis 2+ semaines, on perd des abonnés.
+  if(ch.publishedWeek < (C.week||0) - 1){
+    ch.subs = Math.max(0, Math.round(ch.subs * 0.97));   // -3%/sem d'inactivité
+  }
+  const rev = Math.round(ch.subs * _channelRevPerSub());
+  return rev;
+}
+
+function _fmtSubs(n){
+  if(n >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'M';
+  if(n >= 1000) return (n/1000).toFixed(1).replace('.0','')+'k';
+  return ''+Math.round(n);
+}
+
+// Panneau de la chaîne dans l'onglet Z : création, publication, statistiques.
+function _renderChannelPanel(){
+  const C = careerV2;
+  if(!C || C.type !== 'director') return '';
+  const ch = C.channel;
+
+  if(!ch){
+    // Pas encore de chaîne : proposition de lancement.
+    let h = '<div class="ccard ccard-red" style="margin:10px 14px">';
+    h += '<div class="ccard-title">📺 Chaîne vidéo du club</div>';
+    h += '<div class="ctxt-sm" style="margin-bottom:8px">Lancez la chaîne du club : publiez du contenu, gagnez des abonnés, et générez des revenus une fois le club médiatisé.</div>';
+    h += '<button class="btn btng" onclick="createChannel()" style="width:100%;font-size:10px;padding:7px">🚀 Lancer la chaîne (' + _fmtMoney(CHANNEL.createCost) + ')</button>';
+    h += '</div>';
+    return h;
+  }
+
+  const revWeek = Math.round((ch.subs||0) * _channelRevPerSub());
+  const publishedThisWeek = (ch.publishedWeek === C.week);
+  let h = '<div class="ccard ccard-red" style="margin:10px 14px">';
+  h += '<div class="ccard-title">📺 Chaîne du club <span style="font-size:9px;color:var(--muted);font-weight:400">' + (ch.videos||0) + ' vidéos</span></div>';
+  // Stats : abonnés + revenu hebdo.
+  h += '<div style="display:flex;gap:14px;margin-bottom:8px">';
+  h += '<div><div style="font-size:18px;font-weight:900;color:var(--fg)">' + _fmtSubs(ch.subs||0) + '</div><div style="font-size:8px;color:var(--muted)">abonnés</div></div>';
+  h += '<div><div style="font-size:18px;font-weight:900;color:' + (revWeek>0?'#18c860':'var(--muted)') + '">' + _fmtMoney(revWeek) + '</div><div style="font-size:8px;color:var(--muted)">/semaine</div></div>';
+  if(ch.lastGain) h += '<div><div style="font-size:18px;font-weight:900;color:#1878e8">+' + _fmtSubs(ch.lastGain) + '</div><div style="font-size:8px;color:var(--muted)">dernière vidéo</div></div>';
+  h += '</div>';
+
+  if(revWeek === 0){
+    h += '<div class="ctxt-xs" style="color:#e08040;margin-bottom:6px">⚠️ À ce niveau, la monétisation est quasi nulle. La chaîne prendra de la valeur en montant en division.</div>';
+  }
+
+  if(publishedThisWeek){
+    h += '<div class="ctxt-sm" style="color:#f0c028">✔️ Vidéo déjà publiée cette semaine. Revenez la semaine prochaine.</div>';
+  } else {
+    h += '<div class="ctxt-xs" style="margin-bottom:5px;color:var(--muted)">Publier une vidéo cette semaine :</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px">';
+    Object.keys(CHANNEL.content).forEach(function(type){
+      const d = CHANNEL.content[type];
+      h += '<button class="btn" onclick="publishVideo(\'' + type + '\')" style="text-align:left;font-size:9px;padding:6px 8px;line-height:1.3">';
+      h += '<span style="font-weight:700">' + d.label + '</span> <span style="color:var(--muted)">— ' + _fmtMoney(d.cost) + '</span>';
+      h += '<div style="font-size:8px;color:var(--muted);margin-top:1px">' + d.desc + '</div>';
+      h += '</button>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
   return h;
 }

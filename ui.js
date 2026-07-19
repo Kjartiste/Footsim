@@ -7933,13 +7933,21 @@ function _renderDirectorOverview(){
       const gd = s.GF-s.GA;
       const gdCol = gd>0?'#18c860':gd<0?'#e06060':'var(--muted)';
       const posEmoji = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
-      const rowBg = isMe ? 'background:'+accentCol+'18;border-radius:6px;' : '';
-      h += '<div style="display:grid;grid-template-columns:22px 1fr 22px 22px 22px 22px 34px 30px;gap:0;align-items:center;padding:7px 4px;border-bottom:1px solid var(--b1)10;'+rowBg+'">';
+      const total = standings.length;
+      // Zones : montée directe (1-2), barrages (3-6), relégation (2 derniers).
+      let zoneBar = 'transparent';
+      if(i < 2) zoneBar = '#18c860';                       // montée directe (vert)
+      else if(i >= 2 && i < 6) zoneBar = '#f0c028';        // barrages (or)
+      else if(i >= total-2) zoneBar = '#e06060';           // relégation (rouge)
+      // Zébrure : fond alterné léger, sauf pour ta ligne (surlignée en accent).
+      const zebra = (i % 2 === 1) ? 'background:rgba(255,255,255,0.022);' : '';
+      const rowBg = isMe ? 'background:'+accentCol+'22;' : zebra;
+      h += '<div style="display:grid;grid-template-columns:22px 1fr 22px 22px 22px 22px 34px 30px;gap:0;align-items:center;padding:7px 4px 7px 7px;border-bottom:1px solid var(--b1)10;border-left:3px solid '+zoneBar+';border-radius:'+(isMe?'6px':'0')+';'+rowBg+'">';
       h += '<div style="font-size:11px;color:var(--muted)">'+(posEmoji||(i+1))+'</div>';
       const cBadge = (s.badge && typeof BadgeCache!=='undefined')
         ? '<span style="width:16px;height:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center"><img src="'+BadgeCache.dataURI(s.badge,16)+'" width="16" height="16" style="object-fit:contain"></span>'
-        : '<span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:'+(s.color||'#888')+'"></span>';
-      h += '<div style="display:flex;align-items:center;gap:5px;min-width:0">'+cBadge+'<span style="font-size:11px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</span></div>';
+        : _clubCrest(s.name, s.color, 16);
+      h += '<div style="display:flex;align-items:center;gap:6px;min-width:0">'+cBadge+'<span style="font-size:11px;font-weight:'+(isMe?'900':'600')+';color:'+(isMe?accentCol:'var(--fg)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</span></div>';
       h += '<div style="font-size:10px;text-align:center;color:var(--muted)">'+s.P+'</div>';
       h += '<div style="font-size:10px;text-align:center;color:#18c860">'+(s.W||0)+'</div>';
       h += '<div style="font-size:10px;text-align:center;color:#f0c028">'+(s.D||0)+'</div>';
@@ -7948,6 +7956,12 @@ function _renderDirectorOverview(){
       h += '<div style="font-size:13px;font-weight:900;text-align:center;color:'+(isMe?accentCol:'var(--fg)')+'">'+s.Pts+'</div>';
       h += '</div>';
     });
+    // Légende des zones.
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:8px;color:var(--muted)">';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;background:#18c860;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Montée</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;background:#f0c028;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Barrages</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;background:#e06060;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Relégation</span>';
+    h += '</div>';
     h += '</div>';
   }
 
@@ -7996,9 +8010,9 @@ function _renderDirectorSquad(){
   // Quelle équipe afficher : 'main' (première) ou l'index d'une affiliée.
   const view = window._squadView || 'main';
   // Construire la liste des équipes navigables : première + réserves.
-  const teams = [{ key:'main', label:'Équipe première', players:C.players||[], bench:C.bench||[] }];
+  const teams = [{ key:'main', label:'Équipe première', players:C.players||[], bench:C.bench||[], reserves:C.reserves||[] }];
   (C.affiliates||[]).forEach(function(aff,i){
-    teams.push({ key:'aff'+i, label:(aff.role==='U23 / académie'?'U23 · ':'Réserve · ')+aff.name, players:aff.players||[], bench:aff.bench||[], color:aff.color });
+    teams.push({ key:'aff'+i, label:(aff.role==='U23 / académie'?'U23 · ':'Réserve · ')+aff.name, players:aff.players||[], bench:aff.bench||[], reserves:aff.reserves||[], color:aff.color });
   });
   const cur = teams.find(t=>t.key===view) || teams[0];
 
@@ -8042,8 +8056,12 @@ function _renderDirectorSquad(){
     h += '<div style="font-size:9px;font-weight:700;color:var(--muted);padding:8px 8px 4px">🪑 Banc</div>';
     rows(cur.bench, 'bench');
   }
+  if(cur.reserves && cur.reserves.length){
+    h += '<div style="font-size:9px;font-weight:700;color:var(--purple);padding:8px 8px 4px">📥 Réserve</div>';
+    rows(cur.reserves, 'reserve');
+  }
   h += '</div>';
-  h += '<div style="padding:7px 12px;font-size:8px;color:var(--muted);border-top:1px solid var(--b1)">Clique sur une joueuse pour ses stats détaillées · 🌟 pépite</div>';
+  h += '<div style="padding:7px 12px;font-size:8px;color:var(--muted);border-top:1px solid var(--b1)">Clique sur une joueuse pour ses stats et pour la déplacer (effectif · banc · réserve) · 🌟 pépite</div>';
   h += '</div>';
   return h;
 }
@@ -8106,8 +8124,8 @@ function _closeOpponentSquad(){ window._oppSquadView=null; const el=document.get
 function _openPlayerCard(teamKey, pid){
   const C=careerV2; if(!C) return;
   let list=[];
-  if(teamKey==='main') list=[...(C.players||[]),...(C.bench||[])];
-  else { const aff=(C.affiliates||[])[parseInt(teamKey.replace('aff',''),10)]; if(aff) list=[...(aff.players||[]),...(aff.bench||[])]; }
+  if(teamKey==='main') list=[...(C.players||[]),...(C.bench||[]),...(C.reserves||[])];
+  else { const aff=(C.affiliates||[])[parseInt(teamKey.replace('aff',''),10)]; if(aff) list=[...(aff.players||[]),...(aff.bench||[]),...(aff.reserves||[])]; }
   const p = list.find(x=>String(x.id||'')===pid) || list.find(x=>(x.name)===pid) || list.find((x,i)=>String(x.name+'_'+(i+1))===pid);
   if(!p){ return; }
   window._playerCardData = { p, teamKey };
@@ -8154,11 +8172,20 @@ function _renderPlayerCardOverlay(p){
     const pid = String(p.id!=null ? p.id : p.name);
     const inBench = arr.bench.some(x=>_sameP(x,p));
     const inStart = arr.players.some(x=>_sameP(x,p));
-    h+='<div style="margin-top:12px;display:flex;gap:8px">';
-    if(inBench){
-      h+='<button onclick="_squadPromote(\''+teamKey+'\',\''+pid.replace(/\'/g,"")+'\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#18c860;color:#fff;font-size:11px;font-weight:800;cursor:pointer">⬆️ Intégrer à l\'effectif</button>';
-    } else if(inStart){
-      h+='<button onclick="_squadDemote(\''+teamKey+'\',\''+pid.replace(/\'/g,"")+'\')" style="flex:1;padding:8px;border:1px solid var(--b2);border-radius:8px;background:transparent;color:var(--muted);font-size:11px;font-weight:800;cursor:pointer">⬇️ Mettre sur le banc</button>';
+    const inReserve = (arr.reserves||[]).some(x=>_sameP(x,p));
+    const pidEsc = pid.replace(/'/g,"");
+    h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
+    if(inReserve){
+      // En réserve : seule action, le rappeler.
+      h+='<button onclick="_squadFromReserve(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#18c860;color:#fff;font-size:11px;font-weight:800;cursor:pointer">📤 Rappeler de la réserve</button>';
+    } else {
+      if(inBench){
+        h+='<button onclick="_squadPromote(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#18c860;color:#fff;font-size:11px;font-weight:800;cursor:pointer">⬆️ Intégrer à l\'effectif</button>';
+      } else if(inStart){
+        h+='<button onclick="_squadDemote(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:1px solid var(--b2);border-radius:8px;background:transparent;color:var(--muted);font-size:11px;font-weight:800;cursor:pointer">⬇️ Mettre sur le banc</button>';
+      }
+      // Depuis titulaire ou banc, on peut aussi envoyer en réserve.
+      h+='<button onclick="_squadToReserve(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:1px solid var(--purple);border-radius:8px;background:transparent;color:var(--purple);font-size:11px;font-weight:800;cursor:pointer">📥 Mettre en réserve</button>';
     }
     h+='</div>';
   })();
@@ -8176,10 +8203,10 @@ function _closePlayerCard(){
 // Résout les tableaux réels (équipe première ou affiliée) à partir de teamKey.
 function _squadArraysFor(teamKey){
   const C = careerV2; if(!C) return null;
-  if(teamKey==='main') return { players:(C.players||(C.players=[])), bench:(C.bench||(C.bench=[])) };
+  if(teamKey==='main') return { players:(C.players||(C.players=[])), bench:(C.bench||(C.bench=[])), reserves:(C.reserves||(C.reserves=[])) };
   const aff=(C.affiliates||[])[parseInt(String(teamKey).replace('aff',''),10)];
   if(!aff) return null;
-  return { players:(aff.players||(aff.players=[])), bench:(aff.bench||(aff.bench=[])) };
+  return { players:(aff.players||(aff.players=[])), bench:(aff.bench||(aff.bench=[])), reserves:(aff.reserves||(aff.reserves=[])) };
 }
 function _sameP(a,b){
   if(!a||!b) return false;
@@ -8214,6 +8241,48 @@ function _squadDemote(teamKey, pid){
   p.onBench=true;
   arr.bench.push(p);
   logEvent('⬇️ '+p.name+' est envoyé sur le banc.','#f0c028');
+  saveCareerV2();
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+
+// Envoie un joueur (titulaire ou banc) vers la RÉSERVE.
+function _squadToReserve(teamKey, pid){
+  const arr=_squadArraysFor(teamKey); if(!arr) return;
+  if(!arr.reserves) arr.reserves=[];
+  // Cherche le joueur dans l'effectif ou sur le banc.
+  let src=null, idx=-1;
+  idx=arr.players.findIndex(x=>String(x&&x.id||'')===pid || (x&&x.name)===pid);
+  if(idx>=0) src=arr.players;
+  else { idx=arr.bench.findIndex(x=>String(x&&x.id||'')===pid || (x&&x.name)===pid); if(idx>=0) src=arr.bench; }
+  if(!src){ logEvent('Joueur introuvable.','#e02030'); return; }
+  const p=src[idx];
+  // Ne pas vider l'effectif de son dernier gardien.
+  if(p.pos==='GB'){
+    const otherGK=arr.players.concat(arr.bench).some(x=>x!==p && x && x.pos==='GB');
+    if(!otherGK){ logEvent('⚠️ Impossible : c\'est le seul gardien de l\'effectif.','#e06060'); return; }
+  }
+  // Un effectif de départ doit garder assez de joueurs pour aligner une équipe.
+  if(src===arr.players && arr.players.length<=7){
+    logEvent('⚠️ Effectif de départ trop réduit pour retirer ce joueur.','#e06060'); return;
+  }
+  src.splice(idx,1);
+  p.onBench=false; p._inReserve=true;
+  arr.reserves.push(p);
+  logEvent('📥 '+p.name+' est envoyé en réserve.','#8840e0');
+  saveCareerV2();
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+
+// Rappelle un joueur de la réserve vers le banc de l'équipe.
+function _squadFromReserve(teamKey, pid){
+  const arr=_squadArraysFor(teamKey); if(!arr || !arr.reserves) return;
+  const i=arr.reserves.findIndex(x=>String(x&&x.id||'')===pid || (x&&x.name)===pid);
+  if(i<0){ logEvent('Joueur introuvable en réserve.','#e02030'); return; }
+  const p=arr.reserves[i];
+  arr.reserves.splice(i,1);
+  p._inReserve=false; p.onBench=true;
+  arr.bench.push(p);
+  logEvent('📤 '+p.name+' est rappelé de la réserve (sur le banc).','#18c860');
   saveCareerV2();
   const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
 }
@@ -9040,17 +9109,23 @@ function _renderDirectorCalendar(){
   h += '<div style="font-size:9px;color:var(--muted);margin-bottom:8px">Semaine '+C.week+' · Saison '+C.season+' · <span onclick="_calGoToday()" style="text-decoration:underline;cursor:pointer">revenir à aujourd\'hui</span></div>';
 
   // ── Forme / moral moyens de l'effectif ──────────────────────────────
+  // _fm (forme) et _hm (moral) vont de -10 à +10, centrés sur 0. Les afficher
+  // « X/10 » donnait l'impression d'un moral au minimum alors que 0 = neutre.
+  // On mappe -10..+10 sur 0..100 pour une lecture claire : 50 = neutre.
   const _squadAll = (C.players||[]).concat(C.bench||[]);
   if(_squadAll.length){
-    const avgFm = _squadAll.reduce(function(s,p){return s+(p._fm||0);},0)/_squadAll.length;
-    const avgHm = _squadAll.reduce(function(s,p){return s+(p._hm||0);},0)/_squadAll.length;
-    const fmCol = avgFm>=3?'#18c860':avgFm>=0?'#f0c028':'#e06060';
-    const hmCol = avgHm>=3?'#18c860':avgHm>=0?'#f0c028':'#e06060';
+    const avgFmRaw = _squadAll.reduce(function(s,p){return s+(p._fm||0);},0)/_squadAll.length;
+    const avgHmRaw = _squadAll.reduce(function(s,p){return s+(p._hm||0);},0)/_squadAll.length;
+    const to100 = function(v){ return Math.round((v+10)/20*100); };
+    const avgFm = to100(avgFmRaw), avgHm = to100(avgHmRaw);
+    const scaleCol = function(v){ return v>=60?'#18c860':v>=40?'#f0c028':'#e06060'; };
+    const fmCol = scaleCol(avgFm);
+    const hmCol = scaleCol(avgHm);
     const avgCoh = _squadAll.reduce(function(s,p){return s+(p._coh!=null?p._coh:50);},0)/_squadAll.length;
     const cohCol = avgCoh>=65?'#18c860':avgCoh>=45?'#f0c028':'#e06060';
     h += '<div style="display:flex;gap:14px;margin-bottom:8px;font-size:9px">';
-    h += '<div>💪 Forme moy. <b style="color:'+fmCol+'">'+avgFm.toFixed(1)+'</b>/10</div>';
-    h += '<div>🙂 Moral moy. <b style="color:'+hmCol+'">'+avgHm.toFixed(1)+'</b>/10</div>';
+    h += '<div>💪 Forme moy. <b style="color:'+fmCol+'">'+avgFm+'</b>/100</div>';
+    h += '<div>🙂 Moral moy. <b style="color:'+hmCol+'">'+avgHm+'</b>/100</div>';
     h += '<div>🤝 Cohésion <b style="color:'+cohCol+'">'+Math.round(avgCoh)+'</b>/100</div>';
     h += '</div>';
   }
@@ -10103,8 +10178,12 @@ function _recordCareerV2MatchResult(){
   fix.sh = fix.homeIsPlayer ? s0 : s1;
   fix.sa = fix.homeIsPlayer ? s1 : s0;
 
-  const myG = fix.homeIsPlayer ? s0 : s1;
-  const aiG = fix.homeIsPlayer ? s1 : s0;
+  // team 0 est TOUJOURS l'équipe du joueur (même affichée à l'extérieur) : nos
+  // buts = s0, ceux de l'adversaire = s1, quel que soit le statut dom/ext.
+  // (Avant, on permutait selon homeIsPlayer, ce qui inversait le résultat des
+  //  matchs à l'extérieur : un 4-0 gagné à l'extérieur était lu comme perdu.)
+  const myG = s0;
+  const aiG = s1;
 
   C.season_stats.goals_for     += myG;
   C.season_stats.goals_against += aiG;
@@ -11715,6 +11794,15 @@ function _renderDirectorSocial(){
   h += '<div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1878e8,#8840e0);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;color:#fff;font-family:\'Barlow Condensed\',sans-serif">Z</div>';
   h += '<div><div style="font-weight:900;font-size:16px;color:var(--fg);letter-spacing:.5px">Z</div>';
   h += '<div style="font-size:9px;color:var(--muted)">L\'actu de votre club, en direct</div></div>';
+  // Note contextuelle : au niveau amateur, la médiatisation est faible — le fil
+  // est surtout animé par les supporters, pas par la presse.
+  try{
+    if(typeof _hasFormalMedia==='function' && !_hasFormalMedia()){
+      h += '<div style="padding:6px 14px;font-size:9px;color:var(--muted);font-style:italic;border-bottom:1px solid var(--b1)">📻 À ce niveau, peu de médias suivent le club : ce sont surtout vos supporters qui font vivre le fil.</div>';
+    }
+  }catch(e){}
+  // Panneau chaîne vidéo (création / publication / stats).
+  try{ if(typeof _renderChannelPanel==='function') h += _renderChannelPanel(); }catch(e){}
   h += '</div>';
 
   if(!social.length && !press.length){
@@ -11762,4 +11850,30 @@ function _renderSocialTeaser(){
   if(social.length>1) h += '<div style="font-size:8px;color:var(--muted);margin-top:5px">+ '+(social.length-1)+' autres posts dans Z</div>';
   h += '</div>';
   return h;
+}
+
+// ── BLASON GÉNÉRÉ ────────────────────────────────────────────────────────
+// Petit écusson SVG dérivé du nom + de la couleur du club, pour donner une
+// identité visuelle aux clubs sans blason importé. Déterministe (même club →
+// même blason). Rendu inline, sans dépendance.
+function _clubCrest(name, color, size){
+  size = size || 16;
+  const nm = (name||'?').trim();
+  // Couleur : celle du club, sinon dérivée du nom (teinte stable).
+  let col = color;
+  if(!col){
+    let hash = 0; for(let i=0;i<nm.length;i++) hash = (hash*31 + nm.charCodeAt(i)) & 0xffffff;
+    col = 'hsl(' + (hash % 360) + ',55%,45%)';
+  }
+  const initial = (nm.replace(/[^A-Za-zÀ-ÿ0-9]/g,'').charAt(0) || '?').toUpperCase();
+  // Forme d'écusson (blason) : rectangle à base pointue.
+  const s = size, w = s, hgt = s;
+  const fs = Math.round(s*0.58);
+  let svg = '<svg width="'+w+'" height="'+hgt+'" viewBox="0 0 20 22" style="flex-shrink:0;vertical-align:middle" xmlns="http://www.w3.org/2000/svg">';
+  svg += '<path d="M2 2 H18 V13 Q18 19 10 21 Q2 19 2 13 Z" fill="'+col+'" stroke="rgba(255,255,255,0.25)" stroke-width="0.8"/>';
+  // Barre horizontale décorative (héraldique simple).
+  svg += '<path d="M2 8 H18" stroke="rgba(255,255,255,0.18)" stroke-width="1.4"/>';
+  svg += '<text x="10" y="'+(fs*0.5+5)+'" text-anchor="middle" font-size="9" font-weight="900" fill="#fff" font-family="sans-serif" dominant-baseline="middle">'+initial+'</text>';
+  svg += '</svg>';
+  return '<span style="display:inline-flex;width:'+size+'px;height:'+size+'px;align-items:center;justify-content:center;flex-shrink:0">'+svg+'</span>';
 }

@@ -505,10 +505,21 @@ function startCareerDirector(regionId, clubId, nationId){
   const reservesCount = Math.max(_resMin, Math.round(prof.reserves * _modeScale));
 
   const _mkPositions = (n)=>{
-    // Compo réaliste : 1 GB + défenseurs + milieux + attaquants, complétée.
-    const base = ['GB','DC','DC','DD','DG','MDC','MC','MC','MOG','MOD','ATT'];
-    const extra = ['DC','MC','ATT','DD','DG','GB','MDC','MOG','ATT','MC'];
-    const out = base.slice();
+    // Compo réaliste ÉQUILIBRÉE selon le mode de jeu. Avant, on utilisait une
+    // base 11v11 tronquée : en 7v7 les 7 premiers postes étaient
+    // [GB,DC,DC,DD,DG,MDC,MC] → 4 défenseurs et AUCUN attaquant. D'où des
+    // effectifs presque entièrement défensifs. On part désormais d'un XI adapté
+    // au mode, puis on complète en respectant les proportions déf/mil/att.
+    const mode = window.gameMode || '7v7';
+    const xi = mode==='11v11'
+      ? ['GB','DC','DC','DD','DG','MDC','MC','MOG','MOD','ATT','ATT']
+      : mode==='5v5'
+      ? ['GB','DC','MC','MO','ATT']
+      : ['GB','DC','DD','DG','MC','MO','ATT'];        // 7v7 : 1-3-2-1 équilibré
+    // Ordre de complément : on ajoute en rotation déf/mil/att pour garder
+    // l'équilibre quel que soit le nombre total de joueurs.
+    const extra = ['MC','ATT','DC','MO','DD','ATT','MC','DG','MOG','ATT','DC','MC'];
+    const out = xi.slice();
     for(let i=0; out.length<n; i++) out.push(extra[i%extra.length]);
     return out.slice(0,n);
   };
@@ -1029,6 +1040,14 @@ function _applyWeeklyEconomy(){
   }
   if(sponsorRev > 0) _addFinanceLog('Sponsors', sponsorRev);
 
+  // Revenu de la chaîne vidéo (actif géré par le joueur).
+  if(typeof _channelWeeklyRevenue === 'function'){
+    try{
+      const chRev = _channelWeeklyRevenue();
+      if(chRev > 0){ C.club.budget += chRev; _addFinanceLog('Chaîne vidéo (monétisation)', chRev); }
+    }catch(e){}
+  }
+
   // Décompte de la durée des contrats sponsors + notification d'expiration.
   if(typeof SPONSORS!=='undefined'){
     try{
@@ -1083,7 +1102,16 @@ function _resolveRegionId(nationId, regionIdOrName){
 function _buildOpponentSquad(nationId, regionId, level, clubName){
   const sizeByLevel = { d1:{s:14,b:5}, d2:{s:14,b:4}, d3:{s:13,b:4}, r1:{s:12,b:4}, r2:{s:12,b:3}, r3:{s:11,b:3}, dh:{s:11,b:3} };
   const sz = sizeByLevel[level] || sizeByLevel.dh;
-  const mkPos = (n)=>{ const base=['GB','DC','DC','DD','DG','MDC','MC','MC','MOG','MOD','ATT']; const extra=['DC','MC','ATT','DD','GB','MDC','MOG']; const out=base.slice(); for(let i=0;out.length<n;i++) out.push(extra[i%extra.length]); return out.slice(0,n); };
+  const mkPos = (n)=>{
+    const mode = (typeof window!=='undefined' && window.gameMode) || '7v7';
+    const xi = mode==='11v11'
+      ? ['GB','DC','DC','DD','DG','MDC','MC','MOG','MOD','ATT','ATT']
+      : mode==='5v5'
+      ? ['GB','DC','MC','MO','ATT']
+      : ['GB','DC','DD','DG','MC','MO','ATT'];
+    const extra=['MC','ATT','DC','MO','DD','ATT','MC','DG','MOG','ATT'];
+    const out=xi.slice(); for(let i=0;out.length<n;i++) out.push(extra[i%extra.length]); return out.slice(0,n);
+  };
   try{
     const resolvedRegion = _resolveRegionId(nationId, regionId);
     const sq = WORLDS.generateSquad(nationId, resolvedRegion, {
