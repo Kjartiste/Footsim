@@ -9875,6 +9875,16 @@ function acceptManagerJob(i){
   // le précise. Entraîner une réserve, c'est ne s'occuper que de la réserve.
   careerV2.teamScope = offer.teamScope || 'first';
 
+  // ── ÉQUIPE RÉSERVE RÉELLE ──────────────────────────────────────────────
+  // Si on est nommé à la réserve, on n'hérite PAS de l'effectif première : on
+  // dirige un groupe distinct, plus jeune et plus faible (des joueurs à former).
+  // Avant, « réserve » n'était qu'un libellé — on gérait quand même la 1re
+  // équipe. On construit ici un vrai effectif de réserve.
+  if(careerV2.teamScope === 'reserve'){
+    try{ _buildReserveSquad(careerV2); }catch(e){ console.error('reserve squad:', e); }
+    careerV2.club.name = offer.club;   // le nom porte déjà « (Réserve) »
+  }
+
   logEvent('✅ Vous prenez les rênes de '+offer.club+' !','#18c860');
   saveCareerV2();
   renderCareerV2();
@@ -11070,6 +11080,24 @@ function endCareerSeasonDirector(){
   }
   window._levelBeforeSeasonEnd = null;
 
+  // ── RÉCOMPENSE DE MONTÉE : +1 partout à tout l'effectif ────────────────
+  // Monter de division galvanise et fait grandir le groupe : chaque joueur
+  // gagne +1 sur toutes ses statistiques (borné à 99). Petit mais sensible,
+  // et cumulable au fil des montées successives.
+  if(_seasonPromoted && C.club){
+    const squad = [].concat(C.players||[], C.bench||[], C.reserves||[]);
+    let boosted = 0;
+    squad.forEach(function(p){
+      if(!p || !p.s) return;
+      Object.keys(p.s).forEach(function(k){
+        if(typeof p.s[k] === 'number') p.s[k] = Math.min(99, p.s[k] + 1);
+      });
+      if(p.s2){ Object.keys(p.s2).forEach(function(k){ if(typeof p.s2[k]==='number') p.s2[k]=Math.min(99,p.s2[k]+1); }); }
+      boosted++;
+    });
+    if(boosted){ logEvent('📈 Montée fêtée : tout l\'effectif progresse (+1 partout) !', '#18c860'); }
+  }
+
   // ── Archivage dans l'historique de carrière ─────────────────────────────
   // On fige un résumé complet de la saison qui vient de se terminer AVANT de
   // remettre season_stats à zéro et de régénérer le calendrier (qui écrase
@@ -11547,4 +11575,50 @@ function _genericBarrageOpp(C, sorted, myPos){
   const prefixes = ['Avant-dernier de', 'Barragiste de', 'Rescapé de'];
   const pre = prefixes[Math.floor(Math.random()*prefixes.length)];
   return pre + ' ' + upName;
+}
+
+// Nomme le manager à la tête d'une VRAIE équipe réserve. Les réserves existent
+// déjà dans l'univers (branches d'une Maison du Pilier — domestiques, gardes… —
+// ou équipes affiliées d'un club), avec leur propre effectif à leur niveau réel
+// (souvent DH, jeunes ou sans potentiel). On récupère cet effectif existant
+// plutôt que d'affaiblir artificiellement la première équipe.
+function _buildReserveSquad(C){
+  if(!C || !C.club) return;
+  // 1) Cherche une équipe affiliée/réserve déjà construite pour ce club.
+  const affs = C.affiliates || [];
+  // Préfère une branche de rôle « réserve » (gardes, domestiques…) ; sinon la
+  // première équipe affiliée non vide.
+  let res = affs.find(function(a){ return a && (a.players||[]).length && /réserve|reserve|garde|domestique|U23|académie/i.test(a.role||''); })
+         || affs.find(function(a){ return a && (a.players||[]).length; });
+
+  if(res){
+    // Bascule : la réserve DEVIENT l'équipe dirigée, la première équipe passe
+    // « au-dessus » (on ne la gère plus). On adopte l'effectif réel existant.
+    C.players = (res.players||[]).slice();
+    C.bench   = (res.bench||[]).slice();
+    C.reserves = [];
+    C.club.level = res.level || C.club.level;   // niveau réel de la réserve (souvent DH)
+    C.club.reserveOf = C.club.name;
+    C._reserveScope = true;
+    // Cette équipe n'est plus listée comme affiliée (on la dirige).
+    C.affiliates = affs.filter(function(a){ return a !== res; });
+    return;
+  }
+
+  // 2) Aucune réserve pré-existante (nations sans système de branches) :
+  //    on génère un effectif de niveau DH, jeune, à faible potentiel — ce que
+  //    sont ces équipes dans l'univers (domestiques, gardes…), PAS des cadres.
+  try{
+    if(window.WORLDS && WORLDS.generateSquad){
+      const sq = WORLDS.generateSquad(C.nation, C.club.region, {
+        positions: ['GB','DC','DD','DG','MC','MC','ATT'],
+        bench: ['GB','DC','MC','ATT'], reserves: [], level: 'dh',
+      });
+      if(sq && sq.players){
+        C.players = sq.players; C.bench = sq.bench||[]; C.reserves = [];
+        C.club.level = 'dh';
+      }
+    }
+  }catch(e){ console.error('reserve squad gen:', e); }
+  C._reserveScope = true;
 }

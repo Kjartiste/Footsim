@@ -1504,6 +1504,30 @@ function _matchOnDateKey(dateKey){
   }
   return null;
 }
+// Applique une VRAIE blessure de carrière à un joueur (semaines d'indispo),
+// pas seulement une gêne de match transitoire. Utilisé hors match (amicaux,
+// entraînement) où, avant, une « blessure » ne coûtait aucune semaine réelle —
+// le joueur récupérait dès le lendemain, d'où l'impression qu'il « s'en fout ».
+function _applyCareerInjury(p, level){
+  if(!p) return;
+  level = level || 1;
+  const resStat = (p.s2 && p.s2.resBless!=null) ? p.s2.resBless : (p.s && p.s.res!=null ? p.s.res : 50);
+  const resMul = 1 - (resStat/99)*0.4;                 // bonne résistance → plus court
+  const baseWeeks = {1:[1,2], 2:[2,4], 3:[4,9]}[level] || [1,2];
+  const wk = Math.max(1, Math.round((baseWeeks[0] + Math.random()*(baseWeeks[1]-baseWeeks[0])) * resMul));
+  p._injWeeks = Math.max(p._injWeeks||0, wk);
+  p._injLevelCareer = Math.max(p._injLevelCareer||0, level);
+  p._missNextMatch = true;
+  p.injLevel = level; p.injT = 0;                       // marqueur d'affichage
+  // Une blessure pèse sur le moral du joueur — d'autant plus qu'elle est grave.
+  // Ça donne un vrai poids à l'événement (avant, le joueur « s'en fichait »).
+  p._fm = Math.max(-10, (p._fm||0) - level * 1.5);
+  if(typeof careerLog==='function'){
+    const lbl = {1:'légère',2:'sérieuse',3:'grave'}[level] || '';
+    careerLog(`🤕 ${p.name} — blessure ${lbl} : indisponible ${p._injWeeks} sem.`, (typeof INJ_COLORS!=='undefined'&&INJ_COLORS[level])||'#e06060');
+  }
+}
+
 function _resolveDayPlan(dateKey){
   const C = careerV2; if(!C || C.type!=='director') return null;
   const squad = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]);
@@ -1567,7 +1591,12 @@ function _resolveDayPlan(dateKey){
       if(!p) return;
       p._hm = Math.max(-10, Math.min(10, (p._hm||0) + (win?1.2:draw?0.3:-0.6)));
       p._fm = Math.min(10, (p._fm||0) + 0.3);
-      if(Math.random()<0.01 && p.injLevel===0){ p.injLevel=1; p.injT=1+Math.floor(Math.random()*2); }
+      if(Math.random()<0.01 && (p._injWeeks||0)===0){
+        // Gravité pondérée : le plus souvent légère, rarement grave.
+        const r = Math.random();
+        const lvl = r<0.7 ? 1 : (r<0.93 ? 2 : 3);
+        _applyCareerInjury(p, lvl);
+      }
     });
     return '⚽ Match amical : '+(C.club.name)+' '+gf+'-'+ga+' (adversaire local) — '+(win?'victoire, moral en hausse !':draw?'match nul.':'défaite, léger coup au moral.');
   }
@@ -4872,6 +4901,7 @@ function recordCareerMatchResult(s0,s1){
         pp._injWeeks = Math.max(pp._injWeeks||0, wk);
         pp._injLevelCareer = mp.injLevel;
         pp._missNextMatch = true;
+        pp._fm = Math.max(-10, (pp._fm||0) - mp.injLevel * 1.5);
         if(typeof careerLog==='function') careerLog(`🤕 ${pp.name} blessé — indisponible ${pp._injWeeks} sem.`, INJ_COLORS?.[mp.injLevel]||'#e06060');
       }
     });
