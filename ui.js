@@ -10212,6 +10212,30 @@ function _recordCareerV2MatchResult(){
   C.club.budget += rev;
   _addFinanceLog('Recettes match vs '+opp, rev);
 
+  // ── RÉCUPÉRATION DES BLESSURES DU MATCH ────────────────────────────────
+  // teams[0] est un CLONE de l'effectif : les blessures survenues pendant le
+  // match (injLevel posé sur le clone) doivent être recopiées sur les vrais
+  // joueurs de la carrière et converties en indisponibilité (au moins 1 match).
+  // Sans ça, une blessure de match disparaissait à la fin de la rencontre.
+  try{
+    const squad = (C.players||[]).concat(C.bench||[], C.reserves||[]);
+    (teams[0] && teams[0].players || []).forEach(function(mp){
+      if(!mp || !(mp.injLevel>0)) return;
+      // Retrouver le vrai joueur (par id, sinon par nom).
+      const real = squad.find(function(rp){
+        return rp && ((mp.id!=null && rp.id===mp.id) || rp.name===mp.name);
+      });
+      if(!real) return;
+      if((real._injWeeks||0) > 0) return;              // déjà blessé
+      if(typeof _applyCareerInjury==='function'){
+        _applyCareerInjury(real, mp.injLevel);         // pose _injWeeks + _missNextMatch + moral
+      } else {
+        real._injWeeks = Math.max(real._injWeeks||0, 1);
+        real._missNextMatch = true; real.injLevel = mp.injLevel;
+      }
+    });
+  }catch(e){ console.error('harvest injuries:', e); }
+
   window._careerFixPlaying = null;
   // Le match du jour est réglé : on peut désormais avancer au jour suivant.
   if(C._pendingMatch) C._pendingMatch = null;
