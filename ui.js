@@ -7221,7 +7221,7 @@ function renderCareerDirector(el){
   const budget = club.budget;
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
-  let tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar','competitions','scorers'];
+  let tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar','competitions','scorers','social'];
   // Onglet Réserves : seulement si le club a des équipes affiliées.
   if(C.affiliates && C.affiliates.length) tabs.push('affiliates');
   // Onglet Historique : seulement une fois qu'au moins une saison est archivée.
@@ -7232,7 +7232,7 @@ function renderCareerDirector(el){
   const tabLabels = {
     overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato', academy:'🌱 Académie',
     finances:'💰 Finances', sponsors:'🤝 Sponsors', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
-    affiliates:'🏛 Réserves', history:'📜 Historique', scorers:'⚽ Buteurs', competitions:'🏆 Compétitions'
+    affiliates:'🏛 Réserves', history:'📜 Historique', scorers:'⚽ Buteurs', competitions:'🏆 Compétitions', social:'💬 Z'
   };
 
   let tabBtns = '';
@@ -7363,6 +7363,7 @@ function renderCareerDirectorTab(tab){
   else if(tab==='calendar') el.innerHTML = _renderDirectorCalendar();
   else if(tab==='scorers') el.innerHTML = _renderDirectorScorers();
   else if(tab==='competitions') el.innerHTML = _renderDirectorCompetitions();
+  else if(tab==='social') el.innerHTML = _renderDirectorSocial();
   else if(tab==='affiliates') el.innerHTML = _renderDirectorAffiliates();
   else if(tab==='history') el.innerHTML = _renderDirectorHistory();
   else el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px">A venir...</div>';
@@ -7694,10 +7695,13 @@ function _renderDirectorOverview(){
   let h = '';
 
   // ── Offre d'un autre club (prioritaire : décision à prendre) ─────────
+  try{ if(typeof _renderInterviewCard==='function') h += _renderInterviewCard(); }catch(e){ console.error('interview card:',e); }
   try{ if(typeof _renderSeasonEventCard==='function') h += _renderSeasonEventCard(); }catch(e){ console.error('event card:',e); }
   try{ if(typeof _renderRivalCard==='function') h += _renderRivalCard(); }catch(e){ console.error('rival card:',e); }
   try{ if(typeof _renderPressCard==='function') h += _renderPressCard(); }catch(e){ console.error('press card:',e); }
-  try{ if(typeof _renderSocialCard==='function') h += _renderSocialCard(); }catch(e){ console.error('social card:',e); }
+  // Le fil social complet vit désormais dans l'onglet « Z ». On garde en Vue
+  // un aperçu compact cliquable plutôt que la liste entière.
+  try{ if(typeof _renderSocialTeaser==='function') h += _renderSocialTeaser(); }catch(e){ console.error('social teaser:',e); }
   try{ if(typeof _renderJobOfferCard==='function') h += _renderJobOfferCard(); }catch(e){ console.error('job offer card:',e); }
   try{ if(typeof _renderManagerCard==='function') h += _renderManagerCard(); }catch(e){ console.error('manager card:',e); }
   try{ if(typeof _renderBoardRequestsCard==='function') h += _renderBoardRequestsCard(); }catch(e){ console.error('board requests:',e); }
@@ -9490,7 +9494,7 @@ function _calFriendlyPickerHTML(dateKey){
     h += '<div style="display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto">';
     list.forEach(function(t){
       const lvlLabel = t.level ? String(t.level).replace('valcourt_','V-').replace('brumefer_','B-').replace('district','D').toUpperCase() : '';
-      h += '<div onclick="_calPlanFriendly(\''+dateKey+'\',\''+t.name.replace(/'/g,"\\\'").replace(/"/g,'&quot;')+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;background:var(--dark);border:1px solid var(--b1)">';
+      h += '<div onclick="_calPlanFriendly(\''+dateKey+'\',\''+t.name.replace(/'/g,"\'").replace(/"/g,'&quot;')+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;background:var(--dark);border:1px solid var(--b1)">';
       h += '<span style="width:18px;height:18px;border-radius:50%;background:'+(t.color||'#888')+'33;border:2px solid '+(t.color||'#888')+';flex-shrink:0"></span>';
       h += '<span style="flex:1;font-size:11px;font-weight:700;color:'+(t.color||'var(--fg)')+'">'+t.name+'</span>';
       if(lvlLabel) h += '<span style="font-size:8px;color:var(--muted)">'+lvlLabel+'</span>';
@@ -10113,6 +10117,7 @@ function _recordCareerV2MatchResult(){
   // Presse : titre généré selon le résultat et le contexte.
   try{ if(typeof _pressAfterMatch==='function') _pressAfterMatch(fix, myG, aiG); }catch(e){ console.error('press:',e); }
   try{ if(typeof _socialAfterMatch==='function') _socialAfterMatch(fix, myG, aiG); }catch(e){ console.error('social:',e); }
+  try{ if(typeof _maybeInterview==='function') _maybeInterview(fix, myG, aiG); }catch(e){ console.error('interview:',e); }
   // Confiance du board : petite variation à chaque match (silencieuse).
   try{ if(typeof _boardOnMatch==='function') _boardOnMatch(myG, aiG); }catch(e){ console.error('board match:',e); }
 
@@ -10485,6 +10490,7 @@ function simCareerMatchDirector(){
   // Presse : titre généré selon le résultat et le contexte.
   try{ if(typeof _pressAfterMatch==='function') _pressAfterMatch(fix, myG, aiG); }catch(e){ console.error('press:',e); }
   try{ if(typeof _socialAfterMatch==='function') _socialAfterMatch(fix, myG, aiG); }catch(e){ console.error('social:',e); }
+  try{ if(typeof _maybeInterview==='function') _maybeInterview(fix, myG, aiG); }catch(e){ console.error('interview:',e); }
   // Confiance du board : petite variation à chaque match (silencieuse).
   try{ if(typeof _boardOnMatch==='function') _boardOnMatch(myG, aiG); }catch(e){ console.error('board match:',e); }
 
@@ -11633,4 +11639,127 @@ function _buildReserveSquad(C){
       }
     }
   }catch(e){ console.error('reserve squad gen:', e); }
+}
+
+// ── ONGLET « Z » : réseau social immersif ───────────────────────────────
+// Remplace les petites lignes de la Vue par un vrai fil façon réseau social :
+// avatars colorés, nom + @pseudo, date, texte, et compteurs d'engagement
+// (commentaires, reposts, likes). Le fil mêle réactions des supporters
+// (C.social) et manchettes de la presse (C.press) présentées comme des posts
+// de comptes médias.
+const _Z_AVATAR_COLORS = ['#1878e8','#8840e0','#18c860','#e0a020','#e02030','#00b0b0','#e060a0','#6070e0'];
+
+function _zAvatar(seed, letter){
+  const col = _Z_AVATAR_COLORS[(seed||0) % _Z_AVATAR_COLORS.length];
+  return '<div style="width:40px;height:40px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,'+col+','+col+'99);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#fff">'+(letter||'?').toUpperCase()+'</div>';
+}
+
+function _zFmtNum(n){
+  if(n >= 1000) return (n/1000).toFixed(1).replace('.0','')+'K';
+  return ''+n;
+}
+
+// Icônes d'action (SVG inline, style épuré comme la maquette).
+function _zActionIcons(post){
+  const ic = function(path, val, col){
+    return '<div style="display:flex;align-items:center;gap:6px;color:'+(col||'var(--muted)')+';font-size:12px">'+
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>'+
+      '<span>'+val+'</span></div>';
+  };
+  const comment = '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>';
+  const repost = '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>';
+  const like = '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>';
+  let h = '<div style="display:flex;justify-content:space-between;max-width:320px;margin-top:8px">';
+  h += ic(comment, _zFmtNum(post.comments||0));
+  h += ic(repost, _zFmtNum(post.reposts||0), post.tone==='good'?'var(--green)':'var(--muted)');
+  h += ic(like, _zFmtNum(post.likes||0), post.tone==='bad'?'var(--muted)':'#e0608a');
+  h += '<div style="display:flex;align-items:center;color:var(--muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></div>';
+  h += '</div>';
+  return h;
+}
+
+// Un post (supporter ou média) rendu comme une carte de fil.
+function _zRenderPost(post, isMedia){
+  const name = post.name || (isMedia ? '📰 Média Sport' : 'Supporter');
+  const handle = post.who || (isMedia ? '@mediasport' : '@fan');
+  const letter = (name||'?').replace(/[^A-Za-zÀ-ÿ]/g,'').charAt(0) || 'Z';
+  const seed = isMedia ? 4 : (post.avatar||0);
+  const dateLbl = 'S'+(post.season||1)+' · J'+(post.week||0);
+  const accent = post.tone==='good' ? 'var(--green)' : post.tone==='bad' ? 'var(--red)' : 'transparent';
+
+  let h = '<div style="display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--b1);'+(accent!=='transparent'?'border-left:2px solid '+accent+';':'')+'">';
+  h += _zAvatar(seed, isMedia ? '📰' : letter);
+  h += '<div style="flex:1;min-width:0">';
+  // En-tête : nom · @handle · date + badge média.
+  h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+  h += '<span style="font-weight:800;color:var(--fg);font-size:13px">'+name+'</span>';
+  if(isMedia) h += '<span style="font-size:9px;background:var(--blue);color:#fff;padding:0 5px;border-radius:8px;font-weight:700">Média</span>';
+  h += '<span style="color:var(--muted);font-size:12px">'+handle+' · '+dateLbl+'</span>';
+  h += '</div>';
+  // Corps du post.
+  h += '<div style="color:var(--fg);font-size:13px;line-height:1.5;margin-top:3px;white-space:pre-wrap">'+post.text+'</div>';
+  // Barre d'actions.
+  h += _zActionIcons(post);
+  h += '</div></div>';
+  return h;
+}
+
+function _renderDirectorSocial(){
+  const C = careerV2;
+  const social = (C.social||[]);
+  const press = (C.press||[]);
+
+  // En-tête « Z ».
+  let h = '<div style="max-width:600px">';
+  h += '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:2px solid var(--b1);position:sticky;top:0;background:var(--dark);z-index:2">';
+  h += '<div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1878e8,#8840e0);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;color:#fff;font-family:\'Barlow Condensed\',sans-serif">Z</div>';
+  h += '<div><div style="font-weight:900;font-size:16px;color:var(--fg);letter-spacing:.5px">Z</div>';
+  h += '<div style="font-size:9px;color:var(--muted)">L\'actu de votre club, en direct</div></div>';
+  h += '</div>';
+
+  if(!social.length && !press.length){
+    h += '<div style="padding:40px 20px;text-align:center;color:var(--muted)">';
+    h += '<div style="font-size:32px;margin-bottom:8px">💬</div>';
+    h += '<div style="font-size:12px">Aucun post pour l\'instant.</div>';
+    h += '<div style="font-size:10px;margin-top:4px">Jouez des matchs : supporters et médias réagiront ici.</div>';
+    h += '</div></div>';
+    return h;
+  }
+
+  // On fusionne supporters + presse en un seul fil, trié du plus récent au
+  // plus ancien (par saison puis journée).
+  const feed = [];
+  social.forEach(function(p){ feed.push({ post:p, isMedia:false, s:p.season||0, w:p.week||0 }); });
+  press.forEach(function(p){
+    // La presse n'a pas d'engagement : on lui en fabrique un, façon compte média.
+    const likes = 200 + Math.floor(Math.random()*3000);
+    feed.push({ post:{ name:'📰 '+(p.source||'Sport Info'), who:'@sportinfo', text:p.text, tone:p.tone,
+      likes:likes, reposts:Math.round(likes*0.2), comments:Math.round(likes*0.08),
+      season:p.season, week:p.week }, isMedia:true, s:p.season||0, w:p.week||0 });
+  });
+  feed.sort(function(a,b){ return (b.s-a.s) || (b.w-a.w); });
+
+  feed.forEach(function(item){ h += _zRenderPost(item.post, item.isMedia); });
+  h += '</div>';
+  return h;
+}
+
+// Aperçu compact du fil « Z » en Vue : le dernier post + un bouton vers l'onglet.
+function _renderSocialTeaser(){
+  const C = careerV2;
+  const social = (C && C.social) || [];
+  if(!social.length) return '';
+  const last = social[0];
+  const letter = (last.name||'Z').charAt(0).toUpperCase();
+  let h = '<div class="ccard ccard-blue" style="cursor:pointer" onclick="renderCareerDirectorTab(\'social\')">';
+  h += '<div class="ccard-title">💬 Z <span style="font-size:8px;color:var(--muted);font-weight:400">— toucher pour ouvrir</span></div>';
+  h += '<div style="display:flex;gap:8px;align-items:flex-start">';
+  h += '<div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,#1878e8,#8840e0);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;color:#fff">'+letter+'</div>';
+  h += '<div style="flex:1;min-width:0">';
+  h += '<div style="font-size:10px;font-weight:700;color:var(--fg)">'+(last.name||'Supporter')+' <span style="color:var(--muted);font-weight:400">'+(last.who||'')+'</span></div>';
+  h += '<div style="font-size:10px;color:var(--fg);line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+last.text+'</div>';
+  h += '</div></div>';
+  if(social.length>1) h += '<div style="font-size:8px;color:var(--muted);margin-top:5px">+ '+(social.length-1)+' autres posts dans Z</div>';
+  h += '</div>';
+  return h;
 }

@@ -2540,6 +2540,79 @@ const SEASON_EVENTS = [
       };
     },
   },
+  {
+    id:'media_rumor', weight:2,
+    when:function(C){ return true; },
+    build:function(C){
+      const p = _eventPickPlayer();
+      return {
+        title:'📰 Rumeur médiatique',
+        text: 'La presse affirme que ' + (p?p.name:'un cadre') + ' serait courtisé par un grand club. Comment réagir ?',
+        choices:[
+          { label:'Démentir fermement', fx:{ conf:1, reason:'communication maîtrisée' } },
+          { label:'Ne pas commenter',   fx:{ morale:-1, reason:'flou entretenu' } },
+          { label:'Avouer un intérêt', fx:{ morale:-2, budget:0, reason:'joueur déstabilisé' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'fan_gift', weight:1,
+    when:function(C){ return _boardConf() >= 50; },
+    build:function(C){
+      return {
+        title:'🎁 Élan des supporters',
+        text:'Les supporters organisent une collecte pour soutenir le club. Un joli geste.',
+        choices:[
+          { label:'Accepter avec gratitude', fx:{ budget:1500, morale:1, repute:1, reason:'soutien populaire' } },
+          { label:'Rediriger vers l\'association du club', fx:{ repute:2, reason:'geste solidaire' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'veteran_request', weight:1,
+    when:function(C){ const sq=[].concat(C.players||[],C.bench||[]); return sq.some(function(p){return (p.age||0)>=32;}); },
+    build:function(C){
+      const sq=[].concat(C.players||[],C.bench||[]);
+      const vet = sq.filter(function(p){return (p.age||0)>=32;})[0];
+      return {
+        title:'👴 Requête d\'un cadre',
+        text: (vet?vet.name:'Un vétéran') + ' souhaite un rôle de mentor auprès des jeunes. Que décidez-vous ?',
+        choices:[
+          { label:'Accepter (il encadre les jeunes)', fx:{ morale:1, reason:'transmission' } },
+          { label:'Refuser, il doit se concentrer sur le terrain', fx:{ morale:-1, reason:'demande rejetée' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'sponsor_dispute', weight:1,
+    when:function(C){ return (C.club.budget||0) > 5000; },
+    build:function(C){
+      const amt = Math.max(1000, Math.round((C.club.budget||10000)*0.08/100)*100);
+      return {
+        title:'⚖️ Litige avec un sponsor',
+        text:'Un sponsor conteste une clause du contrat et menace de se retirer.',
+        choices:[
+          { label:'Négocier un compromis (-' + _fmtMoney(amt) + ')', fx:{ budget:-amt, repute:1, reason:'litige apaisé' } },
+          { label:'Tenir bon (risque de rupture)', fx:{ conf:-1, reason:'bras de fer' } },
+        ],
+      };
+    },
+  },
+  {
+    id:'training_breakthrough', weight:1, auto:true,
+    when:function(C){ return ([].concat(C.players||[],C.bench||[])).length >= 5; },
+    build:function(C){
+      const p = _eventPickPlayer();
+      return {
+        title:'💡 Déclic à l\'entraînement',
+        text: (p?p.name:'Un joueur') + ' réalise des séances exceptionnelles. Son moral grimpe en flèche.',
+        auto:{ morale:1, reason:'progression individuelle' },
+      };
+    },
+  },
 ];
 
 // Déclenche (au plus) un événement par semaine. Probabilité modérée pour ne
@@ -2893,16 +2966,31 @@ function _pressAfterMatch(fix, myG, oppG){
 
   // Priorité au derby (le plus « racontable »).
   if(isDerby){
-    if(diff > 0)      _pressAdd('🔥 DERBY — ' + club + ' fait tomber ' + oppName + ' (' + myG + '-' + oppG + ') !', 'good');
-    else if(diff < 0) _pressAdd('💔 DERBY — ' + oppName + ' humilie ' + club + ' (' + oppG + '-' + myG + ')', 'bad');
-    else              _pressAdd('🤝 DERBY — ' + club + ' et ' + oppName + ' se neutralisent (' + myG + '-' + oppG + ')', 'neutral');
+    const pk = function(a){ return a[Math.floor(Math.random()*a.length)]; };
+    if(diff > 0)      _pressAdd(pk([
+      '🔥 DERBY — ' + club + ' fait tomber ' + oppName + ' (' + myG + '-' + oppG + ') !',
+      '🔥 ' + club + ' remporte le choc face à ' + oppName + ' (' + myG + '-' + oppG + ')',
+      '🔥 Derby maîtrisé : ' + club + ' domine ' + oppName + ' ' + myG + '-' + oppG ]), 'good');
+    else if(diff < 0) _pressAdd(pk([
+      '💔 DERBY — ' + oppName + ' humilie ' + club + ' (' + oppG + '-' + myG + ')',
+      '💔 ' + club + ' tombe dans le derby face à ' + oppName + ' (' + oppG + '-' + myG + ')',
+      '💔 Désillusion : ' + club + ' s incline dans le derby (' + oppG + '-' + myG + ')' ]), 'bad');
+    else              _pressAdd(pk([
+      '🤝 DERBY — ' + club + ' et ' + oppName + ' se neutralisent (' + myG + '-' + oppG + ')',
+      '🤝 Derby indécis : ' + club + ' et ' + oppName + ' dos à dos (' + myG + '-' + oppG + ')' ]), 'neutral');
     return;
   }
   // Résultats marquants uniquement (on ne commente pas chaque match anodin).
   if(diff >= 4){
-    _pressAdd('🎉 Démonstration : ' + club + ' écrase ' + oppName + ' ' + myG + '-' + oppG + ' !', 'good');
+    _pressAdd(([
+      '🎉 Démonstration : ' + club + ' écrase ' + oppName + ' ' + myG + '-' + oppG + ' !',
+      '🎉 Récital offensif : ' + club + ' balaie ' + oppName + ' ' + myG + '-' + oppG,
+      '🎉 ' + club + ' passe ' + myG + ' buts à ' + oppName + ' et régale ses supporters' ])[Math.floor(Math.random()*3)], 'good');
   } else if(diff <= -4){
-    _pressAdd('😱 Naufrage : ' + club + ' sombre ' + oppG + '-' + myG + ' face à ' + oppName + '.', 'bad');
+    _pressAdd(([
+      '😱 Naufrage : ' + club + ' sombre ' + oppG + '-' + myG + ' face à ' + oppName + '.',
+      '😱 Soirée noire : ' + club + ' encaisse ' + oppG + ' buts contre ' + oppName,
+      '😱 ' + club + ' humilié ' + oppG + '-' + myG + ', la crise couve' ])[Math.floor(Math.random()*3)], 'bad');
   } else if(streak === 5){
     _pressAdd('📈 En feu : ' + club + ' reste sur 5 matchs sans défaite.', 'good');
   } else if(streak >= 8 && diff >= 0){
@@ -2925,12 +3013,31 @@ function _socialAdd(text, tone){
   const C = careerV2;
   if(!C) return;
   if(!Array.isArray(C.social)) C.social = [];
-  // Pseudo de supporter aléatoire pour l'ambiance.
-  const handles = ['@ultra_'+(C.club?.name||'fc').toLowerCase().replace(/[^a-z]/g,'').slice(0,6),
-                   '@tribune_sud', '@supporter71', '@footfan_', '@kop_officiel', '@le12emehomme'];
-  const who = handles[Math.floor(Math.random()*handles.length)];
-  C.social.unshift({ who:who, text:text, tone:tone||'neutral', week:C.week||0, season:C.season||1 });
-  if(C.social.length > 15) C.social.length = 15;
+  // Profils de supporters : pseudo affiché + @handle + graine d'avatar.
+  const profiles = [
+    { name:'Ultra du Kop',     handle:'@ultra_'+(C.club?.name||'fc').toLowerCase().replace(/[^a-z]/g,'').slice(0,6) },
+    { name:'Tribune Sud',      handle:'@tribune_sud' },
+    { name:'Marco',            handle:'@supporter71' },
+    { name:'FootFan',          handle:'@footfan_' },
+    { name:'Kop Officiel',     handle:'@kop_officiel' },
+    { name:'Le 12ème Homme',   handle:'@le12emehomme' },
+    { name:'Sophie',           handle:'@sosoft_' },
+    { name:'Le Consultant',    handle:'@tacticoo' },
+  ];
+  const prof = profiles[Math.floor(Math.random()*profiles.length)];
+  // Engagement pseudo-réaliste, plus fort quand le ton est marqué.
+  const heat = tone==='good'?1.6 : tone==='bad'?1.4 : 1.0;
+  const likes = Math.round((20 + Math.random()*480) * heat);
+  const reposts = Math.round(likes * (0.05 + Math.random()*0.15));
+  const comments = Math.round(likes * (0.03 + Math.random()*0.1));
+  C.social.unshift({
+    who: prof.handle, name: prof.name,
+    avatar: (prof.handle.charCodeAt(1)+prof.handle.length) % 8, // graine 0-7 pour la couleur
+    text: text, tone: tone||'neutral',
+    likes: likes, reposts: reposts, comments: comments,
+    week: C.week||0, season: C.season||1,
+  });
+  if(C.social.length > 30) C.social.length = 30;   // on garde un fil plus long pour l'onglet
 }
 
 // Réactions des supporters après un match (ton tranché selon le résultat).
@@ -2940,33 +3047,55 @@ function _socialAfterMatch(fix, myG, oppG){
   const diff = myG - oppG;
   const isDerby = (typeof isRivalFixture==='function') && isRivalFixture(fix);
   if(isDerby){
-    if(diff > 0)      _socialAdd('ON A GAGNÉ LE DERBY 🔥🔥🔥 quelle soirée les gars !!!', 'good');
-    else if(diff < 0) _socialAdd('perdre le derby... j\'ai pas de mots. honteux 😤', 'bad');
-    else              _socialAdd('nul dans le derby, frustrant mais on lâche rien 💪', 'neutral');
+    const pick0 = function(arr){ return arr[Math.floor(Math.random()*arr.length)]; };
+    const oppN = (fix.homeIsPlayer ? fix.awayName : fix.homeName) || 'l adversaire';
+    if(diff > 0)      _socialAdd(pick0([
+      'ON A GAGNÉ LE DERBY 🔥🔥🔥 quelle soirée les gars !!!',
+      'LE DERBY EST À NOUS 😤💪 personne ne nous marche dessus',
+      'battre ' + oppN + ' dans le derby, rien de meilleur 🔥',
+      'j ai perdu ma voix mais on a gagné le derby, ça vaut le coup 🗣️❤️' ]), 'good');
+    else if(diff < 0) _socialAdd(pick0([
+      'perdre le derby... j ai pas de mots. honteux 😤',
+      'comment on peut perdre CE match... inadmissible 😡',
+      'le derby perdu, je vais pas dormir cette nuit 💔',
+      'humiliés dans notre propre derby. le coach doit s expliquer.' ]), 'bad');
+    else              _socialAdd(pick0([
+      'nul dans le derby, frustrant mais on lâche rien 💪',
+      'un partout dans le derby, on prend le point et on avance',
+      'le derby se finit sur un nul, tension jusqu au bout ⚔️' ]), 'neutral');
     return;
   }
-  if(diff >= 3)       _socialAdd('MAIS QUELLE ÉQUIPE 🤩 ' + myG + '-' + oppG + ' on les a détruits', 'good');
-  else if(diff <= -3) _socialAdd(oppG + '-' + myG + '... on a touché le fond là. ça suffit 😡', 'bad');
-  else if(diff > 0 && Math.random()<0.4)  _socialAdd('3 points de plus 👏 allez on continue !', 'good');
-  else if(diff < 0 && Math.random()<0.4)  _socialAdd('encore une défaite, ça devient compliqué 😔', 'bad');
-  else if(diff === 0 && Math.random()<0.3) _socialAdd('un nul... bof. on voulait les 3 points', 'neutral');
+  const pickS = function(arr){ return arr[Math.floor(Math.random()*arr.length)]; };
+  const oppNm = (fix.homeIsPlayer ? fix.awayName : fix.homeName) || 'l adversaire';
+  if(diff >= 3)       _socialAdd(pickS([
+    'MAIS QUELLE ÉQUIPE 🤩 ' + myG + '-' + oppG + ' on les a détruits',
+    'démonstration totale 🔥 ' + myG + '-' + oppG + ', on régale',
+    'c était un match ou un entraînement ? 😂 ' + myG + '-' + oppG,
+    'pauvre ' + oppNm + ', on leur a mis ' + myG + ' buts 🙈' ]), 'good');
+  else if(diff <= -3) _socialAdd(pickS([
+    oppG + '-' + myG + '... on a touché le fond là. ça suffit 😡',
+    'une honte pareille ' + oppG + '-' + myG + ', remboursez les billets 🎫',
+    'je suis fan depuis 20 ans et là j ai mal 💔 ' + oppG + '-' + myG,
+    'zéro envie, zéro jeu. ' + oppG + '-' + myG + ', ça devient grave.' ]), 'bad');
+  else if(diff > 0 && Math.random()<0.5)  _socialAdd(pickS([
+    '3 points de plus 👏 allez on continue !',
+    'victoire propre contre ' + oppNm + ', on monte 📈',
+    'pas flamboyant mais efficace, +3 points 💪',
+    'on gagne et c est tout ce qui compte ✅' ]), 'good');
+  else if(diff < 0 && Math.random()<0.5)  _socialAdd(pickS([
+    'encore une défaite, ça devient compliqué 😔',
+    'battus par ' + oppNm + '... faut réagir vite ⚠️',
+    'on n y arrive plus en ce moment, inquiétant 😟',
+    'match après match c est pareil. il faut du changement.' ]), 'bad');
+  else if(diff === 0 && Math.random()<0.4) _socialAdd(pickS([
+    'un nul... bof. on voulait les 3 points',
+    'match nul contre ' + oppNm + ', on laisse filer des points 😕',
+    'toujours ce manque de réalisme, 0-0 frustrant',
+    'un point de pris, on fera avec 🤷' ]), 'neutral');
 }
 
-function _renderSocialCard(){
-  const C = careerV2;
-  if(!C || !Array.isArray(C.social) || !C.social.length) return '';
-  let h = '<div class="ccard ccard-blue">';
-  h += '<div class="ccard-title">💬 Réseaux sociaux</div>';
-  C.social.slice(0, 4).forEach(function(p){
-    const col = p.tone==='good' ? '#18c860' : p.tone==='bad' ? '#e06060' : 'var(--muted)';
-    h += '<div style="padding:4px 0;border-bottom:1px solid var(--b1);line-height:1.4">';
-    h += '<div style="font-size:8px;color:'+col+';font-weight:700">'+p.who+'</div>';
-    h += '<div style="font-size:9px;color:var(--fg)">'+p.text+'</div>';
-    h += '</div>';
-  });
-  h += '</div>';
-  return h;
-}
+// (Ancienne carte « Réseaux sociaux » retirée : le fil complet vit maintenant
+//  dans l'onglet « Z », avec un aperçu compact en Vue via _renderSocialTeaser.)
 
 // Carte presse (les 4 derniers titres).
 function _renderPressCard(){
@@ -3114,5 +3243,123 @@ function _renderBoardRequestsCard(){
     });
   }
   h += '</div>';
+  return h;
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERVIEWS INTERACTIVES
+// ═══════════════════════════════════════════════════════════
+// Après un match marquant, un journaliste vous tend le micro. Votre réponse
+// (parmi plusieurs tons) a des conséquences RÉELLES : moral du vestiaire,
+// confiance du board, réputation, et surtout une réaction de la PRESSE et des
+// RÉSEAUX. C'est un pont entre le jeu et l'immersion narrative demandée.
+
+// Banques de questions selon le contexte du dernier match.
+function _interviewQuestions(ctx){
+  // ctx = { result:'win'|'loss'|'draw', diff, oppName, streak, isDerby }
+  const Q = [];
+  if(ctx.isDerby && ctx.result==='win'){
+    Q.push({
+      q:'Vous venez de remporter le derby. Un mot pour vos supporters ?',
+      opts:[
+        { label:'« Ce soir, la ville est à nous ! »', fx:{morale:2,repute:1}, press:'good', tweet:'good', ptext:'🎙️ Le coach enflamme les supporters après le derby.', ttext:'LE COACH A DIT CE SOIR LA VILLE EST À NOUS 🔥 LÉGENDE' },
+        { label:'« Respect à l\'adversaire, mais on méritait. »', fx:{repute:2,conf:1}, press:'good', tweet:'neutral', ptext:'🎙️ Un discours humble et maîtrisé après la victoire.', ttext:'classe du coach en interview, respect 👏' },
+        { label:'« Ils n\'ont jamais existé sur le terrain. »', fx:{morale:1,repute:-1}, press:'neutral', tweet:'good', ptext:'🎙️ Le coach provoque le rival après le derby.', ttext:'ahaha le coach a chambré le rival 😂😂' },
+      ],
+    });
+  } else if(ctx.result==='loss' && ctx.diff<=-3){
+    Q.push({
+      q:'Lourde défaite ce soir. Comment l\'expliquez-vous ?',
+      opts:[
+        { label:'« J\'assume tout, c\'est ma responsabilité. »', fx:{repute:2,conf:1,morale:1}, press:'good', tweet:'good', ptext:'🎙️ Le coach assume publiquement la défaite.', ttext:'au moins le coach assume, respect 🙏' },
+        { label:'« Mes joueurs n\'ont pas répondu présents. »', fx:{morale:-2,conf:-1}, press:'bad', tweet:'bad', ptext:'🎙️ Le coach pointe ses joueurs du doigt.', ttext:'le coach balance ses joueurs en public... ambiance 😬' },
+        { label:'« L\'arbitrage a tout faussé. »', fx:{repute:-1,conf:-1}, press:'neutral', tweet:'neutral', ptext:'🎙️ Le coach conteste l\'arbitrage.', ttext:'encore les arbitres hein 🙄' },
+      ],
+    });
+  } else if(ctx.result==='win'){
+    Q.push({
+      q:'Belle victoire. Sur quoi allez-vous travailler maintenant ?',
+      opts:[
+        { label:'« Rester humble et bosser dur. »', fx:{repute:1,conf:1}, press:'good', tweet:'neutral', ptext:'🎙️ Le coach garde les pieds sur terre.', ttext:'coach sérieux, on aime ce discours 👍' },
+        { label:'« Viser le titre, pourquoi pas ! »', fx:{morale:1,conf:-1}, press:'good', tweet:'good', ptext:'🎙️ Le coach affiche de grandes ambitions.', ttext:'le coach parle de TITRE 👀🔥 on y croit' },
+        { label:'« Un match à la fois. »', fx:{conf:1}, press:'neutral', tweet:'neutral', ptext:'🎙️ Le coach reste prudent.', ttext:'un match à la fois, classique du coach 😴' },
+      ],
+    });
+  } else if(ctx.streak>=3 && ctx.result!=='loss'){
+    Q.push({
+      q:'Votre équipe est en pleine forme. Le secret ?',
+      opts:[
+        { label:'« Le travail, rien d\'autre. »', fx:{conf:1,repute:1}, press:'good', tweet:'neutral', ptext:'🎙️ Le coach crédite le travail du groupe.', ttext:'humble et efficace, ce coach 💪' },
+        { label:'« On est les meilleurs, c\'est tout. »', fx:{morale:1,repute:-1}, press:'neutral', tweet:'good', ptext:'🎙️ Le coach affiche une confiance débordante.', ttext:'la confiance du coach 😂 j\'adore' },
+      ],
+    });
+  } else {
+    // Question générique (nul ou petite défaite/victoire).
+    Q.push({
+      q:'Que retenez-vous de ce match ?',
+      opts:[
+        { label:'« Du positif à confirmer. »', fx:{conf:1}, press:'neutral', tweet:'neutral', ptext:'🎙️ Le coach reste mesuré.', ttext:'RAS côté coach 🤷' },
+        { label:'« On doit faire beaucoup mieux. »', fx:{morale:-1,conf:1}, press:'neutral', tweet:'neutral', ptext:'🎙️ Le coach hausse le ton.', ttext:'le coach pas content, ça va secouer à l\'entraînement 😅' },
+      ],
+    });
+  }
+  return Q[Math.floor(Math.random()*Q.length)];
+}
+
+// Déclenche une interview après un match marquant (~35% des matchs notables).
+function _maybeInterview(fix, myG, oppG){
+  const C = careerV2;
+  if(!C || !C.club || C.pending_interview) return;
+  const diff = myG - oppG;
+  const isDerby = (typeof isRivalFixture==='function') && isRivalFixture(fix);
+  const notable = isDerby || Math.abs(diff)>=3 || (C._curUnbeaten||0)>=3;
+  if(!notable && Math.random()>0.15) return;    // matchs ordinaires : rare
+  if(!isDerby && Math.abs(diff)<3 && Math.random()>0.5) return;
+  const ctx = {
+    result: diff>0?'win':diff<0?'loss':'draw', diff:diff,
+    oppName:(fix.homeIsPlayer?fix.awayName:fix.homeName)||'l adversaire',
+    streak:C._curUnbeaten||0, isDerby:isDerby,
+  };
+  const iv = _interviewQuestions(ctx);
+  if(!iv) return;
+  C.pending_interview = iv;
+  try{ logEvent('🎙️ Un journaliste vous tend le micro après le match.', '#f0c028'); }catch(e){}
+}
+
+// Le joueur répond (appelé par l'UI).
+function answerInterview(optIdx){
+  const C = careerV2;
+  if(!C || !C.pending_interview) return;
+  const iv = C.pending_interview;
+  const opt = (iv.opts||[])[optIdx];
+  if(opt){
+    const fx = opt.fx||{};
+    if(fx.conf)   try{ _boardAdjust(fx.conf, 'interview', fx.conf>0?'#18c860':'#e06060'); }catch(e){}
+    if(fx.repute && typeof C.director_reputation==='number') C.director_reputation = Math.max(0,Math.min(100,C.director_reputation+fx.repute));
+    if(fx.morale) [].concat(C.players||[],C.bench||[]).forEach(function(p){ if(p) p._fm = Math.max(-10,Math.min(10,(p._fm||0)+fx.morale)); });
+    if(fx.budget) { C.club.budget = (C.club.budget||0)+fx.budget; try{ _addFinanceLog('Interview', fx.budget); }catch(e){} }
+    // Réactions presse + réseaux.
+    if(opt.ptext) try{ _pressAdd(opt.ptext, opt.press||'neutral'); }catch(e){}
+    if(opt.ttext) try{ _socialAdd(opt.ttext, opt.tweet||'neutral'); }catch(e){}
+    try{ logEvent('🎙️ Vous : ' + opt.label, '#f0c028'); }catch(e){}
+  }
+  C.pending_interview = null;
+  saveCareerV2();
+  try{ renderCareerV2(); }catch(e){}
+}
+
+// Carte d'interview en attente.
+function _renderInterviewCard(){
+  const C = careerV2;
+  if(!C || !C.pending_interview) return '';
+  const iv = C.pending_interview;
+  let h = '<div class="ccard ccard-gold">';
+  h += '<div class="ccard-title">🎙️ Conférence de presse</div>';
+  h += '<div style="font-size:11px;color:var(--fg);line-height:1.5;margin-bottom:8px;font-style:italic">« ' + iv.q + ' »</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:5px">';
+  (iv.opts||[]).forEach(function(o, i){
+    h += '<button class="btn" onclick="answerInterview(' + i + ')" style="text-align:left;font-size:10px;padding:7px 10px;line-height:1.4">' + o.label + '</button>';
+  });
+  h += '</div></div>';
   return h;
 }
