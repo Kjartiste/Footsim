@@ -8062,6 +8062,37 @@ function _renderDirectorSquad(){
   }
   h += '</div>';
   h += '<div style="padding:7px 12px;font-size:8px;color:var(--muted);border-top:1px solid var(--b1)">Clique sur une joueuse pour ses stats et pour la déplacer (effectif · banc · réserve) · 🌟 pépite</div>';
+
+  // ── INFIRMERIE / ABSENCES ──────────────────────────────────────────────
+  // Récap clair des indisponibles (blessés + suspendus) avec leur durée, plutôt
+  // que de devoir repérer les badges joueur par joueur.
+  try{
+    const all = (C.players||[]).concat(C.bench||[], C.reserves||[]);
+    const absents = all.filter(function(p){ return p && ((p._injWeeks||0)>0 || (p._suspMatches||0)>0); });
+    if(absents.length){
+      h += '<div class="ccard ccard-red" style="margin-top:10px">';
+      h += '<div class="ccard-title">🏥 Infirmerie & suspensions <span style="font-size:9px;color:var(--muted);font-weight:400">'+absents.length+'</span></div>';
+      absents.sort(function(a,b){ return ((b._injWeeks||0)+(b._suspMatches||0)) - ((a._injWeeks||0)+(a._suspMatches||0)); });
+      absents.forEach(function(p){
+        let reason='', dur='', icon='';
+        if((p._injWeeks||0)>0){
+          const lvl = p._injLevelCareer||p.injLevel||1;
+          icon = ['','🤕','🚑','🆘'][lvl] || '🤕';
+          reason = {1:'Blessure légère',2:'Blessure sérieuse',3:'Blessure grave'}[lvl] || 'Blessure';
+          dur = p._injWeeks+' sem.';
+        } else {
+          icon = '🟥';
+          reason = 'Suspension';
+          dur = p._suspMatches+' match'+(p._suspMatches>1?'s':'');
+        }
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 4px;border-bottom:1px solid var(--b1);font-size:10px">';
+        h += '<div style="display:flex;align-items:center;gap:6px;min-width:0"><span>'+icon+'</span><span style="font-weight:700;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+'</span><span style="color:var(--muted);font-size:9px">'+(p.pos||'')+'</span></div>';
+        h += '<div style="text-align:right;flex-shrink:0"><div style="color:'+((p._injWeeks||0)>0?'#e06060':'#f0c028')+';font-weight:700">'+dur+'</div><div style="font-size:8px;color:var(--muted)">'+reason+'</div></div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+  }catch(e){ console.error('infirmerie:', e); }
   h += '</div>';
   return h;
 }
@@ -8266,7 +8297,7 @@ function _squadToReserve(teamKey, pid){
     logEvent('⚠️ Effectif de départ trop réduit pour retirer ce joueur.','#e06060'); return;
   }
   src.splice(idx,1);
-  p.onBench=false; p._inReserve=true;
+  p.onBench=false;
   arr.reserves.push(p);
   logEvent('📥 '+p.name+' est envoyé en réserve.','#8840e0');
   saveCareerV2();
@@ -8280,7 +8311,7 @@ function _squadFromReserve(teamKey, pid){
   if(i<0){ logEvent('Joueur introuvable en réserve.','#e02030'); return; }
   const p=arr.reserves[i];
   arr.reserves.splice(i,1);
-  p._inReserve=false; p.onBench=true;
+  p.onBench=true;
   arr.bench.push(p);
   logEvent('📤 '+p.name+' est rappelé de la réserve (sur le banc).','#18c860');
   saveCareerV2();
@@ -10060,7 +10091,7 @@ function playCareerMatchV2(){
   // du vivier avant toute composition (avant, aucun filtre n'existait côté V2 :
   // un blessé pouvait être aligné). Les indisponibles sont listés à part pour
   // l'affichage « infirmerie », mais jamais dans teams[0].
-  const _isUnavailable = function(p){ return p && ((p._injWeeks||0) > 0 || p._missNextMatch || (p.yc>=2) || p.red); };
+  const _isUnavailable = function(p){ return p && ((p._injWeeks||0) > 0 || (p._suspMatches||0) > 0 || p._missNextMatch || (p.yc>=2) || p.red); };
   const injuredOut = (C.players||[]).concat(C.bench||[]).concat(C.reserves||[]).filter(_isUnavailable);
 
   // ── ON RESPECTE LA SÉLECTION MANUELLE DU JOUEUR ────────────────────────
@@ -10252,6 +10283,50 @@ function _recordCareerV2MatchResult(){
       }
     });
   }catch(e){ console.error('harvest injuries:', e); }
+
+  // ── SUSPENSIONS SUR CARTON ROUGE / DOUBLE JAUNE ────────────────────────
+  // Symétrique aux blessures : un joueur expulsé pendant le match (red ou
+  // yc>=2 sur le clone) doit être SUSPENDU au(x) match(s) suivant(s). Sans ça,
+  // le carton restait sur le clone jeté et l'expulsé rejouait aussitôt.
+  //   rouge direct → 2 matchs · double jaune → 1 match.
+  try{
+    const squad = (C.players||[]).concat(C.bench||[], C.reserves||[]);
+    (teams[0] && teams[0].players || []).forEach(function(mp){
+      if(!mp) return;
+      const sentOff = mp.red || (mp.yc>=2);
+      if(!sentOff) return;
+      const real = squad.find(function(rp){
+        return rp && ((mp.id!=null && rp.id===mp.id) || rp.name===mp.name);
+      });
+      if(!real) return;
+      const ban = mp.red ? 2 : 1;                       // rouge direct plus lourd
+      real._suspMatches = Math.max(real._suspMatches||0, ban);
+      real._missNextMatch = true;
+      if(typeof careerLog==='function'){
+        careerLog('🟥 '+real.name+' est suspendu '+ban+' match'+(ban>1?'s':'')+'.', '#e02030');
+      }
+    });
+  }catch(e){ console.error('harvest cards:', e); }
+
+  // Purge d'une journée de suspension : après CE match, chaque joueur suspendu
+  // a purgé un match. Quand le compteur tombe à 0, il redevient disponible.
+  try{
+    (C.players||[]).concat(C.bench||[], C.reserves||[]).forEach(function(p){
+      if(!p || !(p._suspMatches>0)) return;
+      // On ne purge que ceux qui n'ont pas ÉTÉ expulsés à l'instant (déjà remis
+      // à leur pleine sanction ci-dessus). Les autres suspendus purgent 1 match.
+      const justSentOff = (teams[0]&&teams[0].players||[]).some(function(mp){
+        return mp && (mp.red||mp.yc>=2) && ((mp.id!=null&&mp.id===p.id)||mp.name===p.name);
+      });
+      if(justSentOff) return;
+      p._suspMatches = Math.max(0, (p._suspMatches||0) - 1);
+      if(p._suspMatches===0){
+        // Plus suspendu : on lève le drapeau seulement s'il n'est pas blessé.
+        if(!(p._injWeeks>0)) p._missNextMatch = false;
+        if(typeof careerLog==='function') careerLog('✅ '+p.name+' a purgé sa suspension.', '#18c860');
+      }
+    });
+  }catch(e){ console.error('suspension purge:', e); }
 
   window._careerFixPlaying = null;
   // Le match du jour est réglé : on peut désormais avancer au jour suivant.

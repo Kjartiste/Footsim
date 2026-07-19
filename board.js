@@ -3413,12 +3413,20 @@ const CHANNEL = {
   // et effets secondaires. `perf` = dépend des résultats sportifs.
   content: {
     recap:    { label:'📹 Résumé de match', cost:200,  subs:[80,220],  desc:'Sûr et pas cher. Gain modéré d\'abonnés.' },
-    short:    { label:'⚡ Short', cost:100,  subs:[120,320], desc:'Format court et viral : peu cher, gros potentiel de portée.' },
+    short:    { label:'⚡ Short', cost:100,  subs:[120,320], viral:1.8, desc:'Format court et viral : peu cher, gros potentiel de portée.' },
     analysis: { label:'📊 Analyse tactique', cost:500,  subs:[40,400],  perf:true, desc:'Gros gain si l\'équipe brille, flop sinon.' },
-    challenge:{ label:'🎯 Défi / Challenge', cost:600,  subs:[250,650], morale:1, desc:'Les joueurs relèvent un défi : fédérateur, bon pour le vestiaire.' },
+    challenge:{ label:'🎯 Défi / Challenge', cost:600,  subs:[250,650], morale:1, viral:1.3, desc:'Les joueurs relèvent un défi : fédérateur, bon pour le vestiaire.' },
     vlog:     { label:'🎬 Vlog coulisses',   cost:800,  subs:[200,500], morale:-1, desc:'Beaucoup d\'abonnés, mais pèse sur le vestiaire.' },
-    clickbait:{ label:'🔥 Contenu choc',      cost:400,  subs:[300,800], repute:-2, desc:'Explosion d\'abonnés au prix de votre image.' },
+    clickbait:{ label:'🔥 Contenu choc',      cost:400,  subs:[300,800], repute:-2, viral:1.5, desc:'Explosion d\'abonnés au prix de votre image.' },
   },
+  milestones: [
+    { at:1000,     bonus:1000,  cpm:1.05, label:'1 k abonnés'   },
+    { at:10000,    bonus:5000,  cpm:1.15, label:'10 k abonnés'  },
+    { at:50000,    bonus:15000, cpm:1.30, label:'50 k abonnés'  },
+    { at:100000,   bonus:35000, cpm:1.50, label:'100 k abonnés' },
+    { at:500000,   bonus:100000,cpm:1.80, label:'500 k abonnés' },
+    { at:1000000,  bonus:250000,cpm:2.20, label:'1 M abonnés 🏆'},
+  ],
 };
 
 function _channel(){ return careerV2 ? careerV2.channel : null; }
@@ -3426,7 +3434,26 @@ function _channel(){ return careerV2 ? careerV2.channel : null; }
 // Revenu par abonné et par semaine, modulé par la médiatisation du niveau.
 function _channelRevPerSub(){
   const cover = (typeof _mediaCoverage==='function') ? _mediaCoverage() : 0.5;
-  return 0.02 * cover;        // 100k abonnés en D1 ≈ 2000/sem ; quasi nul en amateur
+  const ch = _channel();
+  const cpm = (ch && ch.cpmBonus) ? ch.cpmBonus : 1;   // bonus de paliers
+  return 0.02 * cover * cpm;   // 100k abonnés en D1 ≈ 2000/sem ; quasi nul en amateur
+}
+
+// Vérifie les paliers d'abonnés franchis : prime unique + bonus de CPM permanent.
+function _channelCheckMilestones(){
+  const C = careerV2, ch = _channel();
+  if(!C || !ch) return;
+  if(!ch.milestonesHit) ch.milestonesHit = [];
+  (CHANNEL.milestones||[]).forEach(function(m){
+    if(ch.subs >= m.at && ch.milestonesHit.indexOf(m.at) < 0){
+      ch.milestonesHit.push(m.at);
+      ch.cpmBonus = Math.max(ch.cpmBonus||1, m.cpm);   // monétisation améliorée
+      C.club.budget = (C.club.budget||0) + m.bonus;
+      try{ _addFinanceLog('Palier chaîne (' + m.label + ')', m.bonus); }catch(e){}
+      try{ logEvent('🎉 Palier atteint : ' + m.label + ' ! Prime ' + _fmtMoney(m.bonus) + ' + meilleure monétisation.', '#f0c028'); }catch(e){}
+      try{ if(typeof _socialAdd==='function') _socialAdd('La chaîne du club franchit les ' + m.label + ' ! 🎉📺', 'good'); }catch(e){}
+    }
+  });
 }
 
 // Créer la chaîne (dépense du budget du club).
@@ -3440,7 +3467,7 @@ function createChannel(){
   if(!confirm('Lancer la chaîne vidéo du club pour ' + _fmtMoney(CHANNEL.createCost) + ' ?\n\nPubliez du contenu chaque semaine pour gagner des abonnés — et des revenus une fois le club médiatisé.')) return;
   C.club.budget -= CHANNEL.createCost;
   try{ _addFinanceLog('Lancement chaîne vidéo', -CHANNEL.createCost); }catch(e){}
-  C.channel = { subs:0, videos:0, publishedWeek:-1, lastGain:0, history:[] };
+  C.channel = { subs:0, videos:0, publishedWeek:-1, lastGain:0 };
   logEvent('📺 La chaîne vidéo du club est en ligne !', '#18c860');
   saveCareerV2(); try{ renderCareerV2(); }catch(e){}
 }
@@ -3472,8 +3499,18 @@ function publishVideo(type){
     gain *= form;
   }
   gain = Math.round(gain * (0.3 + cover));      // médiatisation : peu d'abonnés en amateur
+
+  // ── VIRALITÉ : un contenu perce parfois l'algorithme ───────────────────
+  // Certains formats (short, clic, défi) ont une chance de « buzz » qui
+  // multiplie fortement le gain. Rare mais mémorable — et ça pousse à varier.
+  let viral = false;
+  if(def.viral && Math.random() < 0.12 * (0.5 + cover)){
+    gain = Math.round(gain * def.viral * (1.5 + Math.random()));
+    viral = true;
+  }
   ch.subs = Math.max(0, ch.subs + gain);
   ch.lastGain = gain;
+  ch.lastViral = viral;
 
   // Effets secondaires du type de contenu.
   if(def.morale) [].concat(C.players||[], C.bench||[]).forEach(function(p){ if(p) p._fm = Math.max(-10, (p._fm||0) + def.morale); });
@@ -3494,7 +3531,11 @@ function publishVideo(type){
     }
   }catch(e){}
 
-  logEvent('📺 Vidéo publiée (+' + gain + ' abonnés).', '#18c860');
+  logEvent(viral
+    ? '🚀 VIDÉO VIRALE ! +' + _fmtSubs(gain) + ' abonnés d\'un coup !'
+    : '📺 Vidéo publiée (+' + _fmtSubs(gain) + ' abonnés).',
+    viral ? '#f0c028' : '#18c860');
+  try{ _channelCheckMilestones(); }catch(e){}
   saveCareerV2(); try{ renderCareerV2(); }catch(e){}
 }
 
@@ -3542,8 +3583,25 @@ function _renderChannelPanel(){
   h += '<div style="display:flex;gap:14px;margin-bottom:8px">';
   h += '<div><div style="font-size:18px;font-weight:900;color:var(--fg)">' + _fmtSubs(ch.subs||0) + '</div><div style="font-size:8px;color:var(--muted)">abonnés</div></div>';
   h += '<div><div style="font-size:18px;font-weight:900;color:' + (revWeek>0?'#18c860':'var(--muted)') + '">' + _fmtMoney(revWeek) + '</div><div style="font-size:8px;color:var(--muted)">/semaine</div></div>';
-  if(ch.lastGain) h += '<div><div style="font-size:18px;font-weight:900;color:#1878e8">+' + _fmtSubs(ch.lastGain) + '</div><div style="font-size:8px;color:var(--muted)">dernière vidéo</div></div>';
+  if(ch.lastGain) h += '<div><div style="font-size:18px;font-weight:900;color:#1878e8">+' + _fmtSubs(ch.lastGain) + (ch.lastViral?' 🚀':'') + '</div><div style="font-size:8px;color:var(--muted)">dernière vidéo</div></div>';
   h += '</div>';
+
+  // Progression vers le prochain palier d'abonnés.
+  const next = (CHANNEL.milestones||[]).find(function(m){ return (ch.subs||0) < m.at; });
+  if(next){
+    const prev = (CHANNEL.milestones||[]).filter(function(m){ return m.at <= (ch.subs||0); }).pop();
+    const base = prev ? prev.at : 0;
+    const pct = Math.max(3, Math.min(100, ((ch.subs-base)/(next.at-base))*100));
+    h += '<div style="margin-bottom:8px">';
+    h += '<div style="display:flex;justify-content:space-between;font-size:8px;color:var(--muted);margin-bottom:2px"><span>Prochain palier</span><span>'+next.label+' · prime '+_fmtMoney(next.bonus)+'</span></div>';
+    h += '<div style="height:6px;background:var(--panel);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#1878e8,#8840e0)"></div></div>';
+    h += '</div>';
+  } else if(ch.milestonesHit && ch.milestonesHit.length){
+    h += '<div class="ctxt-xs" style="color:#f0c028;margin-bottom:6px">🏆 Tous les paliers atteints — chaîne au sommet !</div>';
+  }
+  if(ch.cpmBonus && ch.cpmBonus>1){
+    h += '<div class="ctxt-xs" style="color:#18c860;margin-bottom:6px">💰 Monétisation ×'+ch.cpmBonus.toFixed(2)+' (paliers atteints)</div>';
+  }
 
   if(revWeek === 0){
     h += '<div class="ctxt-xs" style="color:#e08040;margin-bottom:6px">⚠️ À ce niveau, la monétisation est quasi nulle. La chaîne prendra de la valeur en montant en division.</div>';

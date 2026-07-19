@@ -1184,11 +1184,46 @@ function _buildStand(c, x, y, w, h, dir, prof, pal, tint, sc){
     // Tribunes : supporters vus de haut. En salle (handball) la foule est
     // plus dense et les teintes club plus rares (public assis, neutre).
     const indoor=!!pal.stands.indoor;
-    eachCell(SEAT, (px,py)=>{
+    // 1) Rangées de sièges : fines bandes alternées pour donner du relief au
+    //    gradin (marches), avant même de poser les spectateurs. Ça évite
+    //    l'aspect « soupe de points » sur un fond plat.
+    const rowStep = SEAT;
+    const rowCount = Math.max(1, Math.floor(standDepth/rowStep));
+    for(let r=0;r<rowCount;r++){
+      const d0 = TRACK + r*rowStep;
+      const shade = (r%2===0) ? 'rgba(255,255,255,0.028)' : 'rgba(0,0,0,0.06)';
+      c.fillStyle = shade;
+      if(dir==='up')        c.fillRect(x, y+h-d0-rowStep, w, rowStep*0.5);
+      else if(dir==='down') c.fillRect(x, y+d0, w, rowStep*0.5);
+      else if(dir==='left') c.fillRect(x+w-d0-rowStep, y, rowStep*0.5, h);
+      else                  c.fillRect(x+d0, y, rowStep*0.5, h);
+    }
+    // 2) Séparations de tribunes (allées) : quelques lignes sombres le long du
+    //    virage, comme les vomitoires/escaliers d'un vrai stade.
+    const aisleN = Math.max(2, Math.round(span/M(18)));
+    c.fillStyle='rgba(0,0,0,0.22)';
+    for(let a=1;a<aisleN;a++){
+      const along=(a/aisleN)*span, aw=Math.max(1,DOT*0.5);
+      const [ax,ay]=cell(along, TRACK); const [bx,by]=cell(along, TRACK+standDepth);
+      c.save(); c.strokeStyle='rgba(0,0,0,0.22)'; c.lineWidth=aw;
+      c.beginPath(); c.moveTo(ax,ay); c.lineTo(bx,by); c.stroke(); c.restore();
+    }
+    // 3) Les spectateurs : disque de base + petit reflet clair pour le volume
+    //    (une tête n'est plus un point plat). Des grappes de couleur club
+    //    parsèment la foule (écharpes, maillots) pour l'animer.
+    eachCell(SEAT, (px,py,r,k)=>{
       if(Math.random()>prof.fill) return;   // siège vide
-      c.fillStyle = Math.random()<(indoor?0.12:0.25) ? _darken(tint,0.95)
-                                                     : pick(pal.crowdShades||['#2c3444']);
+      // Grappe couleur club (~10%) : plus vif, plus grand.
+      const clubCluster = Math.random() < (indoor?0.05:0.12);
+      let col;
+      if(clubCluster){ col = _lighten(tint, 0.15); }
+      else { col = Math.random()<(indoor?0.12:0.22) ? _darken(tint,0.9)
+                                                     : pick(pal.crowdShades||['#2c3444']); }
+      c.fillStyle = col;
       c.beginPath(); c.arc(px,py,DOT,0,Math.PI*2); c.fill();
+      // Reflet : petite calotte claire décalée = volume de la tête/épaules.
+      c.fillStyle='rgba(255,255,255,0.14)';
+      c.beginPath(); c.arc(px-DOT*0.28, py-DOT*0.28, DOT*0.42, 0, Math.PI*2); c.fill();
     });
     // Neige : les rangées extérieures sont poudrées.
     if(pal.stands.snowy){
