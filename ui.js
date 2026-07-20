@@ -8062,7 +8062,7 @@ function _renderDirectorSquad(){
     rows(cur.reserves, 'reserve');
   }
   // Équipe futsal 5v5 (seulement pour l'équipe première).
-  if(team.key==='main' && (careerV2.futsalSquad||[]).length){
+  if(cur.key==='main' && (careerV2.futsalSquad||[]).length){
     h += '<div style="font-size:9px;font-weight:700;color:#1878e8;padding:8px 8px 4px">⚽ Futsal 5v5</div>';
     rows(careerV2.futsalSquad, 'futsal');
   }
