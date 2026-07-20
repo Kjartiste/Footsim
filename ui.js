@@ -521,20 +521,23 @@ function renderModeScreen(){
   const out = document.getElementById('mode-out');
   if(!out) return;
   const modes = [
-    {id:'5v5',   n:'5 contre 5',   sub:'Foot à 5 · Futsal',       col:'#8840e0', field:'1 gardien + 4 joueurs', desc:'Format nerveux et rapide. Petits effectifs, beaucoup de duels, scores élevés.', icon:'⚡'},
-    {id:'7v7',   n:'7 contre 7',   sub:'Format classique',        col:'#f0c028', field:'1 gardien + 6 joueurs', desc:'Le mode historique de FootSim. Équilibre parfait entre tactique et action.', icon:'⚽'},
-    {id:'11v11', n:'11 contre 11', sub:'Football à 11',           col:'#18c860', field:'1 gardien + 10 joueurs', desc:'Le vrai football. Grandes équipes, formations profondes, 3 changements max.', icon:'🏟️'},
+    {id:'5v5',   n:'5 contre 5',   sub:'Foot à 5 · Futsal',       col:'#8840e0', field:'1 gardien + 4 joueurs', desc:'Format nerveux et rapide. Petits effectifs, beaucoup de duels, scores élevés. Le cœur du jeu en futsal.', icon:'⚡', featured:true, badge:'⭐ RECOMMANDÉ'},
+    {id:'7v7',   n:'7 contre 7',   sub:'Format classique',        col:'#f0c028', field:'1 gardien + 6 joueurs', desc:'Le mode historique de FootSim. Équilibre parfait entre tactique et action.', icon:'⚽', featured:true, badge:'⭐ RECOMMANDÉ'},
+    {id:'11v11', n:'11 contre 11', sub:'Football à 11',           col:'#18c860', field:'1 gardien + 10 joueurs', desc:'Le vrai football à 11 dans toute sa profondeur. Grandes équipes, formations complètes, jeu de position et 3 changements max.', icon:'🏟️'},
   ];
   const cur = window.gameMode || '7v7';
   let h = '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;padding:8px 4px 2px">Choisis ton mode</div>'
-    + '<div style="font-size:10px;color:var(--muted);padding:0 4px 10px;line-height:1.4">Le mode détermine le nombre de joueurs sur le terrain, les formations disponibles et la taille des effectifs. L\'onglet <b>Équipes</b> s\'adapte automatiquement.</div>';
+    + '<div style="font-size:10px;color:var(--muted);padding:0 4px 10px;line-height:1.4">FootSim se joue avant tout en <b style="color:#8840e0">Futsal 5 contre 5</b> et en <b style="color:#f0c028">7 contre 7</b> — les deux formats phares du jeu, rapides et spectaculaires. Le mode détermine le nombre de joueurs, les formations disponibles et la taille des effectifs ; l\'onglet <b>Équipes</b> s\'adapte automatiquement.</div>';
   modes.forEach(m=>{
     const active = cur===m.id;
-    h += '<div onclick="selectGameMode(\''+m.id+'\')" style="cursor:pointer;background:'+(active?m.col+'18':'var(--card)')+';border:2px solid '+(active?m.col:'var(--b1)')+';border-radius:12px;padding:12px;margin-bottom:10px;transition:all .12s">'
+    const feat = !!m.featured;
+    // Les cartes vedettes (5v5 et 7v7) sont plus hautes, avec halo et badge « recommandé ».
+    h += '<div onclick="selectGameMode(\''+m.id+'\')" style="cursor:pointer;position:relative;background:'+(active||feat?m.col+(feat?'20':'18'):'var(--card)')+';border:'+(feat?'2.5px':'2px')+' solid '+(active||feat?m.col:'var(--b1)')+';border-radius:12px;padding:'+(feat?'14px 12px 13px':'12px')+';margin-bottom:10px;transition:all .12s'+(feat?';box-shadow:0 0 0 3px '+m.col+'22, 0 4px 18px '+m.col+'33':'')+'">'
+      + (feat && m.badge ? '<div style="position:absolute;top:-9px;left:12px;font-size:8px;font-weight:900;letter-spacing:1px;color:#05101c;background:'+m.col+';padding:3px 8px;border-radius:10px;box-shadow:0 2px 6px '+m.col+'66">'+m.badge+'</div>' : '')
       + '<div style="display:flex;align-items:center;gap:10px">'
-      + '<div style="width:44px;height:44px;border-radius:10px;background:'+m.col+'22;border:1px solid '+m.col+'55;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">'+m.icon+'</div>'
+      + '<div style="width:'+(feat?'50px':'44px')+';height:'+(feat?'50px':'44px')+';border-radius:10px;background:'+m.col+'22;border:1px solid '+m.col+'55;display:flex;align-items:center;justify-content:center;font-size:'+(feat?'28px':'24px')+';flex-shrink:0">'+m.icon+'</div>'
       + '<div style="flex:1;min-width:0">'
-      + '<div style="display:flex;align-items:center;gap:8px"><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:17px;font-weight:900;color:'+(active?m.col:'#fff')+';letter-spacing:.5px">'+m.n+'</div>'
+      + '<div style="display:flex;align-items:center;gap:8px"><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:'+(feat?'19px':'17px')+';font-weight:900;color:'+(active||feat?m.col:'#fff')+';letter-spacing:.5px">'+m.n+'</div>'
       + (active?'<span style="font-size:8px;font-weight:900;letter-spacing:1px;color:#05101c;background:'+m.col+';padding:2px 6px;border-radius:10px">ACTIF</span>':'')+'</div>'
       + '<div style="font-size:10px;color:'+m.col+';font-weight:700;letter-spacing:.5px">'+m.sub+'</div>'
       + '</div></div>'

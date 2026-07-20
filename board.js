@@ -3409,6 +3409,9 @@ function _renderInterviewCard(){
 
 const CHANNEL = {
   createCost: 3000,           // coût de lancement
+  // Les shorts disposent de créneaux BONUS hors de la limite d'une vidéo/sem.
+  shortsPerWeek: 2,           // nb de shorts publiables en plus de la vidéo hebdo
+  shortsCostMult: 0.5,        // shorts bonus produits à coût réduit
   // Types de contenu : coût de production, gain d'abonnés (×médiatisation),
   // et effets secondaires. `perf` = dépend des résultats sportifs.
   content: {
@@ -3467,7 +3470,7 @@ function createChannel(){
   if(!confirm('Lancer la chaîne vidéo du club pour ' + _fmtMoney(CHANNEL.createCost) + ' ?\n\nPubliez du contenu chaque semaine pour gagner des abonnés — et des revenus une fois le club médiatisé.')) return;
   C.club.budget -= CHANNEL.createCost;
   try{ _addFinanceLog('Lancement chaîne vidéo', -CHANNEL.createCost); }catch(e){}
-  C.channel = { subs:0, videos:0, publishedWeek:-1, lastGain:0 };
+  C.channel = { subs:0, videos:0, publishedWeek:-1, lastGain:0, shortsWeek:-1, shortsThisWeek:0 };
   logEvent('📺 La chaîne vidéo du club est en ligne !', '#18c860');
   saveCareerV2(); try{ renderCareerV2(); }catch(e){}
 }
@@ -3479,15 +3482,33 @@ function publishVideo(type){
   if(!C || !ch) return;
   const def = CHANNEL.content[type];
   if(!def){ return; }
-  if(ch.publishedWeek === C.week){
-    logEvent('Vous avez déjà publié cette semaine.', '#e06060'); return;
+
+  // Les shorts occupent un créneau BONUS distinct (2/sem) et n'entament pas
+  // la vidéo hebdomadaire principale. On réinitialise le compteur si la
+  // semaine a changé.
+  const isShort = (type === 'short');
+  if(isShort && ch.shortsWeek !== C.week){ ch.shortsWeek = C.week; ch.shortsThisWeek = 0; }
+  const maxShorts = CHANNEL.shortsPerWeek || 2;
+
+  if(isShort){
+    if((ch.shortsThisWeek||0) >= maxShorts){
+      logEvent('Vous avez déjà publié ' + maxShorts + ' shorts cette semaine.', '#e06060'); return;
+    }
+  } else {
+    if(ch.publishedWeek === C.week){
+      logEvent('Vous avez déjà publié cette semaine.', '#e06060'); return;
+    }
   }
-  if((C.club.budget||0) < def.cost){
-    logEvent('💸 Production trop chère (' + _fmtMoney(def.cost) + ' requis).', '#e02030'); return;
+
+  // Coût : shorts bonus produits à coût réduit.
+  const cost = isShort ? Math.round(def.cost * (CHANNEL.shortsCostMult||0.5)) : def.cost;
+  if((C.club.budget||0) < cost){
+    logEvent('💸 Production trop chère (' + _fmtMoney(cost) + ' requis).', '#e02030'); return;
   }
-  C.club.budget -= def.cost;
-  try{ _addFinanceLog('Production vidéo (' + type + ')', -def.cost); }catch(e){}
-  ch.publishedWeek = C.week;
+  C.club.budget -= cost;
+  try{ _addFinanceLog('Production vidéo (' + type + ')', -cost); }catch(e){}
+  if(isShort){ ch.shortsThisWeek = (ch.shortsThisWeek||0) + 1; }
+  else { ch.publishedWeek = C.week; }
   ch.videos++;
 
   // Gain d'abonnés : base aléatoire × médiatisation × (perf si analyse).
@@ -3545,8 +3566,9 @@ function _channelWeeklyRevenue(){
   const C = careerV2;
   const ch = _channel();
   if(!C || !ch) return 0;
-  // Inactivité : si aucune vidéo depuis 2+ semaines, on perd des abonnés.
-  if(ch.publishedWeek < (C.week||0) - 1){
+  // Inactivité : si aucune vidéo NI short depuis 2+ semaines, on perd des abonnés.
+  const lastActivity = Math.max(ch.publishedWeek||-1, ch.shortsWeek||-1);
+  if(lastActivity < (C.week||0) - 1){
     ch.subs = Math.max(0, Math.round(ch.subs * 0.97));   // -3%/sem d'inactivité
   }
   const rev = Math.round(ch.subs * _channelRevPerSub());
@@ -3607,15 +3629,33 @@ function _renderChannelPanel(){
     h += '<div class="ctxt-xs" style="color:#e08040;margin-bottom:6px">⚠️ À ce niveau, la monétisation est quasi nulle. La chaîne prendra de la valeur en montant en division.</div>';
   }
 
-  if(publishedThisWeek){
-    h += '<div class="ctxt-sm" style="color:#f0c028">✔️ Vidéo déjà publiée cette semaine. Revenez la semaine prochaine.</div>';
+  // Quota de shorts bonus (compteur distinct de la vidéo hebdo).
+  const maxShorts = CHANNEL.shortsPerWeek || 2;
+  const shortsUsed = (ch.shortsWeek === C.week) ? (ch.shortsThisWeek||0) : 0;
+  const shortsLeft = Math.max(0, maxShorts - shortsUsed);
+
+  // Bandeau de quotas : vidéo principale + shorts bonus.
+  h += '<div style="display:flex;gap:6px;margin-bottom:6px">';
+  h += '<span style="font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:8px;background:'+(publishedThisWeek?'var(--panel)':'#18c86022')+';color:'+(publishedThisWeek?'var(--muted)':'#18c860')+'">🎬 Vidéo : '+(publishedThisWeek?'0':'1')+'/1</span>';
+  h += '<span style="font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 6px;border-radius:8px;background:'+(shortsLeft>0?'#8840e022':'var(--panel)')+';color:'+(shortsLeft>0?'#8840e0':'var(--muted)')+'">⚡ Shorts : '+shortsLeft+'/'+maxShorts+'</span>';
+  h += '</div>';
+
+  const canPublishAny = !publishedThisWeek || shortsLeft > 0;
+  if(!canPublishAny){
+    h += '<div class="ctxt-sm" style="color:#f0c028">✔️ Vidéo et shorts déjà publiés cette semaine. Revenez la semaine prochaine.</div>';
   } else {
-    h += '<div class="ctxt-xs" style="margin-bottom:5px;color:var(--muted)">Publier une vidéo cette semaine :</div>';
+    h += '<div class="ctxt-xs" style="margin-bottom:5px;color:var(--muted)">Publier du contenu cette semaine :</div>';
     h += '<div style="display:flex;flex-direction:column;gap:4px">';
     Object.keys(CHANNEL.content).forEach(function(type){
       const d = CHANNEL.content[type];
-      h += '<button class="btn" onclick="publishVideo(\'' + type + '\')" style="text-align:left;font-size:9px;padding:6px 8px;line-height:1.3">';
-      h += '<span style="font-weight:700">' + d.label + '</span> <span style="color:var(--muted)">— ' + _fmtMoney(d.cost) + '</span>';
+      const isShort = (type === 'short');
+      // Un short reste dispo tant qu'il reste des créneaux bonus ; les autres
+      // types dépendent de la vidéo hebdo principale.
+      const disabled = isShort ? (shortsLeft <= 0) : publishedThisWeek;
+      const cost = isShort ? Math.round(d.cost * (CHANNEL.shortsCostMult||0.5)) : d.cost;
+      h += '<button class="btn"' + (disabled?' disabled':'') + ' onclick="publishVideo(\'' + type + '\')" style="text-align:left;font-size:9px;padding:6px 8px;line-height:1.3;'+(disabled?'opacity:.4;cursor:default':'')+'">';
+      h += '<span style="font-weight:700">' + d.label + '</span> <span style="color:var(--muted)">— ' + _fmtMoney(cost) + '</span>';
+      if(isShort) h += ' <span style="font-size:8px;font-weight:700;color:#8840e0">BONUS ×'+shortsLeft+'</span>';
       h += '<div style="font-size:8px;color:var(--muted);margin-top:1px">' + d.desc + '</div>';
       h += '</button>';
     });
