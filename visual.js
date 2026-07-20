@@ -467,19 +467,26 @@ function _getGlowSprite(col){
 // le drawImage scalé — le scaling d'un disque radial est invisible à l'œil.
 const _bodySpriteCache=new Map();
 function _getBodySprite(col){
-  let s=_bodySpriteCache.get(col);
+  // Normaliser la couleur en hex pour éviter que hsl(...) crée deux entrées de
+  // cache différentes pour la même couleur ET ne plante pas addColorStop.
+  const hexCol = (typeof _colorToHex==='function') ? _colorToHex(col) : col;
+  let s=_bodySpriteCache.get(hexCol);
   if(s) return s;
   const D=128, oc=document.createElement('canvas');
   oc.width=D; oc.height=D;
   const c=oc.getContext('2d');
   const cx=D/2, cy=D/2, R=D/2;
-  // Reproduit l'ancien dégradé : reflet clair en haut-gauche, teinte pleine au bord.
-  const g=c.createRadialGradient(cx-R*.3,cy-R*.3,0,cx,cy,R);
-  g.addColorStop(0,lighten(col,.35));
-  g.addColorStop(1,col);
-  c.fillStyle=g;
+  try{
+    const g=c.createRadialGradient(cx-R*.3,cy-R*.3,0,cx,cy,R);
+    g.addColorStop(0,lighten(hexCol,.35));
+    g.addColorStop(1,hexCol);
+    c.fillStyle=g;
+  } catch(e){
+    // Couleur invalide → cercle plein de secours
+    c.fillStyle=hexCol||'#888';
+  }
   c.beginPath();c.arc(cx,cy,R,0,Math.PI*2);c.fill();
-  _bodySpriteCache.set(col,oc);
+  _bodySpriteCache.set(hexCol,oc);
   return oc;
 }
 function resize(){
@@ -525,6 +532,7 @@ function resize(){
   _oy=(cvs.height-WH*_s)/2;
   _pitchCache=null; // le terrain doit être re-préparé à la nouvelle taille
   _standsCache=null; // les gradins dépendent de la taille → à reconstruire
+  _bodySpriteCache.clear(); // sprites joueurs pré-rendus : invalides après changement de _s ou de mode
 }
 
 // ── Profondeur du pourtour, en MÈTRES ───────────────────────────────────

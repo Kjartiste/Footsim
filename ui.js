@@ -12132,6 +12132,7 @@ function playFutsalMatch(){
   // Passage en mode 5v5.
   window.gameMode = '5v5';
   try{ if(typeof _applyMode5v5==='function') _applyMode5v5(); }catch(e){}
+  try{ if(typeof resize==='function') resize(); }catch(e){}
 
   const clone = function(p){ return Object.assign({}, p); };
   const XI_POS = ['GB','DC','MOG','MOD','ATT'];

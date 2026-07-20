@@ -1357,9 +1357,9 @@ function _applyMode11v11(){
 
 // ── Constantes 5v5 (futsal / foot à 5) ───────────────────────────────
 const CONSTANTS_5V5 = {
-  FIELD_W: 75, FIELD_H: 50,
-  GOAL_W: 6, PS_X: 9,
-  PA_W: 12, PA_H: 26,
+  FIELD_W: 60, FIELD_H: 40,
+  GOAL_W: 5, PS_X: 7,
+  PA_W: 10, PA_H: 20,
   TEAM_SIZE: 5, BENCH_SIZE: 3,
   MAX_SUBS: 99, MATCH_DURATION: 90,
 };
