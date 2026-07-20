@@ -1487,7 +1487,7 @@ function drawPlayer(T,p){
     const r1=r*.5,r2=r*(2.4+pulse*0.5);
     if(r2>r1){
       const grd=ctx.createRadialGradient(px,py,r1,px,py,r2);
-      grd.addColorStop(0,T.color+'55');grd.addColorStop(1,T.color+'00');
+      grd.addColorStop(0,_colorAlpha(T.color,0.33));grd.addColorStop(1,_colorAlpha(T.color,0));
       ctx.fillStyle=grd;ctx.beginPath();ctx.arc(px,py+safeBob,r2,0,Math.PI*2);ctx.fill();
     }
     ctx.globalAlpha=0.55+pulse*0.35;
@@ -1801,7 +1801,7 @@ function drawPlayer(T,p){
   // Position badge (tiny)
   const pfs=ws(.38);
   ctx.font=`700 ${pfs}px Barlow Condensed,sans-serif`;
-  ctx.fillStyle=T.color+'cc';
+  ctx.fillStyle=_colorAlpha(T.color,0.8);
   ctx.fillText(p.pos,px,py+safeBob+r+ws(.16)+fontSize+ws(.06));
 }
 
@@ -1820,6 +1820,13 @@ function _colorToHex(col){
     const d=x.getImageData(0,0,1,1).data;
     return'#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
   }catch(e){return'#888888';}
+}
+// Produit un rgba(...) valide depuis n'importe quelle couleur CSS + alpha 0-1.
+// Remplace les concaténations `color+'55'` qui cassent l'API Canvas quand color est du HSL.
+function _colorAlpha(col, a){
+  const h=_colorToHex(col);
+  const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
 }
 function lighten(hex,amt){
   hex=String(hex||'#000').trim();
