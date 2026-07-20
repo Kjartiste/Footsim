@@ -2805,6 +2805,12 @@ function endMatch(){
   document.getElementById('mbtn').textContent='↺ Rejouer';
   if(G.leagueMode){
     G.leagueMode=false;
+    // Match de futsal (compétition 5v5 du club) : classement séparé.
+    if(window._futsalPlaying){
+      _recordFutsalMatchResult();
+      showEndMatchRecap();
+      return;
+    }
     // Enregistrer résultat carrière si match carrière
     if(window._careerFixPlaying){
       _recordCareerV2MatchResult();

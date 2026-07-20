@@ -3624,3 +3624,273 @@ function _renderChannelPanel(){
   h += '</div>';
   return h;
 }
+
+// ═══════════════════════════════════════════════════════════
+// COMPÉTITION FUTSAL 5v5 DU CLUB
+// ═══════════════════════════════════════════════════════════
+// L'équipe futsal (careerV2.futsalSquad) dispute un vrai petit championnat 5v5
+// jouable : 5 adversaires, matchs aller simple, classement. Les rencontres se
+// jouent avec le moteur 5v5 existant. Se gère depuis un onglet dédié.
+
+const FUTSAL_OPP_NAMES = [
+  'Les Foudres', 'Futsal Central', 'AS Parquet', 'Vitesse FC', 'Les Renards',
+  'Club Indoor', 'Éclair 5', 'Panthères Futsal', 'Dynamo Salle', 'Les Comètes',
+];
+
+// ── ÉCOSYSTÈME FUTSAL RESTREINT ─────────────────────────────────────────
+// Le futsal est un petit monde : seulement 2 divisions par pays, peu d'équipes
+// (poule de 6), et des clubs DÉDIÉS au futsal (pas des sections de clubs de
+// foot). Chaque division a son vivier de noms propres et un palier de force.
+const FUTSAL_DIVISIONS = {
+  d2: {
+    id:'d2', name:'D2 Futsal', strengthBase:42, strengthVar:16, prize:{win:600,draw:250,loss:80}, titleBonus:3000,
+    clubs:['Salle Saint-Marc','Futsal Ouvrier','Les Parquets Unis','Indoor Club B','AS Gymnase','Cinq de Trèfle','Futsal Populaire','Les Cadets Indoor'],
+  },
+  d1: {
+    id:'d1', name:'D1 Futsal', strengthBase:58, strengthVar:18, prize:{win:1000,draw:400,loss:120}, titleBonus:8000,
+    clubs:['Kaïro Futsal','Sporting Parquet','Les Aigles Indoor','Futsal Métropole','Panthères 5','Dynamo Élite','Vitesse Futsal Pro','Étoile Salle'],
+  },
+};
+const FUTSAL_DIV_ORDER = ['d2','d1'];   // d2 en bas, d1 en haut (peu de divisions)
+const FUTSAL_POOL_SIZE = 6;             // toi + 5 : peu d'équipes
+
+// Crée (ou réinitialise) la saison de futsal : poule de 6, aller-retour.
+function futsalStartSeason(){
+  const C = careerV2;
+  if(!C) return;
+  if(!C.futsalSquad || C.futsalSquad.length < 5){
+    logEvent('⚽ Il faut au moins 5 joueurs dans l\'équipe futsal pour lancer une saison.', '#e06060');
+    return;
+  }
+  // Division courante (on démarre en D2 Futsal, on peut monter en D1).
+  const divId = (C.futsal && C.futsal.divId) || 'd2';
+  const div = FUTSAL_DIVISIONS[divId] || FUTSAL_DIVISIONS.d2;
+  // 5 adversaires DÉDIÉS futsal, tirés du vivier de la division.
+  const pool = div.clubs.slice().sort(function(){ return Math.random()-0.5; }).slice(0, FUTSAL_POOL_SIZE-1);
+  const opps = pool.map(function(n){
+    return { name:n, P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0,
+             color:'hsl('+Math.floor(Math.random()*360)+',55%,45%)',
+             strength: div.strengthBase + Math.floor(Math.random()*div.strengthVar) };
+  });
+  // Calendrier ALLER-RETOUR : chaque adversaire deux fois (dom + ext).
+  const fixtures = [];
+  opps.forEach(function(o){ fixtures.push({ oppName:o.name, isHome:true,  played:false, gf:null, ga:null }); });
+  opps.forEach(function(o){ fixtures.push({ oppName:o.name, isHome:false, played:false, gf:null, ga:null }); });
+  // Mélange léger pour alterner dom/ext.
+  fixtures.sort(function(){ return Math.random()-0.5; });
+  fixtures.forEach(function(f,i){ f.round=i+1; });
+
+  C.futsal = {
+    active:true, season:(C.futsal&&C.futsal.season||0)+1,
+    divId:divId,
+    opps:opps, fixtures:fixtures, idx:0,
+    myStats:{ name:C.club.name, P:0, W:0, D:0, L:0, GF:0, GA:0, Pts:0, isPlayer:true, color:C.club.color||'#e02030' },
+    scorers:(C.futsal&&C.futsal.scorers)||{},   // buteurs cumulés (persistants)
+    seasonScorers:{},                            // buteurs de la saison en cours
+    phase:'regular',                             // 'regular' → 'playoffs' → 'done'
+    playoffs:null,
+    done:false, champion:null,
+    palmares:(C.futsal&&C.futsal.palmares)||[],  // historique des titres
+  };
+  logEvent('⚽ Saison de '+div.name+' lancée : '+fixtures.length+' matchs (aller-retour) !', '#1878e8');
+  saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+}
+
+// Simule les matchs des AUTRES équipes futsal pour une journée (hors joueur).
+function _futsalSimOthers(fix){
+  const F = careerV2.futsal; if(!F) return;
+  // Les adversaires s'affrontent entre eux de façon abstraite (résultats
+  // plausibles) pour faire vivre le classement.
+  const others = F.opps.filter(function(o){ return o.name!==fix.oppName; });
+  for(let i=0;i+1<others.length;i+=2){
+    const a=others[i], b=others[i+1];
+    const diff=(a.strength-b.strength)/10 + (Math.random()*2-1);
+    let ga=Math.max(0,Math.round(2+diff)), gb=Math.max(0,Math.round(2-diff));
+    _futsalApplyResult(a,b,ga,gb);
+  }
+}
+function _futsalApplyResult(t, u, tg, ug){
+  t.P++; u.P++; t.GF+=tg; t.GA+=ug; u.GF+=ug; u.GA+=tg;
+  if(tg>ug){ t.W++; u.L++; t.Pts+=3; }
+  else if(tg<ug){ u.W++; t.L++; u.Pts+=3; }
+  else { t.D++; u.D++; t.Pts++; u.Pts++; }
+}
+
+// Enregistre le résultat d'un match de futsal joué par le club (my=buts club).
+function futsalRecordResult(myG, oppG){
+  const C=careerV2, F=C.futsal; if(!F) return;
+
+  // ── PHASE DE PLAYOFFS ──────────────────────────────────────────────────
+  if(F.phase==='playoffs' && F.playoffs){
+    return _futsalRecordPlayoff(myG, oppG);
+  }
+
+  // ── SAISON RÉGULIÈRE ───────────────────────────────────────────────────
+  const fix=F.fixtures[F.idx];
+  if(!fix){ return; }
+  fix.played=true; fix.gf=myG; fix.ga=oppG;
+  const ms=F.myStats;
+  ms.P++; ms.GF+=myG; ms.GA+=oppG;
+  if(myG>oppG){ ms.W++; ms.Pts+=3; }
+  else if(myG<oppG){ ms.L++; }
+  else { ms.D++; ms.Pts++; }
+  const opp=F.opps.find(function(o){ return o.name===fix.oppName; });
+  if(opp){ opp.P++; opp.GF+=oppG; opp.GA+=myG;
+    if(oppG>myG){ opp.W++; opp.Pts+=3; } else if(oppG<myG){ opp.L++; } else { opp.D++; opp.Pts++; } }
+  _futsalSimOthers(fix);
+  F.idx++;
+  // Buteurs : on répartit tes buts sur tes joueurs futsal présents.
+  _futsalCreditScorers(myG);
+  // Prime de match selon la division.
+  const div=FUTSAL_DIVISIONS[F.divId]||FUTSAL_DIVISIONS.d2;
+  const prize = myG>oppG ? div.prize.win : myG===oppG ? div.prize.draw : div.prize.loss;
+  C.club.budget += prize; try{ _addFinanceLog('Futsal — match', prize); }catch(e){}
+
+  // Fin de saison régulière → on lance les PLAYOFFS (top 4).
+  if(F.idx >= F.fixtures.length){
+    _futsalStartPlayoffs();
+  }
+  saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+}
+
+// Crédite les buteurs : répartit `goals` buts sur des joueurs futsal (pondéré
+// vers les attaquants/milieux), pour alimenter le classement des buteurs.
+function _futsalCreditScorers(goals){
+  const C=careerV2, F=C.futsal; if(!F||goals<=0) return;
+  const squad=(C.futsalSquad||[]).filter(function(p){ return p && p.pos!=='GB'; });
+  if(!squad.length) return;
+  const weight=function(p){ return p.pos==='ATT'?4 : (p.pos&&p.pos[0]==='M')?2 : 1; };
+  for(let g=0; g<goals; g++){
+    const tot=squad.reduce(function(s,p){ return s+weight(p); },0);
+    let r=Math.random()*tot, pick=squad[0];
+    for(const p of squad){ r-=weight(p); if(r<=0){ pick=p; break; } }
+    const key=pick.name;
+    F.seasonScorers[key]=(F.seasonScorers[key]||0)+1;
+    F.scorers[key]=(F.scorers[key]||0)+1;
+  }
+}
+
+// Classe la poule et lance les demi-finales (1er-4e, 2e-3e).
+function _futsalStartPlayoffs(){
+  const C=careerV2, F=C.futsal;
+  const table=F.opps.concat([F.myStats]).sort(function(a,b){ return (b.Pts-a.Pts)||((b.GF-b.GA)-(a.GF-a.GA)); });
+  F.finalTable=table;
+  const top4=table.slice(0,4);
+  F.phase='playoffs';
+  F.playoffs={
+    round:'semi',                       // 'semi' → 'final' → 'done'
+    // Demi 1 : 1er vs 4e ; Demi 2 : 2e vs 3e. Le joueur ne joue que SES demis.
+    semis:[ {a:top4[0],b:top4[3],winner:null}, {a:top4[1],b:top4[2],winner:null} ],
+    final:null,
+    myAlive: top4.some(function(t){ return t.isPlayer; }),
+  };
+  if(!F.playoffs.myAlive){
+    // Le joueur n'est pas qualifié : on simule tout et on clôt.
+    _futsalSimEntirePlayoffs();
+  } else {
+    logEvent('⚽ Saison régulière terminée — vous êtes en PLAYOFFS !', '#f0c028');
+  }
+}
+
+// Le prochain match de playoff impliquant le joueur (demi puis finale).
+function _futsalMyPlayoffMatch(){
+  const F=careerV2.futsal; if(!F||!F.playoffs) return null;
+  const po=F.playoffs;
+  if(po.round==='semi'){
+    return po.semis.find(function(s){ return !s.winner && ((s.a&&s.a.isPlayer)||(s.b&&s.b.isPlayer)); });
+  }
+  if(po.round==='final' && po.final && !po.final.winner){
+    if((po.final.a&&po.final.a.isPlayer)||(po.final.b&&po.final.b.isPlayer)) return po.final;
+  }
+  return null;
+}
+
+// Résout un match de playoff joué par le joueur.
+function _futsalRecordPlayoff(myG, oppG){
+  const C=careerV2, F=C.futsal, po=F.playoffs;
+  _futsalCreditScorers(myG);
+  const m=_futsalMyPlayoffMatch();
+  if(!m) return;
+  const me=(m.a&&m.a.isPlayer)?m.a:m.b, other=(m.a&&m.a.isPlayer)?m.b:m.a;
+  // Nul en playoff → on tranche par un léger avantage aléatoire (prolongation).
+  let iWin = myG>oppG || (myG===oppG && Math.random()<0.5);
+  m.winner = iWin ? me : other;
+  m.score = myG+'–'+oppG;
+
+  if(po.round==='semi'){
+    // Simuler l'AUTRE demi (sans le joueur).
+    const otherSemi=po.semis.find(function(s){ return s!==m; });
+    if(otherSemi && !otherSemi.winner) _futsalSimOneMatch(otherSemi);
+    // Les deux demis jouées → finale.
+    if(po.semis.every(function(s){ return s.winner; })){
+      po.round='final';
+      po.final={ a:po.semis[0].winner, b:po.semis[1].winner, winner:null };
+      // Si le joueur est éliminé en demi, on simule la finale.
+      if(!iWin){ _futsalSimOneMatch(po.final); _futsalFinishPlayoffs(); }
+      else logEvent('⚽ Qualifié pour la FINALE de futsal !', '#f0c028');
+    } else if(!iWin){
+      // Joueur éliminé mais l'autre demi pas encore faite (cas rare) : compléter.
+      _futsalSimEntirePlayoffs();
+    }
+  } else if(po.round==='final'){
+    _futsalFinishPlayoffs();
+  }
+  const div=FUTSAL_DIVISIONS[F.divId]||FUTSAL_DIVISIONS.d2;
+  const prize=iWin?div.prize.win:div.prize.draw;
+  C.club.budget+=prize; try{ _addFinanceLog('Futsal — playoff', prize); }catch(e){}
+  saveCareerV2(); try{ renderCareerV2(); }catch(e){}
+}
+
+// Simule un match entre deux équipes IA (par force).
+function _futsalSimOneMatch(m){
+  const sa=(m.a&&m.a.strength)||55, sb=(m.b&&m.b.strength)||55;
+  const diff=(sa-sb)/10+(Math.random()*2-1);
+  let ga=Math.max(0,Math.round(2+diff)), gb=Math.max(0,Math.round(2-diff));
+  if(ga===gb) (Math.random()<0.5?ga++:gb++);
+  m.winner=ga>gb?m.a:m.b; m.score=ga+'–'+gb;
+  return m.winner;
+}
+function _futsalSimEntirePlayoffs(){
+  const F=careerV2.futsal, po=F.playoffs;
+  po.semis.forEach(function(s){ if(!s.winner) _futsalSimOneMatch(s); });
+  po.round='final';
+  po.final={ a:po.semis[0].winner, b:po.semis[1].winner, winner:null };
+  _futsalSimOneMatch(po.final);
+  _futsalFinishPlayoffs();
+}
+
+// Clôt les playoffs : champion, montée/relégation, palmarès, buteurs.
+function _futsalFinishPlayoffs(){
+  const C=careerV2, F=C.futsal, po=F.playoffs;
+  const champ=po.final.winner;
+  F.champion=champ?champ.name:'?';
+  F.phase='done'; F.done=true; F.active=false;
+  const iChamp = champ && champ.isPlayer;
+  const div=FUTSAL_DIVISIONS[F.divId]||FUTSAL_DIVISIONS.d2;
+
+  // Montée : champion de D2 Futsal → D1 Futsal (peu de divisions).
+  const curIdx=FUTSAL_DIV_ORDER.indexOf(F.divId);
+  let movedUp=false, movedDown=false;
+  if(iChamp && curIdx < FUTSAL_DIV_ORDER.length-1){ F.divId=FUTSAL_DIV_ORDER[curIdx+1]; movedUp=true; }
+  else {
+    // Relégation : dernier de la poule en D1 redescend en D2.
+    const rank=(F.finalTable||[]).findIndex(function(t){ return t.isPlayer; })+1;
+    if(rank>=FUTSAL_POOL_SIZE && curIdx>0){ F.divId=FUTSAL_DIV_ORDER[curIdx-1]; movedDown=true; }
+  }
+
+  // Palmarès + primes.
+  if(iChamp){
+    F.palmares.unshift({ season:F.season, div:div.name, title:'Champion' });
+    C.club.budget+=div.titleBonus; try{ _addFinanceLog('Futsal — titre '+div.name, div.titleBonus); }catch(e){}
+  }
+  // Soulier d'or de la saison.
+  let topScorer=null, topN=0;
+  Object.keys(F.seasonScorers||{}).forEach(function(k){ if(F.seasonScorers[k]>topN){ topN=F.seasonScorers[k]; topScorer=k; } });
+  F.lastTopScorer = topScorer ? { name:topScorer, goals:topN } : null;
+
+  const msg = iChamp
+    ? '🏆 CHAMPIONS de '+div.name+' !'+(movedUp?' Montée en '+FUTSAL_DIVISIONS[F.divId].name+' !':'')
+    : (movedDown?'⬇️ Relégation en '+FUTSAL_DIVISIONS[F.divId].name+'.':'Playoffs terminés.');
+  logEvent('⚽ '+msg, iChamp?'#f0c028':'#1878e8');
+  try{ if(typeof _socialAdd==='function') _socialAdd(iChamp?'CHAMPIONS DE FUTSAL 🏆⚽ '+div.name+' à nous !':'Aventure futsal terminée pour cette saison.', iChamp?'good':'neutral'); }catch(e){}
+}

@@ -7221,7 +7221,7 @@ function renderCareerDirector(el){
   const budget = club.budget;
   const budgetCol = budget < 0 ? '#e06060' : budget < 500 ? '#f0c028' : '#18c860';
 
-  let tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar','competitions','scorers','social'];
+  let tabs = ['overview','squad','mercato','academy','finances','sponsors','infra','staff','calendar','competitions','futsal','scorers','social'];
   // Onglet Réserves : seulement si le club a des équipes affiliées.
   if(C.affiliates && C.affiliates.length) tabs.push('affiliates');
   // Onglet Historique : seulement une fois qu'au moins une saison est archivée.
@@ -7232,7 +7232,7 @@ function renderCareerDirector(el){
   const tabLabels = {
     overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato', academy:'🌱 Académie',
     finances:'💰 Finances', sponsors:'🤝 Sponsors', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
-    affiliates:'🏛 Réserves', history:'📜 Historique', scorers:'⚽ Buteurs', competitions:'🏆 Compétitions', social:'💬 Z'
+    affiliates:'🏛 Réserves', history:'📜 Historique', scorers:'⚽ Buteurs', competitions:'🏆 Compétitions', social:'💬 Z', futsal:'⚽ Futsal'
   };
 
   let tabBtns = '';
@@ -7364,6 +7364,7 @@ function renderCareerDirectorTab(tab){
   else if(tab==='scorers') el.innerHTML = _renderDirectorScorers();
   else if(tab==='competitions') el.innerHTML = _renderDirectorCompetitions();
   else if(tab==='social') el.innerHTML = _renderDirectorSocial();
+  else if(tab==='futsal') el.innerHTML = _renderDirectorFutsal();
   else if(tab==='affiliates') el.innerHTML = _renderDirectorAffiliates();
   else if(tab==='history') el.innerHTML = _renderDirectorHistory();
   else el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px">A venir...</div>';
@@ -8060,6 +8061,11 @@ function _renderDirectorSquad(){
     h += '<div style="font-size:9px;font-weight:700;color:var(--purple);padding:8px 8px 4px">📥 Réserve</div>';
     rows(cur.reserves, 'reserve');
   }
+  // Équipe futsal 5v5 (seulement pour l'équipe première).
+  if(team.key==='main' && (careerV2.futsalSquad||[]).length){
+    h += '<div style="font-size:9px;font-weight:700;color:#1878e8;padding:8px 8px 4px">⚽ Futsal 5v5</div>';
+    rows(careerV2.futsalSquad, 'futsal');
+  }
   h += '</div>';
   h += '<div style="padding:7px 12px;font-size:8px;color:var(--muted);border-top:1px solid var(--b1)">Clique sur une joueuse pour ses stats et pour la déplacer (effectif · banc · réserve) · 🌟 pépite</div>';
 
@@ -8155,7 +8161,7 @@ function _closeOpponentSquad(){ window._oppSquadView=null; const el=document.get
 function _openPlayerCard(teamKey, pid){
   const C=careerV2; if(!C) return;
   let list=[];
-  if(teamKey==='main') list=[...(C.players||[]),...(C.bench||[]),...(C.reserves||[])];
+  if(teamKey==='main') list=[...(C.players||[]),...(C.bench||[]),...(C.reserves||[]),...(C.futsalSquad||[])];
   else { const aff=(C.affiliates||[])[parseInt(teamKey.replace('aff',''),10)]; if(aff) list=[...(aff.players||[]),...(aff.bench||[]),...(aff.reserves||[])]; }
   const p = list.find(x=>String(x.id||'')===pid) || list.find(x=>(x.name)===pid) || list.find((x,i)=>String(x.name+'_'+(i+1))===pid);
   if(!p){ return; }
@@ -8204,10 +8210,14 @@ function _renderPlayerCardOverlay(p){
     const inBench = arr.bench.some(x=>_sameP(x,p));
     const inStart = arr.players.some(x=>_sameP(x,p));
     const inReserve = (arr.reserves||[]).some(x=>_sameP(x,p));
+    const inFutsal = teamKey==='main' && (careerV2.futsalSquad||[]).some(x=>_sameP(x,p));
     const pidEsc = pid.replace(/'/g,"");
     h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
-    if(inReserve){
-      // En réserve : seule action, le rappeler.
+    if(inFutsal){
+      // Dans l'équipe futsal : le rappeler vers l'effectif principal.
+      h+='<button onclick="_squadFromFutsal(\''+pidEsc+'\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#18c860;color:#fff;font-size:11px;font-weight:800;cursor:pointer">⚽ Rappeler du futsal</button>';
+    } else if(inReserve){
+      // En réserve : le rappeler.
       h+='<button onclick="_squadFromReserve(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#18c860;color:#fff;font-size:11px;font-weight:800;cursor:pointer">📤 Rappeler de la réserve</button>';
     } else {
       if(inBench){
@@ -8217,7 +8227,13 @@ function _renderPlayerCardOverlay(p){
       }
       // Depuis titulaire ou banc, on peut aussi envoyer en réserve.
       h+='<button onclick="_squadToReserve(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:1px solid var(--purple);border-radius:8px;background:transparent;color:var(--purple);font-size:11px;font-weight:800;cursor:pointer">📥 Mettre en réserve</button>';
+      // Équipe futsal 5v5 du club (uniquement pour l'équipe première).
+      if(teamKey==='main'){
+        h+='<button onclick="_squadToFutsal(\''+pidEsc+'\')" style="flex:1;padding:8px;border:1px solid #1878e8;border-radius:8px;background:transparent;color:#1878e8;font-size:11px;font-weight:800;cursor:pointer">⚽ Envoyer au futsal 5v5</button>';
+      }
     }
+    // Libérer le joueur (le sortir définitivement du club) — toujours possible.
+    h+='<button onclick="_squadRelease(\''+teamKey+'\',\''+pidEsc+'\')" style="flex:1;padding:8px;border:1px solid #e02030;border-radius:8px;background:transparent;color:#e06060;font-size:11px;font-weight:800;cursor:pointer">🚪 Libérer</button>';
     h+='</div>';
   })();
   h+='</div>';
@@ -8314,6 +8330,89 @@ function _squadFromReserve(teamKey, pid){
   p.onBench=true;
   arr.bench.push(p);
   logEvent('📤 '+p.name+' est rappelé de la réserve (sur le banc).','#18c860');
+  saveCareerV2();
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+
+// ── ÉQUIPE FUTSAL 5v5 DU CLUB ────────────────────────────────────────────
+// Beaucoup de clubs ont une section futsal. On la modélise comme un groupe
+// distinct (careerV2.futsalSquad) où l'on peut « prêter » des joueurs de
+// l'équipe première. Ils n'apparaissent plus dans la compo à 11/7, mais
+// gardent leur place dans le club (récupérables à tout moment).
+function _findAndRemove(pid){
+  const C=careerV2; if(!C) return null;
+  const pools=[C.players, C.bench, C.reserves];
+  for(const pool of pools){
+    if(!Array.isArray(pool)) continue;
+    const i=pool.findIndex(x=>String(x&&x.id||'')===pid || (x&&x.name)===pid);
+    if(i>=0){ return pool.splice(i,1)[0]; }
+  }
+  return null;
+}
+function _squadToFutsal(pid){
+  const C=careerV2; if(!C) return;
+  if(!C.futsalSquad) C.futsalSquad=[];
+  // Garde-fous : ne pas vider l'effectif de départ ni son dernier gardien.
+  const target=(C.players||[]).concat(C.bench||[]).find(x=>String(x&&x.id||'')===pid||(x&&x.name)===pid)
+             || (C.reserves||[]).find(x=>String(x&&x.id||'')===pid||(x&&x.name)===pid);
+  if(!target){ logEvent('Joueur introuvable.','#e02030'); return; }
+  if(target.pos==='GB'){
+    const otherGK=(C.players||[]).concat(C.bench||[]).some(x=>x!==target&&x&&x.pos==='GB');
+    if(!otherGK){ logEvent('⚠️ Impossible : c\'est le seul gardien de l\'effectif.','#e06060'); return; }
+  }
+  if((C.players||[]).some(x=>x===target) && (C.players||[]).length<=7){
+    logEvent('⚠️ Effectif de départ trop réduit.','#e06060'); return;
+  }
+  const p=_findAndRemove(pid);
+  if(!p){ logEvent('Joueur introuvable.','#e02030'); return; }
+  p.onBench=false; p._inFutsal=true;
+  C.futsalSquad.push(p);
+  logEvent('⚽ '+p.name+' rejoint l\'équipe futsal 5v5 du club.','#1878e8');
+  saveCareerV2();
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+function _squadFromFutsal(pid){
+  const C=careerV2; if(!C || !C.futsalSquad) return;
+  const i=C.futsalSquad.findIndex(x=>String(x&&x.id||'')===pid||(x&&x.name)===pid);
+  if(i<0){ logEvent('Joueur introuvable au futsal.','#e02030'); return; }
+  const p=C.futsalSquad.splice(i,1)[0];
+  p._inFutsal=false; p.onBench=true;
+  (C.bench||(C.bench=[])).push(p);
+  logEvent('⚽ '+p.name+' revient du futsal (sur le banc).','#18c860');
+  saveCareerV2();
+  const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
+}
+
+// ── LIBÉRER UN JOUEUR ────────────────────────────────────────────────────
+// Sort définitivement le joueur du club (résiliation). Avec confirmation et
+// garde-fous (dernier gardien, effectif minimal).
+function _squadRelease(teamKey, pid){
+  const C=careerV2; if(!C) return;
+  const arr=_squadArraysFor(teamKey); if(!arr) return;
+  // Localiser le joueur dans l'un des groupes (y compris futsal pour l'équipe principale).
+  const groups = teamKey==='main'
+    ? [C.players, C.bench, C.reserves, C.futsalSquad]
+    : [arr.players, arr.bench, arr.reserves];
+  let p=null, grp=null, idx=-1;
+  for(const g of groups){
+    if(!Array.isArray(g)) continue;
+    const i=g.findIndex(x=>String(x&&x.id||'')===pid||(x&&x.name)===pid);
+    if(i>=0){ p=g[i]; grp=g; idx=i; break; }
+  }
+  if(!p){ logEvent('Joueur introuvable.','#e02030'); return; }
+  // Garde-fous.
+  if(p.pos==='GB'){
+    const otherGK=(C.players||[]).concat(C.bench||[]).some(x=>x!==p&&x&&x.pos==='GB');
+    if(!otherGK){ logEvent('⚠️ Impossible de libérer votre seul gardien.','#e06060'); return; }
+  }
+  if(grp===C.players && C.players.length<=7){
+    logEvent('⚠️ Effectif de départ trop réduit pour libérer ce joueur.','#e06060'); return;
+  }
+  if(typeof confirm==='function' && !confirm('Libérer '+p.name+' ? Il quittera définitivement le club (sans indemnité de transfert).')) return;
+  grp.splice(idx,1);
+  logEvent('🚪 '+p.name+' a été libéré du club.','#e06060');
+  // Petit écho social : un départ fait réagir.
+  try{ if(typeof _socialAdd==='function') _socialAdd(p.name+' quitte le club. Fin d\'une histoire ou bon débarras ? 🤔','neutral'); }catch(e){}
   saveCareerV2();
   const el=document.getElementById('career-director-content'); if(el) el.innerHTML=_renderDirectorSquad();
 }
@@ -11992,4 +12091,223 @@ function _clubCrest(name, color, size){
   svg += '<text x="10" y="'+(fs*0.5+5)+'" text-anchor="middle" font-size="9" font-weight="900" fill="#fff" font-family="sans-serif" dominant-baseline="middle">'+initial+'</text>';
   svg += '</svg>';
   return '<span style="display:inline-flex;width:'+size+'px;height:'+size+'px;align-items:center;justify-content:center;flex-shrink:0">'+svg+'</span>';
+}
+
+// ── LANCER UN MATCH DE FUTSAL 5v5 (jouable) ──────────────────────────────
+// Réutilise le moteur 5v5 avec l'ÉQUIPE FUTSAL du club contre l'adversaire du
+// jour de la compétition futsal. À la fin, le résultat est enregistré dans le
+// classement futsal (pas dans le championnat principal).
+function playFutsalMatch(){
+  const C = careerV2;
+  if(!C || !C.futsal || !C.futsal.active){ logEvent('Aucune saison de futsal en cours.','#e02030'); return; }
+  const F = C.futsal;
+  // Adversaire du jour : match de playoff si on y est, sinon fixture régulière.
+  let oppName, oppRef;
+  if(F.phase==='playoffs'){
+    const m = (typeof _futsalMyPlayoffMatch==='function') ? _futsalMyPlayoffMatch() : null;
+    if(!m){ logEvent('Aucun match de playoff à jouer.','#e0a020'); return; }
+    const other=(m.a&&m.a.isPlayer)?m.b:m.a;
+    oppName=other?other.name:'Adversaire'; oppRef=other;
+  } else {
+    const fix = F.fixtures[F.idx];
+    if(!fix){ logEvent('Saison de futsal terminée.','#e0a020'); return; }
+    oppName=fix.oppName; oppRef=F.opps.find(function(o){ return o.name===oppName; });
+  }
+  const squad = (C.futsalSquad||[]).filter(function(p){ return p && !((p._injWeeks||0)>0 || (p._suspMatches||0)>0); });
+  if(squad.length < 5){ logEvent('⚽ Il faut 5 joueurs futsal valides pour jouer.','#e06060'); return; }
+
+  // Passage en mode 5v5.
+  window.gameMode = '5v5';
+  try{ if(typeof _applyMode5v5==='function') _applyMode5v5(); }catch(e){}
+
+  const clone = function(p){ return Object.assign({}, p); };
+  const XI_POS = ['GB','DC','MOG','MOD','ATT'];
+  const BENCH_POS = ['GB','DC','ATT'];
+  // Compo du club : 5 titulaires + banc depuis l'effectif futsal.
+  const pool = squad.map(clone);
+  const gk = pool.find(function(p){ return p.pos==='GB'; });
+  const starters = [];
+  if(gk) starters.push(gk);
+  pool.forEach(function(p){ if(starters.indexOf(p)<0 && starters.length<5) starters.push(p); });
+  const matchBench = pool.filter(function(p){ return starters.indexOf(p)<0; }).slice(0,3);
+
+  teams[0] = {
+    name: C.club.name + ' Futsal', color: C.club.color||'#1878e8', img:'',
+    strat5:'121', players: starters, bench: matchBench, reserves:[],
+  };
+
+  // Adversaire futsal au niveau de sa force.
+  const opp = oppRef || { name:oppName, strength:55, color:'#8840e0' };
+  const lvl = (opp.strength||55)>=65 ? 'r2' : (opp.strength||55)>=52 ? 'r3' : 'dh';
+  const aiSquad = WORLDS.generateSquad(C.nation||'panthalassa', C.club.region||'', {
+    positions: XI_POS, bench: BENCH_POS, reserves:[], level: lvl,
+  });
+  teams[1] = {
+    name: opp.name||oppName, color: opp.color||'#8840e0', img:'', strat5:'121',
+    players: aiSquad.players, bench: aiSquad.bench, reserves:[],
+  };
+
+  applyFormationRoles(0);
+  applyFormationRoles(1);
+  window._futsalPlaying = true;
+  window._careerFixPlaying = null;   // ce n'est PAS un match de championnat
+
+  nav('match');
+  resetMatch();
+  G.leagueMode = true;
+  G._humanTeams = [true, false];
+  G._isFutsalMatch = true;
+  try{ if(typeof resetManagerAi==='function') resetManagerAi(); }catch(e){}
+  syncHUD(); renderTB(0); renderTB(1);
+  showPreMatch(null);
+}
+
+// Appelé par endMatch quand le match joué était un match de futsal.
+function _recordFutsalMatchResult(){
+  const C = careerV2;
+  if(!C || !window._futsalPlaying) return;
+  const s0 = (G.scores && G.scores[0]) || 0;
+  const s1 = (G.scores && G.scores[1]) || 0;
+  window._futsalPlaying = null;
+  G._isFutsalMatch = false;
+  try{ if(typeof futsalRecordResult==='function') futsalRecordResult(s0, s1); }catch(e){ console.error('futsal result:',e); }
+  // Retour au mode par défaut du club.
+  window.gameMode = window._clubDefaultMode || '7v7';
+}
+
+// ── ONGLET FUTSAL : compétition 5v5 du club ──────────────────────────────
+function _renderDirectorFutsal(){
+  const C = careerV2;
+  const F = C.futsal;
+  const squadN = (C.futsalSquad||[]).length;
+  let h = '<div style="padding:4px">';
+  h += '<div style="font-size:12px;font-weight:900;color:#1878e8;margin-bottom:8px">⚽ Futsal 5v5</div>';
+
+  // Effectif futsal insuffisant.
+  if(squadN < 5){
+    h += '<div class="ccard ccard-blue"><div class="ctxt-sm">Votre équipe futsal compte <b>'+squadN+'</b> joueur(s). Il en faut au moins <b>5</b> pour disputer une compétition.</div>';
+    h += '<div class="ctxt-xs" style="margin-top:6px;color:var(--muted)">Envoyez des joueurs au futsal depuis l\'onglet Effectif (fiche d\'un joueur → « ⚽ Envoyer au futsal 5v5 »).</div></div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Pas de saison en cours : proposer d'en lancer une.
+  if(!F || (!F.active && !F.done)){
+    const divId=(F&&F.divId)||'d2';
+    const divName=(FUTSAL_DIVISIONS[divId]||FUTSAL_DIVISIONS.d2).name;
+    h += '<div class="ccard ccard-blue"><div class="ctxt-sm" style="margin-bottom:8px">Votre équipe futsal est prête (<b>'+squadN+'</b> joueurs) — division actuelle : <b>'+divName+'</b>. Poule de '+FUTSAL_POOL_SIZE+', aller-retour, puis playoffs.</div>';
+    h += '<button class="btn btng" onclick="futsalStartSeason()" style="width:100%;font-size:11px;padding:8px">🚀 Lancer une saison</button></div>';
+    h += _futsalPalmaresBlock(F);
+    h += '</div>';
+    return h;
+  }
+
+  const div=FUTSAL_DIVISIONS[F.divId]||FUTSAL_DIVISIONS.d2;
+  h += '<div style="font-size:9px;color:var(--muted);margin:-4px 0 8px">'+div.name+' · saison '+(F.season||1)+'</div>';
+
+  // ── PHASE PLAYOFFS ─────────────────────────────────────────────────────
+  if(F.phase==='playoffs' && F.playoffs){
+    const po=F.playoffs;
+    h += '<div class="ccard ccard-gold"><div class="ccard-title">🏆 Playoffs</div>';
+    const showM=function(m,label){
+      if(!m) return '';
+      const wa=m.winner&&m.winner===m.a, wb=m.winner&&m.winner===m.b;
+      const nm=function(t,w){ return '<span style="color:'+(t&&t.isPlayer?'#1878e8':w?'#18c860':'var(--fg)')+';font-weight:'+(t&&t.isPlayer||w?'900':'400')+'">'+(t?t.name:'?')+'</span>'; };
+      return '<div style="display:flex;justify-content:space-between;font-size:10px;padding:4px 4px;border-bottom:1px solid var(--b1)"><span>'+label+' : '+nm(m.a,wa)+' vs '+nm(m.b,wb)+'</span><span style="font-weight:900;color:var(--muted)">'+(m.score||'')+'</span></div>';
+    };
+    h += showM(po.semis[0],'Demi 1');
+    h += showM(po.semis[1],'Demi 2');
+    if(po.final) h += showM(po.final,'🏆 Finale');
+    h += '</div>';
+    const my=(typeof _futsalMyPlayoffMatch==='function')?_futsalMyPlayoffMatch():null;
+    if(my && !F.done){
+      const other=(my.a&&my.a.isPlayer)?my.b:my.a;
+      h += '<div class="ccard ccard-blue"><div class="ccard-title">'+(po.round==='final'?'Finale':'Demi-finale')+'</div>';
+      h += '<div style="text-align:center;margin:8px 0;font-size:11px"><b style="color:#1878e8">'+C.club.name+'</b> vs <b>'+(other?other.name:'?')+'</b></div>';
+      h += '<button class="btn btng" onclick="playFutsalMatch()" style="width:100%;font-size:12px;padding:10px;background:#1878e8;color:#fff;border:none">▶️ Jouer '+(po.round==='final'?'la finale':'la demi-finale')+'</button></div>';
+    }
+    h += _futsalScorersBlock(F);
+    h += '</div>';
+    return h;
+  }
+
+  // ── CLASSEMENT (saison régulière ou terminée) ──────────────────────────
+  const table = (F.finalTable) ? F.finalTable : (F.opps||[]).concat([F.myStats]).sort(function(a,b){ return (b.Pts-a.Pts)||((b.GF-b.GA)-(a.GF-a.GA)); });
+  h += '<div class="ccard"><div class="ccard-title">Classement</div>';
+  table.forEach(function(t, i){
+    const me = t.isPlayer;
+    const zone = i<4 ? '#f0c028' : (i>=FUTSAL_POOL_SIZE-1 ? '#e06060' : 'transparent'); // top4 playoffs, dernier relégable
+    const rowBg = me ? 'background:rgba(24,120,232,.14);border-radius:6px;' : (i%2?'background:rgba(255,255,255,.02);':'');
+    h += '<div style="display:grid;grid-template-columns:20px 1fr 24px 24px 24px 30px 28px;gap:0;align-items:center;padding:5px 4px;border-bottom:1px solid var(--b1);border-left:3px solid '+zone+';font-size:10px;'+rowBg+'">';
+    h += '<div style="color:var(--muted)">'+(i+1)+'</div>';
+    h += '<div style="display:flex;align-items:center;gap:5px;min-width:0">'+((typeof _clubCrest==='function')?_clubCrest(t.name,t.color,14):'')+'<span style="font-weight:'+(me?'900':'600')+';color:'+(me?'#1878e8':'var(--fg)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.name+'</span></div>';
+    h += '<div style="text-align:center;color:var(--muted)">'+t.P+'</div>';
+    h += '<div style="text-align:center;color:#18c860">'+t.W+'</div>';
+    h += '<div style="text-align:center;color:#e06060">'+t.L+'</div>';
+    h += '<div style="text-align:center;font-size:9px;color:var(--muted)">'+t.GF+':'+t.GA+'</div>';
+    h += '<div style="text-align:center;font-weight:900;color:'+(me?'#1878e8':'var(--fg)')+'">'+t.Pts+'</div>';
+    h += '</div>';
+  });
+  h += '<div style="display:flex;gap:12px;margin-top:6px;font-size:8px;color:var(--muted)"><span><span style="display:inline-block;width:8px;height:8px;background:#f0c028;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Playoffs (top 4)</span><span><span style="display:inline-block;width:8px;height:8px;background:#e06060;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Relégable</span></div>';
+  h += '</div>';
+
+  if(F.done){
+    const myRank = table.findIndex(function(t){ return t.isPlayer; })+1;
+    h += '<div class="ccard ccard-gold"><div class="ccard-title">🏁 Saison terminée</div>';
+    h += '<div class="ctxt-sm">Champion : <b>'+(F.champion||'?')+'</b>'+(F.lastTopScorer?(' · Soulier d\'or : <b>'+F.lastTopScorer.name+'</b> ('+F.lastTopScorer.goals+')'):'')+'</div>';
+    h += '<button class="btn btng" onclick="futsalStartSeason()" style="width:100%;font-size:11px;padding:8px;margin-top:8px">🔄 Nouvelle saison</button></div>';
+  } else {
+    const fix = F.fixtures[F.idx];
+    if(fix){
+      h += '<div class="ccard ccard-blue"><div class="ccard-title">Prochain match ('+(F.idx+1)+'/'+F.fixtures.length+')</div>';
+      h += '<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:8px 0">';
+      h += '<span style="font-weight:800;color:#1878e8">'+C.club.name+'</span>';
+      h += '<span style="color:var(--muted);font-size:10px">'+(fix.isHome?'🏠 vs':'✈️ vs')+'</span>';
+      h += '<span style="font-weight:800;color:var(--fg)">'+fix.oppName+'</span>';
+      h += '</div>';
+      h += '<button class="btn btng" onclick="playFutsalMatch()" style="width:100%;font-size:12px;padding:10px;background:#1878e8;color:#fff;border:none">▶️ Jouer le match</button></div>';
+    }
+  }
+
+  h += _futsalScorersBlock(F);
+  h += _futsalPalmaresBlock(F);
+
+  // Résultats passés (saison régulière).
+  const played = (F.fixtures||[]).filter(function(f){ return f.played; });
+  if(played.length){
+    h += '<div class="ccard"><div class="ccard-title">Résultats</div>';
+    played.forEach(function(f){
+      const win = f.gf>f.ga, draw=f.gf===f.ga;
+      const col = win?'#18c860':draw?'#f0c028':'#e06060';
+      h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:4px 4px;border-bottom:1px solid var(--b1)"><span>'+(f.isHome?'🏠':'✈️')+' '+f.oppName+'</span><span style="font-weight:900;color:'+col+'">'+f.gf+'–'+f.ga+'</span></div>';
+    });
+    h += '</div>';
+  }
+
+  h += '</div>';
+  return h;
+}
+
+// Bloc buteurs de la saison en cours.
+function _futsalScorersBlock(F){
+  const sc=F.seasonScorers||{};
+  const arr=Object.keys(sc).map(function(k){ return {name:k,g:sc[k]}; }).sort(function(a,b){ return b.g-a.g; }).slice(0,5);
+  if(!arr.length) return '';
+  let h='<div class="ccard"><div class="ccard-title">⚽ Buteurs (saison)</div>';
+  arr.forEach(function(s,i){
+    h+='<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 4px;border-bottom:1px solid var(--b1)"><span>'+(i===0?'🥇 ':(i+1)+'. ')+s.name+'</span><span style="font-weight:900;color:#1878e8">'+s.g+'</span></div>';
+  });
+  h+='</div>';
+  return h;
+}
+
+// Bloc palmarès (titres passés).
+function _futsalPalmaresBlock(F){
+  if(!F || !F.palmares || !F.palmares.length) return '';
+  let h='<div class="ccard ccard-gold"><div class="ccard-title">🏆 Palmarès futsal</div>';
+  F.palmares.slice(0,6).forEach(function(p){
+    h+='<div style="font-size:10px;padding:3px 4px;border-bottom:1px solid var(--b1)">🏆 Saison '+p.season+' — <b>'+p.title+'</b> ('+p.div+')</div>';
+  });
+  h+='</div>';
+  return h;
 }
