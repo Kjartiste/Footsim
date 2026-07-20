@@ -2219,6 +2219,19 @@ function demoteToReserve(ti,bi){
   renderTB(ti);
 }
 
+function _cssColorToHex(col){
+  // Convertit n'importe quelle couleur CSS en #rrggbb (requis par <input type="color">).
+  if(!col) return '#888888';
+  col=String(col).trim();
+  if(/^#[0-9a-fA-F]{6}$/.test(col)) return col;
+  if(/^#[0-9a-fA-F]{3}$/.test(col)) return'#'+col[1]+col[1]+col[2]+col[2]+col[3]+col[3];
+  try{
+    const c=document.createElement('canvas');c.width=1;c.height=1;
+    const x=c.getContext('2d');x.fillStyle=col;x.fillRect(0,0,1,1);
+    const d=x.getImageData(0,0,1,1).data;
+    return'#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }catch(e){return'#888888';}
+}
 function renderTB(ti){
   const T=teams[ti];
   // Spell type → CSS class
@@ -2267,7 +2280,7 @@ function renderTB(ti){
     <div class="team-hd">
       <div class="tdot2" style="background:${T.color}"></div>
       <input class="tname" value="${T.name}" onchange="teams[${ti}].name=this.value;syncHUD()">
-      <input type="color" value="${T.color}" onchange="teams[${ti}].color=this.value;document.getElementById('hs${ti}').style.color=this.value;renderTB(${ti})">
+      <input type="color" value="${_cssColorToHex(T.color)}" onchange="teams[${ti}].color=this.value;document.getElementById('hs${ti}').style.color=this.value;renderTB(${ti})">
     </div>
     <div style="padding:4px 6px 8px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px">
       <div>
@@ -4387,7 +4400,7 @@ function renderLeagueTmContent(){
       </div>
       <div style="flex:1">
         <div class="frow"><span class="lbl">Nom</span><input class="inp" id="ledit-name" value="${T.name}"></div>
-        <div class="frow"><span class="lbl">Couleur</span><input type="color" class="inp" value="${T.color}" id="ledit-color"></div>
+        <div class="frow"><span class="lbl">Couleur</span><input type="color" class="inp" value="${_cssColorToHex(T.color)}" id="ledit-color"></div>
         <div class="frow"><span class="lbl">Formation</span>
           <select class="inp" id="ledit-strat">
             ${STRATS.map(s=>`<option value="${s.id}"${(T.strat||'321')===s.id?' selected':''}>${s.n}</option>`).join('')}
@@ -5863,7 +5876,7 @@ function openCupTeamRoster(ref){
         <div style="flex:1">
           <input class="inp" value="${T.name}" placeholder="Nom équipe" style="font-size:13px;font-weight:800;margin-bottom:5px;width:100%;box-sizing:border-box" onchange="cteFieldLive(${refJS},'name',this.value)">
           <div style="display:flex;gap:6px;align-items:center">
-            <input type="color" value="${T.color}" style="width:30px;height:26px;border:none;background:none;cursor:pointer;border-radius:4px" oninput="cteColorLive(${refJS},this.value)">
+            <input type="color" value="${_cssColorToHex(T.color)}" style="width:30px;height:26px;border:none;background:none;cursor:pointer;border-radius:4px" oninput="cteColorLive(${refJS},this.value)">
             <select class="inp" style="flex:1" onchange="cteFieldLive(${refJS},'strat',this.value)">
               ${STRATS.map(s=>`<option value="${s.id}"${(T.strat||'321')===s.id?' selected':''}>${s.n}</option>`).join('')}
             </select>
@@ -6480,7 +6493,7 @@ function _renderNPCEditor(mcnt){
       <div style="flex:1">
         <input id="npc-name" class="inp" value="${npc.name}" placeholder="Nom équipe" style="font-size:13px;font-weight:800;margin-bottom:5px;width:100%;box-sizing:border-box" oninput="npcFieldLive(${i},'name',this.value)">
         <div style="display:flex;gap:6px;align-items:center">
-          <input type="color" value="${npc.color}" style="width:30px;height:26px;border:none;background:none;cursor:pointer;border-radius:4px" oninput="npcColorLive(${i},this.value)">
+          <input type="color" value="${_cssColorToHex(npc.color)}" style="width:30px;height:26px;border:none;background:none;cursor:pointer;border-radius:4px" oninput="npcColorLive(${i},this.value)">
           <select class="inp" style="flex:1" onchange="npcFieldLive(${i},'strat',this.value)">
             ${STRATS.map(s=>`<option value="${s.id}"${(npc.strat||'321')===s.id?' selected':''}>${s.n}</option>`).join('')}
           </select>

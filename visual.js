@@ -1804,10 +1804,21 @@ function drawInitials(px,py,r,ini){
   ctx.fillText(ini,px,py);
 }
 
+function _colorToHex(col){
+  // Convertit n'importe quelle couleur CSS (hsl, rgb, nom) en #rrggbb via canvas.
+  try{
+    const c=document.createElement('canvas');c.width=1;c.height=1;
+    const x=c.getContext('2d');x.fillStyle=col;x.fillRect(0,0,1,1);
+    const d=x.getImageData(0,0,1,1).data;
+    return'#'+[d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }catch(e){return'#888888';}
+}
 function lighten(hex,amt){
-  hex=String(hex||'#000');
+  hex=String(hex||'#000').trim();
   // Étendre les hex courts (#fff → #ffffff) avant de découper les canaux.
   if(/^#[0-9a-fA-F]{3}$/.test(hex)) hex='#'+hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3];
+  // Si ce n'est pas un hex standard, convertir d'abord (hsl, rgb, nom CSS…)
+  if(!/^#[0-9a-fA-F]{6}$/.test(hex)) hex=_colorToHex(hex);
   const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
   return`rgb(${Math.min(255,r+255*amt)},${Math.min(255,g+255*amt)},${Math.min(255,b+255*amt)})`;
 }
