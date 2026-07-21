@@ -597,6 +597,7 @@ input[type=range]:focus{outline:none}
 <script src="pilier.js"></script>
 <script src="rorang.js"></script>
 <script src="worlds_index.js"></script>
+<script src="nation_rivalries.js"></script>
 <script src="races.js"></script>
 <script src="data.js"></script>
 <script src="stats_ext.js"></script>
@@ -610,7 +611,14 @@ input[type=range]:focus{outline:none}
 <script src="staff.js"></script>
 <script src="sponsors.js"></script>
 <script src="board.js"></script>
-<script src="ui.js"></script>
+<script src="ui_match.js"></script>
+<script src="ui_setup.js"></script>
+<script src="ui_editor.js"></script>
+<script src="ui_teams.js"></script>
+<script src="ui_league.js"></script>
+<script src="ui_career.js"></script>
+<script src="career_events.js"></script>
+<script src="tutorial.js"></script>
 <script src="presets.js"></script>
 <script src="valoria_teams.js"></script>
 <script src="pilier_teams.js"></script>
@@ -619,6 +627,7 @@ input[type=range]:focus{outline:none}
 <script src="save.js"></script>
 <script src="career_sim.js"></script>
 <script src="manager_ai.js"></script>
+<script src="enhance.js"></script>
 <script>
 // Démarrage — afficher l'écran de profil si pas de profil actif.
 // On attend que TOUS les scripts (dont save.js qui définit loadProfiles)
@@ -638,6 +647,8 @@ input[type=range]:focus{outline:none}
         renderProfileScreen();
       } else {
         nav('mode');
+        // Visite guidée au tout premier passage (ne se lance qu'une fois par profil).
+        if(typeof maybeStartTutorial === 'function'){ try{ maybeStartTutorial(); }catch(e){} }
       }
     }catch(err){
       console.error('Erreur au démarrage:', err);

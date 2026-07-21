@@ -328,3 +328,134 @@
   transition:opacity .18s,transform .18s;
 }
 #rec-msg.rec-msg-show{opacity:1;transform:translateY(0)}
+
+/* ============================================================
+   ÉCRAN DE SÉLECTION DE MODE (5v5 / 7v7 / 11v11)
+   Styles extraits de l'ancien inline dans renderModeScreen().
+   Chaque carte reçoit sa couleur d'accent via --mc (mode color)
+   posé en inline sur .mode-card. Le reste est ici.
+   ============================================================ */
+.mode-head{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;
+  letter-spacing:2px;color:var(--gold);text-transform:uppercase;padding:8px 4px 2px}
+.mode-intro{font-size:10px;color:var(--muted);padding:0 4px 10px;line-height:1.4}
+
+.mode-card{position:relative;cursor:pointer;background:var(--card);
+  border:2px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:10px;
+  transition:transform .12s,border-color .12s,box-shadow .12s,background .12s}
+.mode-card:hover{transform:translateY(-1px)}
+.mode-card:active{transform:translateY(0) scale(.995)}
+
+/* Carte vedette (5v5 / 7v7) : halo + accent coloré permanent */
+.mode-card.feat{background:color-mix(in srgb,var(--mc) 12%,var(--card));
+  border-width:2.5px;border-color:var(--mc);padding:14px 12px 13px;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--mc) 13%,transparent),
+             0 4px 18px color-mix(in srgb,var(--mc) 20%,transparent)}
+
+/* Carte sélectionnée : bordure pleine + halo net, quelle que soit sa nature */
+.mode-card.sel{border-color:var(--mc);
+  background:color-mix(in srgb,var(--mc) 16%,var(--card));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--mc) 30%,transparent),
+             0 6px 22px color-mix(in srgb,var(--mc) 26%,transparent)}
+
+.mode-badge{position:absolute;top:-9px;left:12px;font-size:8px;font-weight:900;
+  letter-spacing:1px;color:#05101c;background:var(--mc);padding:3px 8px;
+  border-radius:10px;box-shadow:0 2px 6px color-mix(in srgb,var(--mc) 40%,transparent)}
+/* Coche de sélection, en haut à droite */
+.mode-check{position:absolute;top:10px;right:10px;width:22px;height:22px;
+  border-radius:50%;background:var(--mc);color:#05101c;display:flex;
+  align-items:center;justify-content:center;font-size:13px;font-weight:900;
+  box-shadow:0 2px 8px color-mix(in srgb,var(--mc) 45%,transparent)}
+
+.mode-row{display:flex;align-items:center;gap:10px}
+.mode-ico{width:44px;height:44px;border-radius:10px;flex-shrink:0;
+  background:color-mix(in srgb,var(--mc) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--mc) 40%,transparent);
+  display:flex;align-items:center;justify-content:center;font-size:24px}
+.mode-card.feat .mode-ico{width:50px;height:50px;font-size:28px}
+.mode-title{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;
+  color:#fff;letter-spacing:.5px}
+.mode-card.feat .mode-title,.mode-card.sel .mode-title{color:var(--mc);font-size:19px}
+.mode-sub{font-size:10px;color:var(--mc);font-weight:700;letter-spacing:.5px}
+.mode-desc{font-size:11px;color:var(--text);margin-top:8px;line-height:1.4}
+.mode-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.mode-tag{font-size:8px;font-weight:700;letter-spacing:.4px;color:var(--muted);
+  background:var(--panel);border:1px solid var(--b1);padding:2px 7px;border-radius:8px}
+
+/* ============================================================
+   VISITE GUIDÉE / ONBOARDING (tutorial.js)
+   Overlay sombre + spotlight sur l'élément ciblé + bulle.
+   ============================================================ */
+#tuto-overlay{position:fixed;inset:0;z-index:9998;pointer-events:none;
+  opacity:0;transition:opacity .2s}
+#tuto-overlay.on{opacity:1;pointer-events:auto}
+/* Voile sombre en 4 rectangles autour du trou (le spotlight) */
+.tuto-mask{position:fixed;background:rgba(4,10,18,.72);z-index:9998;
+  transition:all .25s ease}
+/* Anneau lumineux autour de la cible */
+#tuto-ring{position:fixed;z-index:9999;border-radius:12px;pointer-events:none;
+  box-shadow:0 0 0 3px var(--gold,#f0c028),0 0 0 9999px transparent,
+             0 0 24px 4px color-mix(in srgb,var(--gold,#f0c028) 55%,transparent);
+  transition:all .25s ease}
+/* Bulle de texte */
+#tuto-bubble{position:fixed;z-index:10000;max-width:280px;
+  background:var(--panel-grad,var(--card));border:2px solid var(--gold,#f0c028);
+  border-radius:14px;padding:14px 15px 12px;
+  box-shadow:0 10px 40px rgba(0,0,0,.55);
+  transition:all .25s ease;pointer-events:auto}
+.tuto-step-count{font-size:9px;font-weight:800;letter-spacing:1.5px;
+  color:var(--gold,#f0c028);text-transform:uppercase;margin-bottom:5px}
+.tuto-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;
+  font-weight:900;color:var(--text,#fff);letter-spacing:.5px;margin-bottom:6px;
+  line-height:1.05}
+.tuto-body{font-size:12px;color:var(--text,#dfe8f0);line-height:1.5;
+  margin-bottom:12px}
+.tuto-nav{display:flex;align-items:center;gap:8px}
+.tuto-dots{display:flex;gap:4px;flex:1}
+.tuto-dot{width:6px;height:6px;border-radius:50%;background:var(--b1,#2a3a4a);
+  transition:background .2s}
+.tuto-dot.on{background:var(--gold,#f0c028)}
+.tuto-btn{font-family:inherit;font-size:11px;font-weight:800;letter-spacing:.5px;
+  padding:7px 13px;border-radius:9px;cursor:pointer;border:1.5px solid var(--b1,#2a3a4a);
+  background:transparent;color:var(--muted,#8fa0b0);transition:all .12s}
+.tuto-btn:hover{border-color:var(--gold,#f0c028);color:var(--text,#fff)}
+.tuto-btn.primary{background:var(--gold,#f0c028);border-color:var(--gold,#f0c028);
+  color:#05101c}
+.tuto-btn.primary:hover{filter:brightness(1.08)}
+.tuto-skip{position:fixed;top:14px;right:14px;z-index:10001;font-size:10px;
+  font-weight:700;letter-spacing:.5px;color:var(--muted,#8fa0b0);
+  background:rgba(4,10,18,.6);border:1px solid var(--b1,#2a3a4a);
+  padding:6px 11px;border-radius:9px;cursor:pointer;pointer-events:auto}
+.tuto-skip:hover{color:var(--text,#fff);border-color:var(--gold,#f0c028)}
+/* Élément mis en avant : passe au-dessus du voile et reste cliquable */
+.tuto-highlight{position:relative;z-index:9999!important}
+
+/* ============================================================
+   ÉVÉNEMENTS DE CARRIÈRE À CHOIX (career_events.js)
+   ============================================================ */
+.cev-overlay{position:fixed;inset:0;z-index:10050;display:flex;
+  align-items:center;justify-content:center;padding:20px;
+  background:rgba(4,10,18,.66);opacity:0;transition:opacity .18s;
+  pointer-events:none}
+.cev-overlay.on{opacity:1;pointer-events:auto}
+.cev-box{width:100%;max-width:340px;background:var(--panel-grad,var(--card));
+  border:2px solid var(--gold,#f0c028);border-radius:16px;padding:18px 18px 16px;
+  box-shadow:0 16px 50px rgba(0,0,0,.6);transform:translateY(8px) scale(.98);
+  transition:transform .18s ease}
+.cev-overlay.on .cev-box{transform:translateY(0) scale(1)}
+.cev-title{font-family:'Barlow Condensed',sans-serif;font-size:21px;
+  font-weight:900;color:var(--gold,#f0c028);letter-spacing:.5px;
+  margin-bottom:9px;line-height:1.05}
+.cev-body{font-size:12.5px;color:var(--text,#dfe8f0);line-height:1.55;
+  margin-bottom:15px}
+.cev-choices{display:flex;flex-direction:column;gap:8px}
+.cev-btn{font-family:inherit;font-size:13px;font-weight:800;letter-spacing:.5px;
+  padding:12px 14px;border-radius:11px;cursor:pointer;text-align:center;
+  border:2px solid var(--b1,#2a3a4a);background:var(--dark,#0d1721);
+  color:var(--text,#dfe8f0);transition:all .12s}
+.cev-btn:hover{border-color:var(--gold,#f0c028)}
+.cev-btn.primary{background:rgba(240,192,40,.16);border-color:var(--gold,#f0c028);
+  color:var(--gold,#f0c028)}
+.cev-btn.primary:hover{filter:brightness(1.1)}
+.cev-btn.danger.primary{background:rgba(224,32,48,.14);
+  border-color:#e0603a;color:#f0907a}
+.cev-btn.danger.primary:hover{filter:brightness(1.12)}
