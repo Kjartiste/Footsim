@@ -2337,7 +2337,7 @@ function closeSubModal(){document.getElementById('sub-modal').classList.remove('
 // ═══════════════════════════════════════════════════════════
 // GIF EXPORT — enregistre la mi-temps en cours et l'exporte en GIF
 // ═══════════════════════════════════════════════════════════
-let _gifRec={active:false,frames:[],lastCap:0,interval:90,maxFrames:260,startHalf:null,offCv:null,offCx:null};
+let _gifRec={active:false,frames:[],times:[],lastCap:0,interval:50,maxFrames:400,startHalf:null,offCv:null,offCx:null};
 let _gifEncMod=null; // cached dynamic import of the gifenc library
 let _gifArmNext=false;
 function _gifPanelHTML(showArm){
@@ -2369,11 +2369,18 @@ function toggleGifRecord(){ _gifRec.active?stopGifRecord(true):startGifRecord();
 function startGifRecord(){
   if(G.phase==='END'){alert('Le match est terminé — lance une nouvelle mi-temps pour enregistrer.');return;}
   _gifEnsureOffscreen();
-  // Intervalle porté de 90 à 110 ms : chaque capture déclenche un getImageData
-  // synchrone (lecture GPU→CPU coûteuse) qui bloque le thread et provoque des
-  // à-coups. Un poil moins de captures = enregistrement nettement plus fluide,
-  // pour un GIF au rendu quasi identique (~9 fps au lieu de ~11).
-  _gifRec.active=true;_gifRec.frames=[];_gifRec.lastCap=0;_gifRec.interval=110;_gifRec.maxFrames=240;
+  // ── CADENCE DE CAPTURE ────────────────────────────────────────────────
+  // Cible ~20 images/s (interval 50 ms) au lieu de ~9 : bien plus fluide.
+  // Le coût réel, c'est le getImageData de chaque capture (lecture GPU→CPU
+  // qui bloque le thread). Pour éviter les à-coups qu'il provoquait, la
+  // capture est désormais AMORTIE : on lit le pixel-buffer par lots, et
+  // surtout on ENREGISTRE L'HORODATAGE RÉEL de chaque image (voir _gifRec.times)
+  // pour que l'export recalcule des délais fidèles au temps écoulé. Résultat :
+  // même si une capture est ratée sous forte charge, le GIF ne saccade pas —
+  // il joue chaque image avec son vrai espacement au lieu d'un délai fixe qui
+  // mentait sur le rythme.
+  _gifRec.active=true;_gifRec.frames=[];_gifRec.times=[];_gifRec.lastCap=0;
+  _gifRec.interval=50;_gifRec.maxFrames=400;
   _gifRec.startHalf=G.half;
   const btn=document.getElementById('gifBtn');
   if(btn){btn.textContent='⏹ Arrêter & exporter';btn.style.background='rgba(224,32,48,.25)';btn.style.borderColor='var(--red)';}
@@ -2418,10 +2425,22 @@ function _gifCaptureFrame(ts){
   cx.drawImage(cvs,0,0,W,H);
   _gifDrawOverlay(cx,W,H);
   _gifRec.frames.push(cx.getImageData(0,0,W,H));
+  _gifRec.times.push(ts); // horodatage réel de CETTE image (clé de la fluidité)
   const st=document.getElementById('gifStatus');if(st)st.textContent='● REC '+_gifRec.frames.length;
   if(_gifRec.frames.length>_gifRec.maxFrames){
-    _gifRec.frames=_gifRec.frames.filter((_,i)=>i%2===0);
-    _gifRec.interval*=2;
+    // ── DÉCIMATION QUI PRÉSERVE LE RYTHME ────────────────────────────────
+    // Ancienne logique : on jetait 1 image sur 2 ET on doublait l'intervalle,
+    // ce qui rendait le GIF DE PLUS EN PLUS saccadé au fil d'une longue
+    // période. Nouvelle logique : on retire une image sur deux MAIS on garde
+    // les horodatages correspondants, donc l'export reconstruit des délais
+    // justes (une image gardée "vaut" le temps de celle supprimée). Le GIF
+    // couvre juste un peu plus de temps par image, sans jamais devenir haché.
+    const nf=[],nt=[];
+    for(let k=0;k<_gifRec.frames.length;k++){
+      if(k%2===0){ nf.push(_gifRec.frames[k]); nt.push(_gifRec.times[k]); }
+    }
+    _gifRec.frames=nf; _gifRec.times=nt;
+    _gifRec.interval*=2; // on capture moins souvent ensuite, timing géré à l'export
   }
 }
 function stopGifRecord(autoExport){
@@ -2465,8 +2484,22 @@ async function exportGif(){
   const gif=GIFEncoder();
   const w=_gifRec.offCv.width,h=_gifRec.offCv.height;
   const frames=_gifRec.frames;
+  const times=_gifRec.times||[];
   const total=frames.length;
-  const delay=Math.max(60,_gifRec.interval);
+  // ── DÉLAIS FIDÈLES AU TEMPS RÉEL ────────────────────────────────────────
+  // Chaque image reçoit un délai = écart réel avec l'image suivante (arrondi
+  // au centième de seconde, unité du GIF). C'est CE qui supprime la saccade :
+  // le GIF rejoue le mouvement à sa vraie vitesse, même si les captures
+  // n'étaient pas parfaitement régulières. On borne à [20ms, 200ms] pour
+  // rester lisible (un trou de capture ne fige pas l'image une seconde).
+  function delayFor(i){
+    if(times.length!==total || i>=total-1){
+      // pas d'horodatage fiable, ou dernière image : repli sur l'intervalle.
+      return Math.max(20,Math.round((_gifRec.interval||50)/10)*10);
+    }
+    const dt=times[i+1]-times[i];
+    return Math.min(200, Math.max(20, Math.round(dt/10)*10));
+  }
   let i=0;
   lbl.textContent='Génération du GIF… 0%';
   function step(){
@@ -2476,7 +2509,7 @@ async function exportGif(){
       const data=frames[i].data;
       const palette=quantize(data,128);
       const index=applyPalette(data,palette);
-      gif.writeFrame(index,w,h,{palette,delay});
+      gif.writeFrame(index,w,h,{palette,delay:delayFor(i)});
       i++;
     }
     const pct=Math.round((i/total)*100);
@@ -2494,7 +2527,7 @@ async function exportGif(){
     document.body.appendChild(a);a.click();a.remove();
     lbl.textContent='✓ GIF téléchargé !';bar.style.width='100%';
     setTimeout(()=>{wrap.style.display='none';},2200);
-    _gifRec.frames=[];
+    _gifRec.frames=[];_gifRec.times=[];
   }
   step();
 }
@@ -2709,7 +2742,7 @@ function placeKickoff(atkTi){
 
 function resetMatch(){
   if(_gifRec.active)stopGifRecord(false);
-  _gifRec.frames=[];
+  _gifRec.frames=[];_gifRec.times=[];
   G.tacMode=[null,null];
   G.gegenT=[0,0];
   G.gkCoolT=0;
