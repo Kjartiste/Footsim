@@ -460,6 +460,47 @@ function _getGlowSprite(col){
   return oc;
 }
 
+// ── GLOW RADIAL GÉNÉRIQUE PRÉ-RENDU ──────────────────────────────────────
+// Même principe que _getGlowSprite mais pour n'importe quel dégradé radial à
+// stops arbitraires (le halo doré du ballon, l'aura du porteur, les halos de
+// sorts…). Ces dégradés étaient reconstruits À CHAQUE FRAME alors qu'ils sont
+// invariants : seules leur POSITION et leur TAILLE changent, pas leurs
+// couleurs. On rend le disque une fois sur un canvas 128px puis on le blitte
+// mis à l'échelle — un glow flou est parfaitement net une fois scalé, donc
+// aucune perte visuelle. La clé de cache est la liste des stops.
+//   stops : [[offset, 'couleurCSS'], ...]
+const _radialSpriteCache=new Map();
+function _getRadialSprite(stops){
+  const key=stops.map(s=>s[0]+':'+s[1]).join('|');
+  let s=_radialSpriteCache.get(key);
+  if(s) return s;
+  const D=128, oc=document.createElement('canvas');
+  oc.width=D; oc.height=D;
+  const c=oc.getContext('2d');
+  try{
+    const g=c.createRadialGradient(D/2,D/2,0,D/2,D/2,D/2);
+    for(const [off,col] of stops) g.addColorStop(off,col);
+    c.fillStyle=g;
+  }catch(e){
+    c.fillStyle=stops[0]?stops[0][1]:'#fff';
+  }
+  c.fillRect(0,0,D,D);
+  _radialSpriteCache.set(key,oc);
+  return oc;
+}
+// Blit un glow radial pré-rendu centré en (x,y) de rayon r, avec alpha/mode.
+// Remplace 1:1 un createRadialGradient+arc+fill, au pixel près (le sprite est
+// un disque radial identique, simplement mis à l'échelle).
+function _blitRadial(cx,cy,r,stops,alpha,composite){
+  if(!(r>0)||!isFinite(cx)||!isFinite(cy))return;
+  const spr=_getRadialSprite(stops);
+  ctx.save();
+  if(composite) ctx.globalCompositeOperation=composite;
+  ctx.globalAlpha=alpha;
+  ctx.drawImage(spr,cx-r,cy-r,r*2,r*2);
+  ctx.restore();
+}
+
 // ── SPRITE DE CORPS PRÉ-RENDU (perf joueurs) ─────────────────────────────
 // bodyGrd était recréé pour chaque joueur à chaque frame (~22×60/s = ~1300
 // gradients/s) alors qu'il n'y a que 2 couleurs d'équipe et un dégradé radial
@@ -1948,15 +1989,19 @@ function drawParticles(){
       const sx=wx(p.cx||0)+Math.cos(ang)*rad,sy=wy(p.cy||0)+Math.sin(ang)*rad;
       if(isFinite(sx)&&rad>0){
         const psz=Math.max(.5,ws(.3)*a);
+        // Glow de particule spirale : dégradé couleur→transparent pré-rendu
+        // (une entrée de cache par couleur de sort) au lieu d'un gradient neuf
+        // par particule par frame. Coeur brillant dessiné par-dessus.
+        const col=p.col||'#fff';
+        let base=col;
+        if(/^#[0-9a-fA-F]{3}$/.test(base)) base='#'+base[1]+base[1]+base[2]+base[2]+base[3]+base[3];
+        const tCol=/^#[0-9a-fA-F]{6}$/.test(base)?base+'00':(col+'00');
+        _blitRadial(sx,sy,psz*2.4,[[0,col],[1,tCol]],a*0.6,'lighter');
+        ctx.save();
         ctx.globalCompositeOperation='lighter';
-        const glow=ctx.createRadialGradient(sx,sy,0,sx,sy,psz*2.4);
-        glow.addColorStop(0,(p.col||'#fff'));
-        glow.addColorStop(1,(p.col||'#fff')+'00');
-        ctx.globalAlpha=a*0.6;ctx.fillStyle=glow;
-        ctx.beginPath();ctx.arc(sx,sy,psz*2.4,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=a;ctx.fillStyle=p.col||'#fff';
+        ctx.globalAlpha=a;ctx.fillStyle=col;
         ctx.beginPath();ctx.arc(sx,sy,psz,0,Math.PI*2);ctx.fill();
-        ctx.globalCompositeOperation='source-over';
+        ctx.restore();
       }
     } else if(p.t==='confetti'){
       const gx=wx(p.x), gy=wy(p.y);
@@ -2026,16 +2071,12 @@ function drawBallLight(){
   const spd=Math.hypot(b.vx||0,b.vy||0);
   const r=ws(9)*(1+Math.min(spd/9,0.55));
   if(r<=0)return;
-  ctx.save();
-  ctx.globalCompositeOperation='lighter';
-  ctx.globalAlpha=.08+Math.min(spd/40,.05);
-  const grd=ctx.createRadialGradient(bx,by,0,bx,by,r);
-  grd.addColorStop(0,'#fff6d8');
-  grd.addColorStop(.55,'#ffe19a');
-  grd.addColorStop(1,'rgba(255,225,154,0)');
-  ctx.fillStyle=grd;
-  ctx.beginPath();ctx.arc(bx,by,r,0,Math.PI*2);ctx.fill();
-  ctx.restore();
+  // Halo doré du ballon : dégradé invariant (mêmes 3 stops à chaque frame) →
+  // pré-rendu en sprite et blitté. Identique au pixel, mais plus de
+  // createRadialGradient 60×/s.
+  _blitRadial(bx,by,r,
+    [[0,'#fff6d8'],[0.55,'#ffe19a'],[1,'rgba(255,225,154,0)']],
+    .08+Math.min(spd/40,.05),'lighter');
 }
 
 function drawGlow(){
@@ -2043,11 +2084,15 @@ function drawGlow(){
   if(!own||!G.running)return;
   const r=ws(15);
   if(r<=0)return;
-  ctx.save();ctx.globalAlpha=.055;
-  const grd=ctx.createRadialGradient(wx(own.x),wy(own.y),0,wx(own.x),wy(own.y),r);
-  grd.addColorStop(0,teams[G.atkTi].color);grd.addColorStop(1,'transparent');
-  ctx.fillStyle=grd;ctx.fillRect(0,0,cvs.width,cvs.height);
-  ctx.restore();
+  // Aura d'équipe sous le porteur : dégradé couleur→transparent, invariant par
+  // équipe (2 couleurs max) → pré-rendu. L'ancien fillRect plein écran était
+  // trompeur : au-delà du rayon r le dégradé est déjà transparent, donc blitter
+  // un disque 2r centré sur le porteur donne exactement les mêmes pixels.
+  const col=teams[G.atkTi].color;
+  let base=col;
+  if(/^#[0-9a-fA-F]{3}$/.test(base)) base='#'+base[1]+base[1]+base[2]+base[2]+base[3]+base[3];
+  const tCol=/^#[0-9a-fA-F]{6}$/.test(base)?base+'00':'rgba(0,0,0,0)';
+  _blitRadial(wx(own.x),wy(own.y),r,[[0,col],[1,tCol]],.055);
 }
 
 // ═══════════════════════════════════════════════════════════
