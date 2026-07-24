@@ -1129,6 +1129,8 @@ function kickTo(tx,ty,spd=2.2){
   const dx=tx-G.ball.x,dy=ty-G.ball.y,d=Math.hypot(dx,dy)||1;
   G.ball.vx=(dx/d)*spd;G.ball.vy=(dy/d)*spd;
   G.ball.spin=spd*3;
+  // Son de frappe (tir, coup de pied arrêté) — plus fort qu'une passe.
+  try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.kick(clamp(spd/3,0.4,1)); }catch(e){}
 }
 function kickToP(from,to,spd=1.8){
   freeB();
@@ -1178,6 +1180,8 @@ function kickToP(from,to,spd=1.8){
   v0 = clamp(v0, 0.18, 3.6);
   G.ball.vx=(dx/d)*v0;G.ball.vy=(dy/d)*v0;
   G.ball.spin=v0*2;
+  // Son de frappe/passe (si le son est activé) — intensité selon la fermeté.
+  try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.kick(clamp(v0/2.5,0.3,1)); }catch(e){}
   // ── PROTECTION DE LA PASSE (anti-vol instantané) ─────────────────────
   // Bug corrigé : au moment où freeB() libère le ballon, l'auto-pickup donnait
   // la balle au joueur le plus proche de TOUTE équipe. Un adversaire collé au

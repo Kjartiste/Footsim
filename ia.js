@@ -1380,6 +1380,8 @@ function aiDecide(dt=0.016){
 
 function doShot(sh,ati,dti,def2,gk,goalX){
   G.shots[ati]++;sh.mSh++;
+  // Réaction de foule sur un tir (petit frisson dans les tribunes).
+  try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.crowdReact(0.5); }catch(e){}
   const ast2=strat(ati),dst2=strat(dti);
   // QUALITÉ DU TIR : puissance (sht) + finition technique (tec) + angle (spd).
   // La technique est déterminante — un joueur technique trouve la lucarne.

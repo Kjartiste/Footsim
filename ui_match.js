@@ -776,6 +776,23 @@ function renderSettings(){
         </div>
       `);
     })()}
+    ${(function(){
+      const on = !!(window.gameAudio && window.gameAudio.isEnabled());
+      return card(`
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Son du match</div>
+        <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+          Ambiance de foule, sifflets de l'arbitre, bruits de frappe et montée sur les buts. Entièrement synthétisé (aucun téléchargement). Le son démarre après ton premier clic (exigence du navigateur).
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="if(window.gameAudio&&!window.gameAudio.isEnabled())window.gameAudio.toggle();renderSettings()" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?'var(--gold)':'var(--b1)'};background:${on?'rgba(240,192,40,.14)':'var(--dark)'};color:${on?'var(--gold)':'var(--muted)'}">
+            <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">🔊 ACTIVÉ</div>
+          </button>
+          <button onclick="if(window.gameAudio&&window.gameAudio.isEnabled())window.gameAudio.toggle();renderSettings()" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${!on?'#8840e0':'var(--b1)'};background:${!on?'rgba(136,64,224,.16)':'var(--dark)'};color:${!on?'#b98cf0':'var(--muted)'}">
+            <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">🔇 COUPÉ</div>
+          </button>
+        </div>
+      `);
+    })()}
     ${saveCard}
   `;
 }
