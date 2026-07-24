@@ -55,14 +55,58 @@
     {mime:'video/webm',ext:'webm'},
   ];
 
+  // ── LISTE NOIRE DES MIMES MENTEURS ────────────────────────────────────
+  // isTypeSupported() peut renvoyer true pour un format que le navigateur
+  // n'encode pas réellement (0 octet en sortie). Quand ça arrive, on retient
+  // le mime fautif — de façon persistante — pour ne plus jamais le proposer
+  // sur cette machine. C'est ce qui permet au 2e essai de marcher tout seul.
+  let _lastTriedMime='';
+  let _mimeBlacklist=[];
+  try{
+    const raw=localStorage.getItem('footsim_badMimes');
+    if(raw) _mimeBlacklist=JSON.parse(raw)||[];
+  }catch(e){ _mimeBlacklist=[]; }
+  function _blacklistMime(m){
+    if(!m) return;
+    // On note la famille (avant le ';') ET la chaîne complète : si
+    // 'video/mp4;codecs=avc1…' ment, 'video/mp4' tout court ment aussi.
+    const fam=m.split(';')[0];
+    [m,fam].forEach(x=>{ if(x && _mimeBlacklist.indexOf(x)<0) _mimeBlacklist.push(x); });
+    try{ localStorage.setItem('footsim_badMimes',JSON.stringify(_mimeBlacklist)); }catch(e){}
+  }
+  function _isBlacklisted(m){
+    if(!m) return false;
+    return _mimeBlacklist.indexOf(m)>=0 || _mimeBlacklist.indexOf(m.split(';')[0])>=0;
+  }
+  // Permet à l'utilisateur de repartir de zéro (ex. après mise à jour du
+  // navigateur qui corrige l'encodeur MP4).
+  window.resetVideoFormatBlacklist=function(){
+    _mimeBlacklist=[];
+    try{ localStorage.removeItem('footsim_badMimes'); }catch(e){}
+    return 'Formats vidéo réinitialisés — le MP4 sera retenté au prochain enregistrement.';
+  };
+
   function pickMime(withAudio){
     if(typeof MediaRecorder==='undefined') return null;
     const list=withAudio?CANDIDATES_AV:CANDIDATES;
     for(const c of list){
+      if(_isBlacklisted(c.mime)) continue; // format connu pour ne rien produire
       if(MediaRecorder.isTypeSupported(c.mime)) return c;
     }
     // Repli : si aucun mime audio+vidéo n'est accepté, on retente sans audio.
     if(withAudio) return pickMime(false);
+    // ── AUTO-RÉPARATION ───────────────────────────────────────────────────
+    // Si la liste noire a fini par tout bloquer, on préfère retenter un format
+    // (quitte à ce qu'il échoue) plutôt que de laisser l'enregistrement
+    // définitivement impossible : on repart à zéro et on refait un tour.
+    if(_mimeBlacklist.length){
+      console.warn('Tous les formats étaient sur liste noire — réinitialisation.');
+      _mimeBlacklist=[];
+      try{ localStorage.removeItem('footsim_badMimes'); }catch(e){}
+      for(const c of list){
+        if(MediaRecorder.isTypeSupported(c.mime)) return c;
+      }
+    }
     return null;
   }
 
@@ -844,7 +888,23 @@
     recorder.ondataavailable=e=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
     recorder.onstop=onRecordingStopped;
     recorder.onerror=e=>{ console.error('MediaRecorder error:',e); };
+    _lastTriedMime=choice.mime;
     recorder.start(1000); // chunk toutes les secondes : évite de tout perdre en cas de crash
+
+    // ── DÉTECTION PRÉCOCE D'UN ENCODEUR MUET ────────────────────────────
+    // Avec start(1000), un encodeur sain a livré au moins un chunk après
+    // ~2-3 s. S'il n'y a toujours rien, inutile de laisser le joueur
+    // enregistrer un match entier pour récolter un fichier vide : on
+    // l'avertit tout de suite (l'enregistrement continue, au cas où).
+    setTimeout(()=>{
+      if(recState==='idle') return;              // déjà arrêté
+      if(chunks.length>0) return;                // tout va bien
+      if(!recorder || recorder.state==='inactive') return;
+      console.warn('MediaRecorder: aucun chunk après 4 s avec',_lastTriedMime);
+      showMsg("⚠️ L'encodeur vidéo ne renvoie aucune image pour l'instant. "
+        +"Si la vidéo finale est vide, relance : un format compatible sera "
+        +"choisi automatiquement.");
+    }, 4000);
 
     recStartTs=performance.now();
     recState='intro'; stateStart=recStartTs; goalCeleb=null; replay=null; _lastFrameTs=0; _pausedMs=0; _lastPauseTick=0; _pausedByBreak=false; _camReset(); _rbReset();
@@ -882,6 +942,32 @@
     // redimensionnée, panneau ouvert…) : on réaligne le canvas de jeu
     // maintenant que ça n'affecte plus la vidéo déjà enregistrée.
     if(typeof resize==='function') resize();
+
+    // ── GARDE-FOU : ENREGISTREMENT VIDE ──────────────────────────────────
+    // Certains navigateurs annoncent supporter un mime MP4 via
+    // isTypeSupported() puis n'émettent AUCUN chunk (le recorder démarre,
+    // reste muet, et stop() rend un Blob de 0 octet). Résultat côté joueur :
+    // un fichier .mp4 vide, illisible. Plutôt que de télécharger ce déchet,
+    // on le détecte, on mémorise que ce mime est menteur, et on prévient
+    // clairement — avec repli automatique sur WebM au prochain essai.
+    const totalBytes=chunks.reduce((n,c)=>n+(c&&c.size||0),0);
+    if(!chunks.length || totalBytes===0){
+      chunks=[];
+      setBtnUI('idle');
+      const badMime=(recorder&&recorder.mimeType)||_lastTriedMime||'';
+      if(badMime){
+        _blacklistMime(badMime);
+        showMsg("L'encodeur vidéo de ce navigateur n'a produit aucune image ("
+          +badMime.split(';')[0]+"). Format désactivé — relance l'enregistrement, "
+          +"il utilisera automatiquement un format compatible (WebM).");
+      } else {
+        showMsg("L'enregistrement n'a produit aucune image. Réessaie, ou utilise "
+          +"un autre navigateur (Chrome/Firefox à jour).");
+      }
+      console.error('MediaRecorder: 0 octet produit avec le mime',badMime,
+                    '— mime ajouté à la liste noire, repli au prochain essai.');
+      return; // on ne télécharge JAMAIS un fichier vide
+    }
 
     const mimeType=(recorder&&recorder.mimeType)||'video/mp4';
     const blob=new Blob(chunks,{type:mimeType});
