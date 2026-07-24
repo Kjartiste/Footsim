@@ -30,10 +30,14 @@ function _ensureContext(){
   try{
     actx=new AC();
     master=actx.createGain();
-    master.gain.value=1.6*volume;      // gain global relevé (était 0.7) + volume utilisateur
-    master.connect(actx.destination);  // ← HAUT-PARLEURS (diff. de record.js)
+    master.gain.value=2.4*volume;      // headroom relevé pour que les réactions claquent
+    master.connect(actx.destination);  // ← HAUT-PARLEURS
 
-    // Rumeur de foule : bruit filtré, boucle continue.
+    // ── AMBIANCE DE STADE ────────────────────────────────────────────────
+    // Un vrai public, hors action, c'est un MURMURE grave et discret, pas un
+    // cri continu (comme dans FIFA/PES). On génère un bruit large bande, filtré
+    // en passe-bas, gardé TRÈS bas par défaut (0.08). Ce sont les RÉACTIONS
+    // (occasions, buts) qui montent au-dessus — ce sont elles qu'on entend.
     const len=Math.floor(actx.sampleRate*4);
     const buf=actx.createBuffer(1, len, actx.sampleRate);
     const d=buf.getChannelData(0);
@@ -43,15 +47,25 @@ function _ensureContext(){
       b0=0.99765*b0+w*0.0990460;
       b1=0.96300*b1+w*0.2965164;
       b2=0.57000*b2+w*1.0526913;
-      d[i]=(b0+b1+b2+w*0.1848)*0.06;
+      d[i]=(b0+b1+b2+w*0.1848)*0.08;
     }
     crowdSrc=actx.createBufferSource();
     crowdSrc.buffer=buf; crowdSrc.loop=true;
     crowdFilter=actx.createBiquadFilter();
-    crowdFilter.type='lowpass'; crowdFilter.frequency.value=680;
-    crowdGain=actx.createGain(); crowdGain.gain.value=0.22;  // relevé (était 0.12)
+    crowdFilter.type='lowpass'; crowdFilter.frequency.value=520; // sourd = lointain
+    crowdGain=actx.createGain(); crowdGain.gain.value=0.08;       // murmure discret
     crowdSrc.connect(crowdFilter); crowdFilter.connect(crowdGain); crowdGain.connect(master);
     crowdSrc.start(0);
+
+    // "Respiration" du public : une LFO très lente fait légèrement onduler le
+    // murmure, pour qu'il soit vivant sans jamais devenir un cri continu.
+    try{
+      const breath=actx.createOscillator(), breathG=actx.createGain();
+      breath.frequency.value=0.08;   // ~une oscillation toutes les 12s
+      breathG.gain.value=0.03;
+      breath.connect(breathG); breathG.connect(crowdGain.gain);
+      breath.start(0);
+    }catch(e){}
     return true;
   }catch(e){ actx=null; return false; }
 }
@@ -114,19 +128,38 @@ function whistle(long){
   }catch(e){}
 }
 
-// Montée de foule (but marqué) : la rumeur enfle et s'ouvre dans les aigus.
+// Montée de foule (but marqué) : un vrai RUGISSEMENT — le murmure explose,
+// s'ouvre dans les aigus, avec une couche "vocale" par-dessus pour l'énergie.
 function cheer(){
   if(!enabled||!actx||!crowdGain) return;
   try{
     const t=actx.currentTime;
+    // 1) La rumeur de fond explose brièvement puis retombe lentement.
     crowdGain.gain.cancelScheduledValues(t);
     crowdGain.gain.setValueAtTime(crowdGain.gain.value, t);
-    crowdGain.gain.linearRampToValueAtTime(0.75, t+0.15);
-    crowdGain.gain.linearRampToValueAtTime(0.12, t+5.5);
+    crowdGain.gain.linearRampToValueAtTime(0.95, t+0.12);
+    crowdGain.gain.linearRampToValueAtTime(0.08, t+6.0);
     crowdFilter.frequency.cancelScheduledValues(t);
     crowdFilter.frequency.setValueAtTime(crowdFilter.frequency.value, t);
-    crowdFilter.frequency.linearRampToValueAtTime(3400, t+0.15);
-    crowdFilter.frequency.linearRampToValueAtTime(680, t+5.5);
+    crowdFilter.frequency.linearRampToValueAtTime(4200, t+0.12); // s'ouvre (brillant)
+    crowdFilter.frequency.linearRampToValueAtTime(520, t+6.0);
+    // 2) Couche "vocale" : plusieurs bandes de bruit filtrées façon "AAAH" de
+    // foule, avec une petite montée de hauteur — donne l'énergie du cri qui
+    // manque au simple bruit filtré.
+    const L=Math.floor(actx.sampleRate*2.2);
+    const b=actx.createBuffer(1,L,actx.sampleRate); const dd=b.getChannelData(0);
+    for(let i=0;i<L;i++) dd[i]=(Math.random()*2-1);
+    const roar=actx.createBufferSource(); roar.buffer=b;
+    const rf=actx.createBiquadFilter(); rf.type='bandpass'; rf.Q.value=0.7;
+    rf.frequency.setValueAtTime(500, t);
+    rf.frequency.linearRampToValueAtTime(1400, t+0.5);   // "montée" du cri
+    rf.frequency.linearRampToValueAtTime(700, t+2.2);
+    const rg=actx.createGain();
+    rg.gain.setValueAtTime(0.0001, t);
+    rg.gain.linearRampToValueAtTime(0.5, t+0.15);
+    rg.gain.exponentialRampToValueAtTime(0.0001, t+2.2);
+    roar.connect(rf); rf.connect(rg); rg.connect(master);
+    roar.start(t); roar.stop(t+2.3);
   }catch(e){}
 }
 
@@ -138,11 +171,18 @@ function crowdReact(intensity){
   _lastCrowdReact=now;
   try{
     const t=actx.currentTime;
-    const peak=0.12+clampNum(intensity,0,1)*0.35;
+    const inten=clampNum(intensity,0,1);
+    // "Ooh" d'anticipation : le murmure enfle un instant puis revient au calme
+    // (baseline 0.08). Le filtre s'ouvre un peu pour un son plus présent.
+    const peak=0.08+inten*0.5;
     crowdGain.gain.cancelScheduledValues(t);
     crowdGain.gain.setValueAtTime(crowdGain.gain.value, t);
-    crowdGain.gain.linearRampToValueAtTime(peak, t+0.12);
-    crowdGain.gain.linearRampToValueAtTime(0.12, t+1.6);
+    crowdGain.gain.linearRampToValueAtTime(peak, t+0.14);
+    crowdGain.gain.linearRampToValueAtTime(0.08, t+1.8);
+    crowdFilter.frequency.cancelScheduledValues(t);
+    crowdFilter.frequency.setValueAtTime(crowdFilter.frequency.value, t);
+    crowdFilter.frequency.linearRampToValueAtTime(1400+inten*1200, t+0.14);
+    crowdFilter.frequency.linearRampToValueAtTime(520, t+1.8);
   }catch(e){}
 }
 
@@ -157,7 +197,7 @@ window.gameAudio = {
   setVolume(v){
     volume=Math.max(0,Math.min(1, (typeof v==='number'&&isFinite(v))?v:0.8));
     try{ localStorage.setItem('footsim_volume', String(volume)); }catch(e){}
-    if(master){ try{ master.gain.setTargetAtTime(1.6*volume, actx.currentTime, 0.05); }catch(e){ master.gain.value=1.6*volume; } }
+    if(master){ try{ master.gain.setTargetAtTime(2.4*volume, actx.currentTime, 0.05); }catch(e){ master.gain.value=2.4*volume; } }
     return volume;
   },
   // Bascule le son. Démarre l'AudioContext au besoin (dans le geste de clic).
@@ -173,8 +213,9 @@ window.gameAudio = {
     if(!enabled) return;
     if(_ensureContext()) _resume();
   },
-  // Joue un petit son de test (pour régler le volume à l'oreille).
-  test(){ if(_ensureContext()){ _resume(); whistle(false); setTimeout(()=>kick(0.9),250); } },
+  // Joue un aperçu (pour régler le volume à l'oreille) : une frappe, une
+  // réaction d'occasion, puis le rugissement de but.
+  test(){ if(_ensureContext()){ _resume(); kick(0.9); setTimeout(()=>crowdReact(0.7),300); setTimeout(()=>cheer(),1100); } },
 };
 
 // Débloque l'audio au premier clic (exigence navigateur), si le son est activé.
