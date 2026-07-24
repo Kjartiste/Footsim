@@ -1060,6 +1060,19 @@
   // L'état « prêt à enregistrer ? » sert aussi à griser la case d'avant-match.
   window.matchRecordingSupported=function(){ return recSupported(); };
 
+  // ── ARRÊT AUTOMATIQUE AU COUP DE SIFFLET FINAL ──────────────────────────
+  // Quand le match se termine (endMatch → événement 'footsim:matchend'), on
+  // déclenche le générique de fin puis la finalisation, exactement comme si le
+  // joueur avait appuyé sur STOP. Ne fait rien si aucun enregistrement n'est en
+  // cours, ou s'il est déjà en train de se finaliser (outro/idle).
+  window.addEventListener('footsim:matchend',()=>{
+    if(recState==='intro' || recState==='live'){
+      // Petit délai : laisse la dernière action (but à la 90e, etc.) et le
+      // texte "FIN DU MATCH" s'afficher une poignée de frames avant l'outro.
+      setTimeout(()=>{ if(recState==='intro'||recState==='live') requestStop(); }, 400);
+    }
+  });
+
   // Sécurité : si l'utilisateur quitte la page/l'onglet en cours
   // d'enregistrement, on tente de finaliser proprement pour ne pas perdre
   // les chunks déjà capturés (on saute le générique de fin : pas le temps).

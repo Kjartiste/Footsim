@@ -897,6 +897,86 @@ function aiDecide(dt=0.016){
       // ballon) plutôt que le dribble hasardeux.
       _passWindow *= _aiFactor(ati,'care');
       _passWindow = Math.max(0.15, Math.min(0.75, _passWindow));
+      // ── DÉCISION OFFENSIVE PAR UTILITÉ (softmax tempéré + bruit) ─────────
+      // Plutôt que des seuils cumulés (r<shootBase, r<shootBase+drib…), on
+      // délègue le CHOIX de l'action au moteur d'utilité (ai_offense.js) :
+      // chaque action (tir, passe, passe surface, centre, renversement,
+      // dribble, conduite) reçoit un score dérivé des proxies xG/xT/xA, de la
+      // densité adverse, du poste, du style, du score/temps/fatigue ; le
+      // softmax en fait une distribution, et on échantillonne. Le comportement
+      // devient réellement probabiliste et non déterministe. On conserve toute
+      // l'EXÉCUTION existante ci-dessous — seule la sélection change.
+      // Repli sur l'ancienne logique de seuils si le moteur n'est pas chargé.
+      let _util=null;
+      if(typeof offensiveDecision==='function'){
+        try{
+          _util=offensiveDecision(carrier, ati, dti, {
+            WW,WH,PCY,PCX,oppGoalX,dp,PA_W:(typeof PA_W==='number'?PA_W:WW*0.16),
+            style:_style, canShoot,
+            posTend:_tend, styleTend:_STYLE_TEND,
+            Δscore:(G.scores?(ati===0?G.scores[0]-G.scores[1]:G.scores[1]-G.scores[0]):0),
+            tRem:(typeof G.minute==='number'?Math.max(0,90-G.minute):45),
+            fatigue:clamp(1-(carrier.hp||100)/100,0,1),
+          });
+        }catch(e){ _util=null; }
+      }
+      if(_util){
+        const act=_util.action;
+        // Mapping action → exécution (réutilise les helpers déjà en place).
+        if(act==='shoot' && canShoot){
+          doShot(carrier,ati,dti,opp,gk,oppGoalX);
+          return;
+        }
+        if(act==='dribble'){
+          _attemptDribble(carrier,ati,dti,opp,ast,dst);
+          return;
+        }
+        if(act==='carry'){
+          // Conduite : porter le ballon vers l'espace libre devant, sans
+          // adversaire proche. On avance la cible du porteur ; s'il est déjà
+          // avancé on bascule en ATTACK.
+          const fwd=(ati===0?1:-1);
+          carrier.tx=clamp(carrier.x+fwd*rng(6,12),2,WW-2);
+          carrier.ty=clamp(carrier.y+rng(-4,4),2,WH-2);
+          const adv = ati===0 ? carrier.x>WW*0.5 : carrier.x<WW*0.5;
+          setPhase(adv?'ATTACK':'BUILDUP');
+          return;
+        }
+        // Toutes les variantes de passe passent par la logique de passe
+        // tactique existante, avec une INTENTION transmise (surface / centre /
+        // renversement / sûre) pour orienter le choix de cible.
+        if(act==='through'||act==='cross'||act==='switch'||act==='pass'){
+          const wantForward = (act==='through');
+          const _tacDec=(typeof tacticalPassDecision==='function')?tacticalPassDecision(carrier,ati):null;
+          let tgt=_tacDec?_tacDec.target:null;
+          if(!tgt && typeof bestPassTarget==='function'){
+            tgt=bestPassTarget(carrier,ati,{forward:wantForward||act==='cross'});
+          }
+          if(!tgt){
+            const pool=ap.filter(p=>!p.hasBall&&p.pos!=='GB');
+            tgt=(typeof pickTactical==='function')?pickTactical(carrier,ati,pool):pick(pool);
+          }
+          if(tgt){
+            const prog = ati===0 ? (tgt.x-carrier.x) : (carrier.x-tgt.x);
+            const spd = (act==='through') ? 2.2 : (act==='switch') ? 2.0 : (prog>WW*0.08?1.7:1.1);
+            kickToP(carrier,tgt,spd);
+            if(act==='through') logEvent(`${carrier.name} lance ${tgt.name} en profondeur !`,teams[ati].color+'cc');
+            else if(act==='cross') logEvent(`Centre de ${carrier.name} pour ${tgt.name} !`,teams[ati].color+'cc');
+            else if(act==='switch') logEvent(`↔ Renversement de ${carrier.name} → ${tgt.name} !`,teams[ati].color+'cc');
+            else if(prog>WW*0.10) logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa');
+            else logEvent(`${carrier.name} temporise → ${tgt.name}`,teams[ati].color+'55');
+            setPhase(prog>WW*0.10||act==='through'||act==='cross'||act==='switch'?'ATTACK':'BUILDUP');
+          } else {
+            const safe=pick(byR(ati,'MC','MDC','DC','DD','DG').filter(p=>!p.hasBall));
+            if(safe){ kickToP(carrier,safe,1.0); }
+            setPhase('BUILDUP');
+          }
+          return;
+        }
+        // Si l'action échantillonnée n'a pas pu s'exécuter, on retombe sur
+        // l'ancienne logique de seuils ci-dessous (filet de sécurité).
+      }
+
       if(r<shootBase){
         doShot(carrier,ati,dti,opp,gk,oppGoalX);
       } else if(r<shootBase+_dribWindow){
@@ -1036,26 +1116,49 @@ function aiDecide(dt=0.016){
       break;
     }
     case 'THROWIN':{
-      if(G.phTick<4)return;
-      // Le lanceur : le coéquipier le plus proche du point de touche (celui qui
-      // va naturellement récupérer le ballon sur la ligne). On l'amène à la
-      // balle puis il remet en jeu vers une option ouverte.
       const b=G.ball;
       const mates=actP(ati).filter(p=>!p.red&&p.hp>0&&p.pos!=='GB');
       if(!mates.length){setPhase('BUILDUP');return;}
+      // Le lanceur = le coéquipier le plus proche du point de touche.
       const thrower=mates.reduce((best,p)=>{
         const d=Math.hypot(p.x-b.x,p.y-b.y);
         return d<Math.hypot(best.x-b.x,best.y-b.y)?p:best;
       });
+      const side = (G._throwSide==='top') ? -1 : 1; // vers l'intérieur du terrain
+      // On enregistre les cibles de placement sur G plutôt que d'écrire tx/ty
+      // directement : le moteur recalcule tx/ty chaque frame depuis roleTarget,
+      // qui écraserait nos valeurs. roleTarget lira donc G._setpTargets pour
+      // repositionner le lanceur et ses relais pendant la phase de touche.
+      if(!G._setpTargets) G._setpTargets={};
+      G._setpTargets={}; // reset : seules les cibles de CETTE touche comptent
+      G._setpTargets[thrower.id]={x:clamp(b.x,2,WW-2), y:clamp(b.y,1,WH-1)};
+      const helpers=mates.filter(p=>p!==thrower)
+        .sort((p,q)=>Math.hypot(p.x-b.x,p.y-b.y)-Math.hypot(q.x-b.x,q.y-b.y))
+        .slice(0,3);
+      const fwd=(ati===0?1:-1); // sens d'attaque de l'équipe
+      helpers.forEach((h,i)=>{
+        const depth=[6,1,-5][i]*fwd;
+        const inward=[7,12,6][i]*side*-1;
+        G._setpTargets[h.id]={x:clamp(b.x+depth,2,WW-2), y:clamp(b.y+inward,3,WH-3)};
+      });
+      // Le lanceur est-il arrivé au ballon ? (tolérance courte)
+      const atBall=Math.hypot(thrower.x-b.x,thrower.y-b.y) < 1.4;
+      if(!atBall && G.phTick<45){
+        // On patiente que le lanceur atteigne la ligne (borne de sécurité à
+        // ~45 ticks pour ne jamais bloquer la phase si un obstacle l'empêche).
+        return;
+      }
       giveB(thrower);
-      // Cible de la remise : un coéquipier bien orienté vers l'avant et démarqué,
-      // sinon le plus proche. Une touche est une passe courte, sans risque de
-      // hors-jeu — on privilégie donc un relais sûr proche de la ligne.
+      G._setpTargets=null; // remise en jeu effectuée : on relâche le placement
+      // Cible de la remise : de préférence un relais bien orienté et démarqué,
+      // sinon le plus proche. Une touche est une passe courte, sans hors-jeu.
       const options=mates.filter(p=>p!==thrower);
       let target=null;
       if(typeof bestPassTarget==='function') target=bestPassTarget(thrower,ati,{forward:true,maxDist:WW*0.30});
       if(!target && options.length){
-        target=options.reduce((best,p)=>{
+        // On privilégie un des relais qu'on a fait monter, s'il y en a.
+        const pool=helpers.length?helpers:options;
+        target=pool.reduce((best,p)=>{
           const d=Math.hypot(p.x-thrower.x,p.y-thrower.y);
           return d<Math.hypot(best.x-thrower.x,best.y-thrower.y)?p:best;
         });

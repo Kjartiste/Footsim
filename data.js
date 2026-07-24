@@ -417,6 +417,18 @@ function mkPlayers(ti){
   ];
   return na.map((name,i)=>({
     id:`t${ti}p${i}`,name,pos:ROLE[i],img:'',ini:name.slice(0,2).toUpperCase(),
+    // Pied fort : ~75% droitiers, ~22% gauchers, ~3% ambidextres — ratios
+    // proches du football réel. Déterministe (dépend de l'index) pour rester
+    // stable d'un match à l'autre. Utilisé par l'IA offensive (centres/tirs du
+    // bon côté valent plus). Les postes de couloir gauche penchent un peu plus
+    // vers le gauche, comme dans la réalité (latéraux/ailiers gauches).
+    foot:(function(){
+      const r=((i*2654435761)>>>0)%100; // hash simple, stable
+      const leftPost=['DG','AG','MOG','MCG','DCG'].includes(ROLE[i]);
+      if(r<3) return 'both';
+      if(leftPost) return r<45?'L':'R';
+      return r<22?'L':'R';
+    })(),
     s:{spd:42+~~(Math.random()*52),sht:38+~~(Math.random()*58),def:38+~~(Math.random()*58),stam:55+~~(Math.random()*40),tec:42+~~(Math.random()*52),res:35+~~(Math.random()*60)},
     spells:pools[i]||['tech'],race:pickRaceForRegion('',name+ti+i),
     x:0,y:0,vx:0,vy:0,tx:0,ty:0,

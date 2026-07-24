@@ -826,6 +826,14 @@ function physStep(dt,rawDt){
     // Un joueur dominé se positionne pour l'équipe qui le contrôle.
     const eti=(p._dominated>0&&p._dominatedBy!=null)?p._dominatedBy:ti;
     const t=roleTarget(eti,p,pi);
+    // ── PLACEMENT DE COUP DE PIED ARRÊTÉ (touche) ─────────────────────────
+    // Pendant une remise en jeu, l'IA (ia.js) désigne un lanceur et des relais
+    // et stocke leurs cibles dans G._setpTargets (par id de joueur). On les
+    // applique ICI, en écrasant la cible de rôle, pour que le lanceur marche
+    // vraiment jusqu'au ballon et que les relais viennent proposer un appui —
+    // au lieu de rester figés dans leur position de formation.
+    const _setp = G._setpTargets && G._setpTargets[p.id];
+    if(_setp && G.phase==='THROWIN'){ t.x=_setp.x; t.y=_setp.y; t.pressing=false; t.marking=false; }
     // Pressing : calcul une seule fois, utilisé partout dans ce bloc
     const isDefending  = eti !== G.atkTi;
     const myPressStr   = isDefending ? (strat(eti).press||0.5) : 0;
@@ -1021,16 +1029,31 @@ function physStep(dt,rawDt){
           return isMarkerRole;
         });
         const takenMarkers=new Set();
-        for(const o of threats){
-          let best=null,bestD=1e9;
+        // ── AFFECTATION GLOBALE (anti-croisement) ──────────────────────────
+        // Le glouton "attaquant le plus dangereux → défenseur le plus proche"
+        // pouvait faire se CROISER deux défenseurs (chacun courant vers l'homme
+        // de l'autre). On délègue à assignMarking (ai_offense.js) qui minimise
+        // le coût total par 2-opt. Repli sur le glouton si le module manque.
+        if(typeof assignMarking==='function' && threats.length && markerPool.length){
+          const globalMap=assignMarking(markerPool, threats, {WW,PCY,myGoalX:myGoalX2});
           for(const m of markerPool){
-            if(takenMarkers.has(m)) continue;
-            const d=Math.hypot(m.x-o.x,m.y-o.y);
-            if(d<bestD){bestD=d;best=m;}
+            const tgt=globalMap[m.id];
+            if(tgt && Math.hypot(m.x-tgt.x,m.y-tgt.y)<WW*0.30){
+              assign[m.id]=tgt; takenMarkers.add(m);
+            }
           }
-          if(best && bestD<WW*0.30){
-            assign[best.id]=o;
-            takenMarkers.add(best);
+        } else {
+          for(const o of threats){
+            let best=null,bestD=1e9;
+            for(const m of markerPool){
+              if(takenMarkers.has(m)) continue;
+              const d=Math.hypot(m.x-o.x,m.y-o.y);
+              if(d<bestD){bestD=d;best=m;}
+            }
+            if(best && bestD<WW*0.30){
+              assign[best.id]=o;
+              takenMarkers.add(best);
+            }
           }
         }
         // ── FILET ANTI-ISOLEMENT (schéma zone) ─────────────────────────────
@@ -1080,6 +1103,33 @@ function physStep(dt,rawDt){
     b.vy*=Math.pow(BALL_FRIC,dt*60);
     b.spin*=Math.pow(.94,dt*60);
     if(Math.abs(b.vx)<.03&&Math.abs(b.vy)<.03){b.vx=0;b.vy=0;}
+    // ── BALLON EN MOUVEMENT = POSSESSION DE LA DERNIÈRE ÉQUIPE ────────────
+    // Avant, la possession n'était comptée QUE tant qu'un joueur tenait le
+    // ballon. Toutes les frames où le ballon voyage (passes, dégagements,
+    // duels) n'étaient créditées à personne. Résultat : le % affiché était en
+    // réalité le "temps de balle tenue", qui sur-dramatise la domination — une
+    // équipe sous pression pouvait tomber sous 10%, ce qui n'arrive jamais en
+    // vrai (une passe en cours reste de la possession pour l'équipe qui l'a
+    // jouée). On crédite donc ces frames au dernier toucheur : le ballon qui
+    // roule entre deux coéquipiers "appartient" toujours à cette équipe, et
+    // seul le pressing adverse (qui devient le nouveau dernier toucheur sur
+    // interception) fait basculer le compteur. C'est exactement la logique des
+    // stats de possession télévisées.
+    const _lastTi=(G.lastTouchTi===0||G.lastTouchTi===1)?G.lastTouchTi:-1;
+    if(_lastTi>=0) G.possT[_lastTi]++;
+    // ── PHASES ARRÊTÉES : LE BALLON IMMOBILE COMPTE POUR LE TIREUR ────────
+    // Entre le coup de sifflet et la remise en jeu (corner, six mètres, touche,
+    // coup franc), le ballon est posé, immobile : ni "tenu", ni "en mouvement".
+    // Ces secondes n'étaient comptées pour personne. Or l'équipe qui va jouer
+    // le coup arrêté EST en possession (c'est son ballon). On crédite donc ces
+    // frames à G.atkTi, qui pendant ces phases désigne précisément le tireur.
+    // Sans ça, l'équipe dominée — qui subit surtout des dégagements adverses —
+    // perdait encore du temps de possession, tirant le % vers des valeurs
+    // qu'on ne voit jamais en vrai.
+    else if(G.phase==='CORNER'||G.phase==='FREEKICK'||G.phase==='GOALKICK'
+            ||G.phase==='THROWIN'||G.phase==='KICKOFF'){
+      if(G.atkTi===0||G.atkTi===1) G.possT[G.atkTi]++;
+    }
     // ── TOUCHES EN 11v11 ──────────────────────────────────────────────────
     // Elles n'existaient QUE dans la branche 7v7/5v5 : en 11v11 le ballon
     // rebondissait sur une paroi invisible aux lignes de côté, d'où

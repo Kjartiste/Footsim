@@ -2899,6 +2899,13 @@ function endMatch(){
   G.running=false;G._paused=false;G._celebrating=false;
   G.phase='END';
   document.getElementById('hphase').textContent='FIN DU MATCH';
+  // ── SIGNAL DE FIN DE MATCH ────────────────────────────────────────────
+  // endMatch() est le point terminal unique de toutes les fins (victoire,
+  // nul accepté, tirs au but). On émet un événement pour que la vidéo en cours
+  // (record.js) déclenche son générique et se finalise TOUTE SEULE, comme le
+  // GIF le fait déjà via stopGifRecord(). Sans ça, l'enregistrement vidéo
+  // continuait indéfiniment après le coup de sifflet final.
+  try{ window.dispatchEvent(new CustomEvent('footsim:matchend')); }catch(e){}
   const[s0,s1]=G.scores;
   let winner=-1;
   if(G.penaltyWinner!==undefined&&G.penaltyWinner>=0)winner=G.penaltyWinner;
