@@ -1118,6 +1118,7 @@ function giveB(p){
   // DÉFENSEUR, c'est corner. Sans cette info, le moteur donnait un corner dans
   // tous les cas — d'où des corners accordés à l'équipe qui venait de dégager.
   G.lastTouchTi=ti;
+  G._passFlight=null; // le ballon est capté : fin de la protection de passe
   p._expectingBall=false; // il a le ballon désormais, plus besoin d'aller le chercher
 }
 // Longueur de la chaîne de passes en cours pour l'équipe ti (0 si aucune).
@@ -1177,6 +1178,25 @@ function kickToP(from,to,spd=1.8){
   v0 = clamp(v0, 0.18, 3.6);
   G.ball.vx=(dx/d)*v0;G.ball.vy=(dy/d)*v0;
   G.ball.spin=v0*2;
+  // ── PROTECTION DE LA PASSE (anti-vol instantané) ─────────────────────
+  // Bug corrigé : au moment où freeB() libère le ballon, l'auto-pickup donnait
+  // la balle au joueur le plus proche de TOUTE équipe. Un adversaire collé au
+  // passeur (un presseur) récupérait donc le ballon À L'INSTANT du dégagement,
+  // avant même qu'il ne parte — d'où les défenseurs qui "se font prendre le
+  // ballon quand ils passent". En vrai, on intercepte une passe LE LONG de sa
+  // trajectoire, pas dans les pieds du passeur. On enregistre donc : l'équipe
+  // qui passe, le point de départ, et une distance minimale que le ballon doit
+  // parcourir avant qu'un adversaire puisse le capter près du départ.
+  const _passTi = (from && teams[0].players.some(q=>q===from||q.id===from.id)) ? 0
+               : (from && teams[1].players.some(q=>q===from||q.id===from.id)) ? 1
+               : G.atkTi;
+  G._passFlight = {
+    ti: _passTi,                       // équipe qui a joué la passe
+    x0: G.ball.x, y0: G.ball.y,        // point de départ
+    toId: to ? to.id : null,           // receveur visé
+    guardR: Math.min(6, d*0.55),       // rayon protégé autour du départ
+    t: 0.9,                            // durée de protection (s) — le temps du vol
+  };
   // Le récepteur "voit" la passe partir : il va activement à la rencontre
   // du ballon (point d'arrivée visé) au lieu d'attendre sur sa position de
   // formation — voir la priorité correspondante dans roleTarget (engine.js).

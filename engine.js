@@ -126,7 +126,37 @@ function roleTarget(ti,p,pi){
     const gap = ti===0 ? (p.x-b.x) : (b.x-p.x); // de combien le joueur devance le ballon
     const wantSupportRun = ballBehind && gap>6 && gap<WW*0.5;
     const phaseOK=G.phase==='ATTACK'||G.phase==='TRANSITION'||G.phase==='BUILDUP';
-    if(phaseOK&&(ballAhead||wantSupportRun)&&Math.random()<0.42*runFreq*roleRunMod){
+    // ── GARANTIE DE TRIANGLE (spec off-ball) ────────────────────────────
+    // Si le porteur a peu de solutions de passe, ses coéquipiers doivent
+    // bouger BEAUCOUP plus pour lui recréer des lignes (viser ≥ 2 options,
+    // triangles/losanges permanents). On compte les coéquipiers actuellement
+    // "offrables" (démarqués, à portée, pas alignés derrière un adversaire) et
+    // on augmente fortement la probabilité de course quand ils sont rares.
+    let _runBoost=1;
+    const _owner=(typeof ownerP==='function')?ownerP():null;
+    if(_owner && _owner!==p && phaseOK){
+      let _options=0;
+      for(const q of actP(ti)){
+        if(q===_owner||q.hasBall||q.pos==='GB') continue;
+        const dq=Math.hypot(q.x-_owner.x,q.y-_owner.y);
+        if(dq<8||dq>WW*0.55) continue;           // ni trop près ni hors de portée
+        // ligne de passe dégagée ? (aucun adversaire proche du segment)
+        const dgx=q.x-_owner.x,dgy=q.y-_owner.y,dl=Math.hypot(dgx,dgy)||1;
+        let blocked=false;
+        for(const o of actP(1-ti)){
+          const tprj=((o.x-_owner.x)*dgx+(o.y-_owner.y)*dgy)/(dl*dl);
+          if(tprj>0.1&&tprj<1){
+            const px=_owner.x+dgx*tprj,py=_owner.y+dgy*tprj;
+            if(Math.hypot(o.x-px,o.y-py)<2.5){blocked=true;break;}
+          }
+        }
+        if(!blocked) _options++;
+      }
+      // 0-1 option → grosse incitation à bouger (spec : >80% si une seule ligne).
+      if(_options<=1) _runBoost=2.4;
+      else if(_options===2) _runBoost=1.3;
+    }
+    if(phaseOK&&(ballAhead||wantSupportRun)&&Math.random()<Math.min(0.85,0.42*runFreq*roleRunMod*_runBoost)){
       p.runT=1.2+Math.random()*1.4;
       p.runCool=(1.6+Math.random()*1.8)/runFreq;
       // Point de départ + durée totale mémorisés pour courber la trajectoire
@@ -1203,6 +1233,14 @@ function physStep(dt,rawDt){
     } else if(b.x>WW){b.x=WW;b.vx*=-.5;}
     // Auto pickup — pick the closest eligible player so neither team is favored by iteration order.
     if(!G.owner){
+      // Décroissance du timer de protection de passe.
+      if(G._passFlight){
+        G._passFlight.t -= dt;
+        if(G._passFlight.t<=0) G._passFlight=null;
+      }
+      const pf=G._passFlight;
+      // Distance parcourue depuis le point de départ de la passe.
+      const flightDist = pf ? Math.hypot(b.x-pf.x0, b.y-pf.y0) : 1e9;
       let bestP=null,bestD=PICK_R;
       for(let _ti=0;_ti<teams.length;_ti++){
         // En phase GOALKICK, seule l'équipe qui dégage peut ramasser la balle
@@ -1210,10 +1248,21 @@ function physStep(dt,rawDt){
         for(const p of teams[_ti].players){
           if(p.red||p.stunT>0)continue;
           const d=Math.hypot(p.x-b.x,p.y-b.y);
-          if(d<bestD){bestD=d;bestP=p;}
+          if(d>=bestD) continue;
+          // ── PROTECTION DE PASSE ──────────────────────────────────────────
+          // Pendant le vol d'une passe, un ADVERSAIRE de l'équipe passeuse ne
+          // peut pas capter le ballon tant qu'il n'a pas quitté la zone de
+          // départ (guardR). Le receveur visé et les coéquipiers, eux, peuvent
+          // toujours le prendre. Ainsi un presseur collé au passeur ne vole
+          // plus la balle à l'instant du dégagement : il doit se trouver SUR la
+          // trajectoire, plus loin, pour l'intercepter.
+          if(pf && _ti!==pf.ti && p.id!==pf.toId && flightDist<pf.guardR) continue;
+          bestD=d;bestP=p;
         }
       }
       if(bestP){
+        // Le receveur visé récupère la passe → on lève la protection.
+        if(pf && (bestP.id===pf.toId || teams[pf.ti].players.some(q=>q===bestP))) G._passFlight=null;
         giveB(bestP);
         // Si le gardien ramasse le ballon en jeu libre → dégagement immédiat
         if(bestP.pos==='GB' && G.phase!=='GOALKICK' && G.phase!=='PENALTY_KICK'){
