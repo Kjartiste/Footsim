@@ -37,16 +37,29 @@
   // échouer MediaRecorder dès qu'on lui ajoute une piste audio : on déclare
   // donc explicitement mp4a/opus quand il y a du son, avec repli sur les
   // chaînes vidéo seules si le navigateur n'en veut pas.
+  //
+  // ── NIVEAU H.264 : LA CAUSE DU PLANTAGE ────────────────────────────────
+  // 'avc1.42E01E' = Baseline profile, LEVEL 3.0. Le niveau 3.0 est limité à
+  // ~1280×720@30 (1620 macroblocs/frame, 40500 MB/s). Or on encode du
+  // 1080×1920 à 60 fps = 8160 macroblocs/frame et ~489600 MB/s, soit DOUZE
+  // fois au-delà. Beaucoup d'encodeurs matériels acceptaient ça en silence ;
+  // les versions récentes de Chrome/Edge valident le niveau et refusent net
+  // → MediaRecorder émet une ErrorEvent et ne produit AUCUNE image.
+  // On déclare donc le niveau 5.2 ('avc1.4D0034' = Main@5.2, jusqu'à 4K60),
+  // et on garde des variantes sans niveau explicite en repli : le navigateur
+  // choisit alors lui-même un niveau adapté.
   const CANDIDATES_AV=[
-    {mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2',ext:'mp4'},
-    {mime:'video/mp4;codecs=h264,aac',ext:'mp4'},
+    {mime:'video/mp4;codecs=avc1.4D0034,mp4a.40.2',ext:'mp4'}, // Main@5.2 + AAC
+    {mime:'video/mp4;codecs=avc1.640034,mp4a.40.2',ext:'mp4'}, // High@5.2 + AAC
+    {mime:'video/mp4;codecs=h264,aac',ext:'mp4'},              // sans niveau imposé
     {mime:'video/mp4',ext:'mp4'},
     {mime:'video/webm;codecs=vp9,opus',ext:'webm'},
     {mime:'video/webm;codecs=vp8,opus',ext:'webm'},
     {mime:'video/webm',ext:'webm'},
   ];
   const CANDIDATES=[
-    {mime:'video/mp4;codecs=avc1.42E01E',ext:'mp4'},
+    {mime:'video/mp4;codecs=avc1.4D0034',ext:'mp4'},
+    {mime:'video/mp4;codecs=avc1.640034',ext:'mp4'},
     {mime:'video/mp4;codecs=h264',ext:'mp4'},
     {mime:'video/mp4;codecs=vp9',ext:'mp4'},
     {mime:'video/mp4',ext:'mp4'},
@@ -61,6 +74,8 @@
   // le mime fautif — de façon persistante — pour ne plus jamais le proposer
   // sur cette machine. C'est ce qui permet au 2e essai de marcher tout seul.
   let _lastTriedMime='';
+  let _autoRetryPending=false;   // un format vient de planter → relancer seul
+  let _autoRetryCount=0;         // borne : on ne boucle pas indéfiniment
   let _mimeBlacklist=[];
   try{
     const raw=localStorage.getItem('footsim_badMimes');
@@ -68,14 +83,18 @@
   }catch(e){ _mimeBlacklist=[]; }
   function _blacklistMime(m){
     if(!m) return;
-    // On note la famille (avant le ';') ET la chaîne complète : si
-    // 'video/mp4;codecs=avc1…' ment, 'video/mp4' tout court ment aussi.
+    // Normalisation en minuscules : le navigateur renvoie le mime normalisé
+    // ('avc1.42001e') alors que notre liste l'écrit en majuscules
+    // ('avc1.42E01E'). Sans ça, la comparaison échouait et le même format
+    // cassé était reproposé en boucle.
+    m=String(m).toLowerCase().replace(/\s+/g,'');
     const fam=m.split(';')[0];
     [m,fam].forEach(x=>{ if(x && _mimeBlacklist.indexOf(x)<0) _mimeBlacklist.push(x); });
     try{ localStorage.setItem('footsim_badMimes',JSON.stringify(_mimeBlacklist)); }catch(e){}
   }
   function _isBlacklisted(m){
     if(!m) return false;
+    m=String(m).toLowerCase().replace(/\s+/g,'');
     return _mimeBlacklist.indexOf(m)>=0 || _mimeBlacklist.indexOf(m.split(';')[0])>=0;
   }
   // Permet à l'utilisateur de repartir de zéro (ex. après mise à jour du
@@ -840,11 +859,16 @@
     try{ if(typeof resize==='function') resize(); }catch(e){}
     window._recLocked=true;
 
-    // 60 fps : la boucle de jeu tourne déjà à 60, capturer à 30 divisait la
-    // fluidité par deux pour rien. Le débit suit (6 → 12 Mbps) : à 60 fps,
-    // 6 Mbps donnerait des artefacts de compression sur les mouvements
-    // rapides — exactement là où un short se juge.
-    const stream=recCanvas.captureStream(60);
+    // ── CHARGE DE L'ENCODEUR ────────────────────────────────────────────
+    // 1080×1920 à 60 fps, c'est deux fois la charge d'un 1080p60 classique
+    // (l'image est plus haute que large). Combiné à 12 Mbps, ça dépassait ce
+    // que beaucoup d'encodeurs matériels acceptent → MediaRecorder plantait
+    // sans produire une seule image. 30 fps est le standard des shorts
+    // (TikTok/Reels/YouTube Short) et divise la charge par deux, pour un
+    // rendu identique à l'œil sur ce format. 8 Mbps à 30 fps donne une
+    // qualité équivalente aux 12 Mbps à 60 fps d'avant (même nombre de bits
+    // par image), sans les artefacts.
+    const stream=recCanvas.captureStream(30);
     // Piste audio : on la greffe sur le flux vidéo. Non bloquant — si le
     // navigateur refuse l'AudioContext, on enregistre en muet comme avant.
     let hasAudio=false;
@@ -876,7 +900,7 @@
     try{
       recorder=new MediaRecorder(stream,{
         mimeType:choice.mime,
-        videoBitsPerSecond:12_000_000,
+        videoBitsPerSecond:8_000_000,
         ...(hasAudio?{audioBitsPerSecond:128_000}:{})
       });
     }catch(e){
@@ -887,7 +911,16 @@
     }
     recorder.ondataavailable=e=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
     recorder.onstop=onRecordingStopped;
-    recorder.onerror=e=>{ console.error('MediaRecorder error:',e); };
+    recorder.onerror=e=>{
+      console.error('MediaRecorder error:',e);
+      // ── BASCULE IMMÉDIATE ────────────────────────────────────────────
+      // L'encodeur vient de planter : inutile de laisser tourner un
+      // enregistrement qui ne produira rien. On blackliste le format fautif
+      // et on RELANCE tout de suite avec le suivant, sans rien demander.
+      _blacklistMime(_lastTriedMime||(recorder&&recorder.mimeType));
+      _autoRetryPending=true;
+      try{ if(recorder.state!=='inactive') recorder.stop(); }catch(_){}
+    };
     _lastTriedMime=choice.mime;
     recorder.start(1000); // chunk toutes les secondes : évite de tout perdre en cas de crash
 
@@ -955,19 +988,30 @@
       chunks=[];
       setBtnUI('idle');
       const badMime=(recorder&&recorder.mimeType)||_lastTriedMime||'';
-      if(badMime){
-        _blacklistMime(badMime);
-        showMsg("L'encodeur vidéo de ce navigateur n'a produit aucune image ("
-          +badMime.split(';')[0]+"). Format désactivé — relance l'enregistrement, "
-          +"il utilisera automatiquement un format compatible (WebM).");
-      } else {
-        showMsg("L'enregistrement n'a produit aucune image. Réessaie, ou utilise "
-          +"un autre navigateur (Chrome/Firefox à jour).");
+      if(badMime) _blacklistMime(badMime);
+      console.error('MediaRecorder: 0 octet produit avec le mime',badMime);
+
+      // ── RELANCE AUTOMATIQUE AVEC LE FORMAT SUIVANT ────────────────────
+      // Plutôt que de demander au joueur de recliquer (et de re-rater son
+      // action), on repart immédiatement sur le prochain format disponible.
+      // Borné à 4 tentatives pour ne jamais boucler.
+      const next=pickMime(true);
+      if(next && _autoRetryCount<4){
+        _autoRetryCount++;
+        _autoRetryPending=false;
+        showMsg('Format vidéo incompatible ('+badMime.split(';')[0]
+          +') — nouvelle tentative en '+next.ext.toUpperCase()+'…');
+        setTimeout(()=>{ try{ startRecording(); }catch(e){ console.error(e); } }, 350);
+        return;
       }
-      console.error('MediaRecorder: 0 octet produit avec le mime',badMime,
-                    '— mime ajouté à la liste noire, repli au prochain essai.');
+
+      _autoRetryCount=0; _autoRetryPending=false;
+      showMsg("Aucun format vidéo ne fonctionne sur ce navigateur. "
+        +"Essaie Chrome ou Firefox à jour, et ouvre le jeu via http://localhost "
+        +"plutôt qu'en double-cliquant le fichier.");
       return; // on ne télécharge JAMAIS un fichier vide
     }
+    _autoRetryCount=0; // succès : on repart propre pour la prochaine fois
 
     const mimeType=(recorder&&recorder.mimeType)||'video/mp4';
     const blob=new Blob(chunks,{type:mimeType});
