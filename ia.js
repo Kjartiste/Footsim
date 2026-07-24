@@ -326,9 +326,42 @@ function aiDecide(dt=0.016){
       }
       case 'CORNER':{
         if(G.phTick<5)return;
-        const kicker=pick(byR(ati,'MC','MO','ATT','AG','AD'));
+        const kicker=pick(byR(ati,'MC','MO','MOG','MOD','MDC','ATT','AG','AD'));
         const header=pick(byR(ati,'ATT','ATT2','DC','DCD','DCG').filter(p=>!p.hasBall));
         if(!kicker||!header){setPhase('BUILDUP');return;}
+        // ── CORNER JOUÉ À DEUX ────────────────────────────────────────────
+        // Le corner court est devenu une routine standard du football moderne :
+        // on attire un défenseur, puis on centre depuis un meilleur angle (ou
+        // on repart en jeu construit). On le joue ~30% du temps, quand un
+        // coéquipier est disponible près du poteau de corner.
+        const shortMate=pick(byR(ati,'AG','AD','MC','MO','MOG','MOD')
+          .filter(p=>p!==kicker && p!==header && !p.hasBall));
+        if(shortMate && Math.random()<0.30){
+          // Passe courte vers le relais posté près du drapeau.
+          const sx=G.ball.x+(ati===0?rng(2,5):-rng(2,5));
+          const sy=G.ball.y+(G.ball.y<WH/2?rng(2,5):-rng(2,5));
+          shortMate.x=clamp(sx,1,WW-1); shortMate.y=clamp(sy,1,WH-1);
+          kickToP(kicker,shortMate,1.6);
+          logEvent(`Corner joué à deux : ${kicker.name} pour ${shortMate.name}`,teams[ati].color+'bb');
+          setTimeout(()=>{
+            if(!G.running)return;
+            giveB(shortMate);
+            // Depuis le relais : soit centre vers la surface, soit on enchaîne
+            // en jeu courant (le défenseur est sorti, l'espace est ouvert).
+            if(Math.random()<0.6){
+              kickTo(oppGoalX+(ati===0?-8:8), PCY+rng(-6,6), 1.7);
+              logEvent(`Centre de ${shortMate.name}...`,teams[ati].color+'aa');
+              setTimeout(()=>{
+                if(!G.running)return;
+                if(Math.random()<.42){giveB(header);setTimeout(()=>{if(G.running)doShot(header,ati,dti,opp,gk,oppGoalX);},260/speedMult);}
+                else{if(gk){giveB(gk);G.atkTi=dti;}setPhase('GOALKICK');}
+              },560/speedMult);
+            } else {
+              setPhase('BUILDUP');
+            }
+          },420/speedMult);
+          return;
+        }
         const cx=oppGoalX+(ati===0?rng(-16,-1):rng(1,16));
         const cy=PCY+rng(-10,10);
         kickTo(cx,cy,1.5);
@@ -342,9 +375,28 @@ function aiDecide(dt=0.016){
       }
       case 'FREEKICK':{
         if(G.phTick<5)return;
-        const sh=pick(byR(ati,'ATT','ATT2','MC','MO','AG','AD'));
+        const sh=pick(byR(ati,'ATT','ATT2','MC','MO','MOG','MOD','MDC','AG','AD'));
         if(!sh){setPhase('BUILDUP');return;}
         giveB(sh);
+        // ── COUP FRANC JOUÉ / COMBINÉ ─────────────────────────────────────
+        // Avant, TOUT coup franc était une frappe directe, même à 60 m du but.
+        // Dans le football réel, la frappe n'est tentée que dans un rayon
+        // crédible ; au-delà, on joue court ou on cherche un centre. On calcule
+        // donc la distance au but et on décide en conséquence.
+        const distGoal=Math.abs(oppGoalX-sh.x);
+        const mate=pick(actP(ati).filter(p=>p!==sh && p.pos!=='GB' && !p.hasBall));
+        // Frappe crédible seulement à moins de ~30 unités du but.
+        const canShoot=distGoal<30;
+        if(mate && (!canShoot || Math.random()<0.35)){
+          logEvent(`Coup franc joué par ${sh.name}...`,teams[ati].color+'aa');
+          kickToP(sh,mate,2.0);
+          setTimeout(()=>{
+            if(!G.running)return;
+            giveB(mate);
+            setPhase('BUILDUP'); // on repart en jeu construit, ballon en mouvement
+          },420/speedMult);
+          return;
+        }
         const atkS=(sh.s.sht+sh.s.tec*.5+irng(-10,10))*ast11.atk;
         const defS=(gk?gk.s.def+22:28+irng(-8,8))*dst11.def;
         kickTo(oppGoalX,PCY+rng(-6,6),2.2);
@@ -939,9 +991,39 @@ function aiDecide(dt=0.016){
     }
     case 'CORNER':{
       if(G.phTick<5)return;
-      const kicker=pick(byR(ati,'MC','MO','ATT'));
-      const header=pick(byR(ati,'ATT','DC').filter(p=>!p.hasBall));
+      const kicker=pick(byR(ati,'MC','MO','MOG','MOD','MDC','ATT','AG','AD'));
+      const header=pick(byR(ati,'ATT','ATT2','DC','DCD','DCG').filter(p=>!p.hasBall));
       if(!kicker||!header){setPhase('BUILDUP');return;}
+      // ── CORNER JOUÉ À DEUX ──────────────────────────────────────────────
+      // Routine standard du football moderne : on joue court pour attirer un
+      // défenseur, puis on centre depuis un meilleur angle (ou on repart en
+      // jeu construit). ~30% des corners, si un relais est disponible.
+      const shortMate=pick(byR(ati,'AG','AD','MC','MO','MOG','MOD')
+        .filter(p=>p!==kicker && p!==header && !p.hasBall));
+      if(shortMate && Math.random()<0.30){
+        const sx=G.ball.x+(ati===0?rng(2,5):-rng(2,5));
+        const sy=G.ball.y+(G.ball.y<WH/2?rng(2,5):-rng(2,5));
+        shortMate.x=clamp(sx,1,WW-1); shortMate.y=clamp(sy,1,WH-1);
+        giveB(kicker);
+        kickToP(kicker,shortMate,1.6);
+        logEvent(`Corner joué à deux : ${kicker.name} pour ${shortMate.name}`,teams[ati].color+'bb');
+        setTimeout(()=>{
+          if(!G.running||G.phase==='HALFTIME'||G.phase==='END')return;
+          giveB(shortMate);
+          if(Math.random()<0.6){
+            kickTo(oppGoalX+(ati===0?-8:8), PCY+rng(-6,6), 1.7);
+            logEvent(`Centre de ${shortMate.name}...`,teams[ati].color+'aa');
+            setTimeout(()=>{
+              if(!G.running||G.phase==='HALFTIME'||G.phase==='END')return;
+              if(Math.random()<.42){giveB(header);setTimeout(()=>{if(G.running&&G.phase!=='HALFTIME'&&G.phase!=='END')doShot(header,ati,dti,opp,gk,oppGoalX);},260/speedMult);}
+              else{if(gk){giveB(gk);G.atkTi=dti;}setPhase('GOALKICK');}
+            },560/speedMult);
+          } else {
+            setPhase('BUILDUP');
+          }
+        },420/speedMult);
+        break;
+      }
       const cx=oppGoalX+(ati===0?rng(-14,-1):rng(1,14));
       const cy=PCY+rng(-8,8);
       kickTo(cx,cy,1.5);
@@ -1021,6 +1103,27 @@ function aiDecide(dt=0.016){
       const sh=fkCand.length?fkCand.reduce((b,p)=>((p.s.tec*1.2+p.s.sht)>(b.s.tec*1.2+b.s.sht)?p:b)):null;
       if(!sh){setPhase('BUILDUP');G._fkWall=null;return;}
       giveB(sh);
+      // ── COUP FRANC JOUÉ PLUTÔT QUE FRAPPÉ ──────────────────────────────
+      // Avant, TOUT coup franc partait en frappe directe, même à 60 m du but.
+      // Dans le football réel on ne frappe que dans un rayon crédible ; au-delà,
+      // on joue court pour repartir en jeu construit. On décide selon la
+      // distance réelle au but, avec une part de coups francs joués même en
+      // position de frappe (35%), comme dans le jeu moderne.
+      const _fkDist=Math.abs(oppGoalX-sh.x);
+      const _fkShootable=_fkDist < WW*0.30; // ~30% de la longueur du terrain
+      const _fkMate=pick(actP(ati).filter(p=>p!==sh && p.pos!=='GB' && !p.red && p.hp>0 && !p.hasBall));
+      if(_fkMate && (!_fkShootable || Math.random()<0.35)){
+        G._fkWall=null; // pas de frappe : le mur se dissout
+        logEvent(`Coup franc joué par ${sh.name}...`,teams[ati].color+'aa');
+        kickToP(sh,_fkMate,2.0);
+        setTimeout(()=>{
+          if(!G.running||G.phase==='HALFTIME'||G.phase==='END')return;
+          giveB(_fkMate);
+          logEvent(`${sh.name} pour ${_fkMate.name}`,teams[ati].color+'88');
+          setPhase('BUILDUP');
+        },420/speedMult);
+        break;
+      }
       // Le tir arrêté est techniquement aidé (placement) mais fait face au MUR
       // (les défenseurs réellement alignés) et au gardien : un peu plus dur
       // qu'un tir en action, comme dans la réalité.

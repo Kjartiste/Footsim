@@ -671,7 +671,24 @@ function deepCloneTeam(T){
     bench:(T.bench||[]).map(p=>p?clonePlayer(p):null).filter(Boolean),
     reserves:(T.reserves||[]).map(p=>({...p,s:{...p.s}}))};
 }
-function byR(ti,...r){const a=actP(ti);const f=a.filter(p=>r.includes(p.pos));return f.length?f:a;}
+// Joueurs d'une équipe correspondant à des postes donnés.
+// ── POURQUOI CE REPLI EN CASCADE ────────────────────────────────────────
+// Avant : `return f.length?f:a;` — si aucun joueur ne correspondait aux postes
+// demandés, la fonction rendait TOUTE l'équipe, gardien compris. D'où les
+// corners et coups francs tirés par un défenseur central ou le gardien : des
+// formations comme '402' ou '51' n'ont ni MC, ni MO, ni ailier, donc le filtre
+// ne trouvait personne et l'appelant piochait au hasard dans tout l'effectif.
+// C'est encore plus fréquent avec des équipes personnalisées, dont les postes
+// ne collent pas toujours aux libellés attendus.
+// Maintenant : on tente les postes demandés, puis on élargit aux joueurs de
+// champ (jamais le gardien), et seulement en dernier recours toute l'équipe.
+function byR(ti,...r){
+  const a=actP(ti);
+  const f=a.filter(p=>r.includes(p.pos));
+  if(f.length) return f;
+  const outfield=a.filter(p=>p.pos!=='GB');
+  return outfield.length?outfield:a;
+}
 // Vrai gardien ACTIF de l'équipe ti, ou undefined si les cages sont vides
 // (gardien expulsé, gravement blessé, ou aucun joueur au poste GB). Contrairement
 // à byR(ti,'GB')[0], ne renvoie JAMAIS un joueur de champ par repli : c'est le
@@ -772,6 +789,15 @@ const strat=ti=>{
   return base;
 };
 const ownerP=()=>G.owner?allP().find(p=>p.id===G.owner):null;
+// Camp d'un joueur : les objets joueur ne portent pas d'indice d'équipe, on le
+// déduit de l'effectif dans lequel il figure. Renvoie 0, 1, ou -1 si introuvable
+// (joueur retiré, sort de domination en cours…).
+const teamOfP=p=>{
+  if(!p) return -1;
+  if(teams[0] && teams[0].players && teams[0].players.indexOf(p)>=0) return 0;
+  if(teams[1] && teams[1].players && teams[1].players.indexOf(p)>=0) return 1;
+  return -1;
+};
 // Fatigue multiplier: tired players (low HP) AND injured players perform worse in duels and shots.
 // Range: 0.55 (exhausted+seriously injured) → 1.00 (fresh and healthy).
 const fatMul=p=>{
@@ -1073,6 +1099,13 @@ function giveB(p){
   }
   G.owner=p.id;p.hasBall=true;
   G.atkTi=ti;
+  // ── DERNIER TOUCHER ────────────────────────────────────────────────────
+  // Mémorise quelle équipe a touché le ballon en dernier. Indispensable pour
+  // arbitrer correctement une sortie de but : si c'est l'ATTAQUANT qui met le
+  // ballon derrière la ligne, c'est six mètres pour le défenseur ; si c'est le
+  // DÉFENSEUR, c'est corner. Sans cette info, le moteur donnait un corner dans
+  // tous les cas — d'où des corners accordés à l'équipe qui venait de dégager.
+  G.lastTouchTi=ti;
   p._expectingBall=false; // il a le ballon désormais, plus besoin d'aller le chercher
 }
 // Longueur de la chaîne de passes en cours pour l'équipe ti (0 si aucune).

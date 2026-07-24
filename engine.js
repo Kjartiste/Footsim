@@ -697,7 +697,10 @@ function physStep(dt,rawDt){
       b.x=lerp(b.x,own.x+(own.vx||0)*dt*.5,.26);
       b.y=lerp(b.y,own.y+(own.vy||0)*dt*.5,.26);
       b.vx=0;b.vy=0;b.spin=(b.spin||0)*.9;
-      G.possT[G.atkTi]++;
+      // Possession créditée au porteur réel (voir commentaire détaillé dans la
+      // branche 11v11 plus bas) et non à G.atkTi, qui peut désigner l'autre camp.
+      const _pti7=teamOfP(own);
+      G.possT[_pti7>=0?_pti7:G.atkTi]++;
     } else {
       b.x+=(b.vx||0)*dt*60;b.y+=(b.vy||0)*dt*60;
       b.vx=(b.vx||0)*Math.pow(BALL_FRIC,dt*60);
@@ -729,18 +732,35 @@ function physStep(dt,rawDt){
         if(b.y<0){b.y=0;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
         if(b.y>WH){b.y=WH;b.vy=(b.vy||0)*-.6;b.spin=-(b.spin||0);}
       }
-      // Corners automatiques (comme 7v7)
+      // Corners / six mètres : même règle qu'en 11v11 — corner seulement si
+      // c'est le défenseur qui a mis le ballon dehors, sinon dégagement.
       if(b.x<=0&&!(b.y>GY1&&b.y<GY2)&&(b.vx||0)<0&&G.running
          &&G.phase!=='CORNER'&&G.phase!=='FREEKICK'&&G.phase!=='GOALKICK'&&G.phase!=='KICKOFF'){
-        G.corners[1]++;b.x=.5;b.y=clamp(b.y,1,WH-1);b.vx=0;b.vy=0;
-        G.atkTi=1;setPhase('CORNER');
-        logEvent(`Corner pour ${teams[1].name}`,teams[1].color+'88');
+        const lastTi=(G.lastTouchTi===0||G.lastTouchTi===1)?G.lastTouchTi:1;
+        if(lastTi===0){
+          G.corners[1]++;
+          b.x=.4; b.y=(b.y<WH/2)?0.4:WH-0.4; b.vx=0;b.vy=0;
+          G.atkTi=1;setPhase('CORNER');
+          logEvent(`Corner pour ${teams[1].name}`,teams[1].color+'88');
+        } else {
+          b.x=2.5; b.y=clamp(b.y,GY1,GY2); b.vx=0;b.vy=0;
+          G.atkTi=0;setPhase('GOALKICK');
+          logEvent(`Six mètres pour ${teams[0].name}`,teams[0].color+'66');
+        }
       } else if(b.x<0){b.x=0;b.vx=(b.vx||0)*-.5;}
       if(b.x>=WW&&!(b.y>GY1&&b.y<GY2)&&(b.vx||0)>0&&G.running
          &&G.phase!=='CORNER'&&G.phase!=='FREEKICK'&&G.phase!=='GOALKICK'&&G.phase!=='KICKOFF'){
-        G.corners[0]++;b.x=WW-.5;b.y=clamp(b.y,1,WH-1);b.vx=0;b.vy=0;
-        G.atkTi=0;setPhase('CORNER');
-        logEvent(`Corner pour ${teams[0].name}`,teams[0].color+'88');
+        const lastTi=(G.lastTouchTi===0||G.lastTouchTi===1)?G.lastTouchTi:0;
+        if(lastTi===1){
+          G.corners[0]++;
+          b.x=WW-.4; b.y=(b.y<WH/2)?0.4:WH-0.4; b.vx=0;b.vy=0;
+          G.atkTi=0;setPhase('CORNER');
+          logEvent(`Corner pour ${teams[0].name}`,teams[0].color+'88');
+        } else {
+          b.x=WW-2.5; b.y=clamp(b.y,GY1,GY2); b.vx=0;b.vy=0;
+          G.atkTi=1;setPhase('GOALKICK');
+          logEvent(`Six mètres pour ${teams[1].name}`,teams[1].color+'66');
+        }
       } else if(b.x>WW){b.x=WW;b.vx=(b.vx||0)*-.5;}
       // Auto pickup
       if(!G.owner){
@@ -1046,33 +1066,90 @@ function physStep(dt,rawDt){
     b.x=lerp(b.x,own.x+own.vx*dt*.5,.26);
     b.y=lerp(b.y,own.y+own.vy*dt*.5,.26);
     b.vx=0;b.vy=0;b.spin*=.9;
-    G.possT[G.atkTi]++;
+    // ── POSSESSION : on crédite le PORTEUR RÉEL, pas G.atkTi ─────────────
+    // G.atkTi est l'équipe "en phase d'attaque" au sens de l'IA : il est forcé
+    // lors des coups de pied arrêtés et ne suit pas toujours immédiatement un
+    // changement de porteur (interception, tacle). Résultat : le temps de
+    // possession partait dans la mauvaise colonne — flagrant avec des équipes
+    // personnalisées, où les phases arrêtées sont plus fréquentes.
+    const _pti=teamOfP(own);
+    G.possT[_pti>=0?_pti:G.atkTi]++;
   } else {
     b.x+=b.vx*dt*60;b.y+=b.vy*dt*60;
     b.vx*=Math.pow(BALL_FRIC,dt*60);
     b.vy*=Math.pow(BALL_FRIC,dt*60);
     b.spin*=Math.pow(.94,dt*60);
     if(Math.abs(b.vx)<.03&&Math.abs(b.vy)<.03){b.vx=0;b.vy=0;}
-    if(b.y<0){b.y=0;b.vy*=-.6;b.spin=-b.spin;}
-    if(b.y>WH){b.y=WH;b.vy*=-.6;b.spin=-b.spin;}
-    // Ball crossing goal line (outside goal frame) → corner for attacking team.
-    // Only fire during active open play, never during set pieces or while frozen.
+    // ── TOUCHES EN 11v11 ──────────────────────────────────────────────────
+    // Elles n'existaient QUE dans la branche 7v7/5v5 : en 11v11 le ballon
+    // rebondissait sur une paroi invisible aux lignes de côté, d'où
+    // l'impression que « les touches ne marchent pas ». Même règle que 7v7 :
+    // rentrée pour l'adversaire du dernier toucheur.
+    const _liveForThrow11 = G.running && G.phase!=='CORNER' && G.phase!=='FREEKICK'
+      && G.phase!=='GOALKICK' && G.phase!=='KICKOFF' && G.phase!=='THROWIN'
+      && G.phase!=='PENALTY_KICK';
+    if(_liveForThrow11 && (b.y<0 || b.y>WH)){
+      const outTop = b.y<0;
+      const lastTi=(G.lastTouchTi===0||G.lastTouchTi===1)?G.lastTouchTi:G.atkTi;
+      const throwTi = 1-lastTi;
+      G.throwins = G.throwins || [0,0];
+      G.throwins[throwTi]++;
+      b.x = clamp(b.x, 2, WW-2);
+      b.y = outTop ? 0.4 : WH-0.4;
+      b.vx=0; b.vy=0; b.spin=0;
+      freeB();
+      G.atkTi = throwTi;
+      G._throwSide = outTop ? 'top' : 'bottom';
+      setPhase('THROWIN');
+      logEvent(`Touche pour ${teams[throwTi].name}`, teams[throwTi].color+'88');
+    } else {
+      if(b.y<0){b.y=0;b.vy*=-.6;b.spin=-b.spin;}
+      if(b.y>WH){b.y=WH;b.vy*=-.6;b.spin=-b.spin;}
+    }
+    // Ballon franchissant la ligne de but (hors cadre) : CORNER seulement si
+    // c'est un DÉFENSEUR qui l'a mis dehors. Si c'est l'attaquant, c'est un
+    // dégagement aux six mètres. Avant, le moteur donnait un corner dans tous
+    // les cas : d'où les corners accordés à l'équipe qui venait de dégager.
     if(b.x<=0 && !(b.y>GY1&&b.y<GY2) && b.vx<0 && G.running
        && G.phase!=='CORNER' && G.phase!=='FREEKICK' && G.phase!=='GOALKICK' && G.phase!=='KICKOFF' && G.phase!=='PENALTY_KICK'){
-      // Out by team-0's goal line → corner for team 1 (attacking team)
-      const ati=1,dti=0;
-      G.corners[ati]++;
-      b.x=.5;b.y=clamp(b.y,1,WH-1);b.vx=0;b.vy=0;
-      G.atkTi=ati;setPhase('CORNER');
-      logEvent(`Corner pour ${teams[ati].name}`,teams[ati].color+'88');
+      // Ligne de but de l'équipe 0. Défenseur = équipe 0, attaquant = équipe 1.
+      const lastTi=(G.lastTouchTi===0||G.lastTouchTi===1)?G.lastTouchTi:1;
+      if(lastTi===0){
+        // Le défenseur l'a mis dehors → corner pour l'équipe 1.
+        const ati=1;
+        G.corners[ati]++;
+        // Ballon AU POTEAU DE CORNER : x=0 (ligne de but), y à l'un des deux
+        // coins du terrain selon le côté d'où il sort. Avant, on gardait le y
+        // de sortie, ce qui plaçait le "corner" au niveau des six mètres.
+        b.x=.4; b.y=(b.y<WH/2)?0.4:WH-0.4;
+        b.vx=0;b.vy=0;
+        G.atkTi=ati;setPhase('CORNER');
+        logEvent(`Corner pour ${teams[ati].name}`,teams[ati].color+'88');
+      } else {
+        // L'attaquant l'a mis dehors → six mètres pour l'équipe 0.
+        const ati=0;
+        b.x=2.5; b.y=clamp(b.y,GY1,GY2); b.vx=0;b.vy=0;
+        G.atkTi=ati;setPhase('GOALKICK');
+        logEvent(`Six mètres pour ${teams[ati].name}`,teams[ati].color+'66');
+      }
     } else if(b.x<0){b.x=0;b.vx*=-.5;}
     if(b.x>=WW && !(b.y>GY1&&b.y<GY2) && b.vx>0 && G.running
        && G.phase!=='CORNER' && G.phase!=='FREEKICK' && G.phase!=='GOALKICK' && G.phase!=='KICKOFF' && G.phase!=='PENALTY_KICK'){
-      const ati=0,dti=1;
-      G.corners[ati]++;
-      b.x=WW-.5;b.y=clamp(b.y,1,WH-1);b.vx=0;b.vy=0;
-      G.atkTi=ati;setPhase('CORNER');
-      logEvent(`Corner pour ${teams[ati].name}`,teams[ati].color+'88');
+      // Ligne de but de l'équipe 1. Défenseur = équipe 1, attaquant = équipe 0.
+      const lastTi=(G.lastTouchTi===0||G.lastTouchTi===1)?G.lastTouchTi:0;
+      if(lastTi===1){
+        const ati=0;
+        G.corners[ati]++;
+        b.x=WW-.4; b.y=(b.y<WH/2)?0.4:WH-0.4;
+        b.vx=0;b.vy=0;
+        G.atkTi=ati;setPhase('CORNER');
+        logEvent(`Corner pour ${teams[ati].name}`,teams[ati].color+'88');
+      } else {
+        const ati=1;
+        b.x=WW-2.5; b.y=clamp(b.y,GY1,GY2); b.vx=0;b.vy=0;
+        G.atkTi=ati;setPhase('GOALKICK');
+        logEvent(`Six mètres pour ${teams[ati].name}`,teams[ati].color+'66');
+      }
     } else if(b.x>WW){b.x=WW;b.vx*=-.5;}
     // Auto pickup — pick the closest eligible player so neither team is favored by iteration order.
     if(!G.owner){
