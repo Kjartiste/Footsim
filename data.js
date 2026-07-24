@@ -1151,8 +1151,32 @@ function kickToP(from,to,spd=1.8){
   aimX += (Math.random()-.5)*2*errAmp;
   aimY += (Math.random()-.5)*2*errAmp;
   const dx=aimX-G.ball.x,dy=aimY-G.ball.y,d=Math.hypot(dx,dy)||1;
-  G.ball.vx=(dx/d)*spd;G.ball.vy=(dy/d)*spd;
-  G.ball.spin=spd*2;
+  // ── PORTÉE ADAPTÉE À LA DISTANCE (correctif majeur) ──────────────────
+  // AVANT : la vitesse passée (spd) était appliquée telle quelle comme
+  // vélocité → le ballon parcourait TOUJOURS la même distance absolue, quelle
+  // que soit la position du receveur ni la taille du terrain. Sur un petit
+  // terrain (5v5/7v7), une passe "normale" traversait tout le terrain et
+  // survolait le receveur. C'était inaccessible pour le joueur : impossible de
+  // récupérer une passe qui file systématiquement au-delà.
+  // MAINTENANT : on calcule la vitesse de lancement nécessaire pour que le
+  // ballon S'ARRÊTE près du receveur (physique inverse de la friction), avec
+  // une petite marge pour qu'il arrive dans ses pieds sans qu'il ait à reculer.
+  // Le paramètre `spd` devient un facteur de FERMETÉ (passe sèche vs douce) :
+  // il module la marge et donc la force, sans jamais faire survoler la cible.
+  const _FRIC = (typeof BALL_FRIC==='number') ? BALL_FRIC : 0.965;
+  const _step = Math.pow(_FRIC, 0.016*60);           // décroissance par frame
+  const _v0ForRange = (R)=> R*(1-_step)/(0.016*60);   // physique inverse
+  // Marge de dépassement : une passe sèche (spd élevé) porte un peu au-delà du
+  // receveur (passe tendue), une passe douce (spd faible) meurt à ses pieds.
+  const firmness = clamp(spd/1.8, 0.75, 1.6);         // 1.8 = référence "normale"
+  const targetRange = d * (0.92 + 0.16*firmness);     // ~0.92 à 1.15 × la distance
+  let v0 = _v0ForRange(targetRange);
+  // Bornes de sécurité : jamais une passe ridiculement molle ni un boulet.
+  // Plancher bas (0.18) pour que les passes très courtes restent courtes
+  // (une remise de 3-4 unités ne doit pas porter à 9).
+  v0 = clamp(v0, 0.18, 3.6);
+  G.ball.vx=(dx/d)*v0;G.ball.vy=(dy/d)*v0;
+  G.ball.spin=v0*2;
   // Le récepteur "voit" la passe partir : il va activement à la rencontre
   // du ballon (point d'arrivée visé) au lieu d'attendre sur sa position de
   // formation — voir la priorité correspondante dans roleTarget (engine.js).

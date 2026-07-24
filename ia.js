@@ -687,6 +687,75 @@ function aiDecide(dt=0.016){
 
       const _oppD=opp?Math.hypot(opp.x-carrier.x,opp.y-carrier.y):1e9;
 
+      // ── DÉCISION PAR UTILITÉ (aussi en CONSTRUCTION) ────────────────────
+      // Le moteur d'utilité ne s'appliquait qu'en phase ATTACK : or l'essentiel
+      // du jeu se passe en BUILDUP, donc le changement ne se voyait presque pas.
+      // On l'applique ici aussi. En construction, la portée de tir est calculée
+      // sur la distance réelle au but (un porteur avancé peut tirer, un
+      // défenseur bas non). Le reste (passe/dribble/conduite/renversement)
+      // devient probabiliste par utilité. Repli sur les seuils ci-dessous si le
+      // module est absent.
+      if(typeof offensiveDecision==='function'){
+        const _bDistGoal=Math.abs(carrier.x-oppGoalX);
+        const _bBoxW=(typeof PA_W==='number'&&PA_W>0)?PA_W:WW*0.16;
+        const _bCanShoot=_bDistGoal < _bBoxW*1.4 && _bCat!=='gk';
+        const _bTend=({gk:{shoot:0.02,drib:0.05,pass:1.7},def:{shoot:0.25,drib:0.35,pass:1.6},
+          dmc:{shoot:0.55,drib:0.6,pass:1.7},mid:{shoot:0.85,drib:0.9,pass:1.5},
+          mo:{shoot:1.15,drib:1.25,pass:1.25},att:{shoot:1.5,drib:1.2,pass:0.9}}[_bCat])||{shoot:0.8,drib:0.9,pass:1.4};
+        const _bStyleTend=({possession:{shoot:0.75,drib:0.85,pass:1.55},direct:{shoot:1.3,drib:1.05,pass:0.8},
+          counter:{shoot:1.2,drib:1.15,pass:0.85},tikitaka:{shoot:0.7,drib:0.85,pass:1.6},normal:{shoot:1,drib:1,pass:1}}[_bStyle])||{shoot:1,drib:1,pass:1};
+        let _bu=null;
+        try{
+          _bu=offensiveDecision(carrier, ati, dti, {
+            WW,WH,PCY,PCX,oppGoalX,dp,PA_W:_bBoxW,
+            style:_bStyle, canShoot:_bCanShoot, posTend:_bTend, styleTend:_bStyleTend,
+            Δscore:(G.scores?(ati===0?G.scores[0]-G.scores[1]:G.scores[1]-G.scores[0]):0),
+            tRem:(typeof G.minute==='number'?Math.max(0,90-G.minute):45),
+            fatigue:clamp(1-(carrier.hp||100)/100,0,1),
+          });
+        }catch(e){ _bu=null; }
+        if(_bu){
+          const act=_bu.action;
+          if(act==='shoot' && _bCanShoot){ doShot(carrier,ati,dti,opp,gk,oppGoalX); return; }
+          if(act==='dribble'){
+            if(_attemptDribble(carrier,ati,dti,opp,ast,dst)){
+              const adv = ati===0 ? carrier.x>WW*0.55 : carrier.x<WW*0.45;
+              setPhase(adv?'ATTACK':'BUILDUP');
+            }
+            return;
+          }
+          if(act==='carry'){
+            const fwd=(ati===0?1:-1);
+            carrier.tx=clamp(carrier.x+fwd*rng(5,11),2,WW-2);
+            carrier.ty=clamp(carrier.y+rng(-4,4),2,WH-2);
+            const adv = ati===0 ? carrier.x>WW*0.55 : carrier.x<WW*0.45;
+            setPhase(adv?'ATTACK':'BUILDUP');
+            return;
+          }
+          // Toutes les passes → logique tactique existante, avec intention.
+          const wantFwd=(act==='through');
+          const _tacDec=(typeof tacticalPassDecision==='function')?tacticalPassDecision(carrier,ati):null;
+          let tgt=_tacDec?_tacDec.target:null;
+          if(!tgt && typeof bestPassTarget==='function') tgt=bestPassTarget(carrier,ati,{forward:wantFwd||act==='cross'});
+          if(!tgt){ const pool=ap.filter(p=>!p.hasBall&&p.pos!=='GB'); tgt=(typeof pickTactical==='function')?pickTactical(carrier,ati,pool):pick(pool); }
+          if(tgt){
+            const prog = ati===0 ? (tgt.x-carrier.x) : (carrier.x-tgt.x);
+            const spd = (act==='through')?2.2:(act==='switch')?2.0:(prog>WW*0.08?1.7:1.2);
+            kickToP(carrier,tgt,spd);
+            if(_tacDec && _tacDec.kind==='third_man_setup'){
+              const follow=_tacDec.follow;
+              logEvent(`${carrier.name} → ${tgt.name}, une-deux pour ${follow?.name||'?'} !`,teams[ati].color+'cc');
+              setTimeout(()=>{ if(!G.running||G.phase==='HALFTIME'||G.phase==='END')return;
+                if(follow&&!follow.red&&follow.hp>0 && G.owner===tgt.id){ kickToP(tgt,follow,1.9); logEvent(`↳ Remise pour ${follow.name} !`,teams[ati].color+'bb'); setPhase('ATTACK'); } },260/speedMult);
+            } else if(act==='through'){ logEvent(`${carrier.name} lance ${tgt.name} en profondeur !`,teams[ati].color+'cc'); setPhase('ATTACK'); }
+            else if(act==='switch'){ logEvent(`↔ Renversement de ${carrier.name} → ${tgt.name} !`,teams[ati].color+'cc'); setPhase('ATTACK'); }
+            else if(prog>WW*0.12){ logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'aa'); setPhase('ATTACK'); }
+            else { logEvent(`${carrier.name} → ${tgt.name}`,teams[ati].color+'55'); }
+          }
+          return;
+        }
+      }
+
       const r=Math.random();
       let _acc=0;
 
@@ -1285,10 +1354,24 @@ function aiDecide(dt=0.016){
             ? pick(byR(ati,'DC','DD','DG','MC','MDC'))  // short pass
             : pick(byR(ati,'MC','MDC','MO','MOG','MOD','ATT')))       // long ball
         : pick(byR(ati,'MC','MDC','ATT'));
-      const kickSpd=is322gk?2.0:2.8;
-      // Style de jeu direct → long dégagement
+      // ── VITESSE DE DÉGAGEMENT CALIBRÉE PAR MODE ET DISTANCE ─────────────
+      // Bug : la vitesse fixe (2.8, jusqu'à 3.5 en direct) envoyait le ballon
+      // beaucoup trop loin en 7v7/5v5, où le terrain est petit — le dégagement
+      // survolait tout le monde. kickToP applique une VITESSE (pas une portée),
+      // donc sur un petit terrain la même vitesse porte proportionnellement
+      // bien plus loin. On adapte : plus le terrain est court, plus on tape
+      // doux, et on plafonne la vitesse à ce qu'il faut pour atteindre le
+      // receveur sans le survoler.
+      // ── FERMETÉ DU DÉGAGEMENT ──────────────────────────────────────────
+      // kickToP calcule désormais lui-même la vitesse pour atteindre le
+      // receveur (portée adaptée à la distance et au terrain) : plus de
+      // dégagement qui traverse tout le terrain. On ne passe plus qu'une
+      // FERMETÉ (passe sèche vs relance posée) selon le style et la formation.
       const myStyle=strat(ati).style||'normal';
-      const finalSpd=myStyle==='direct'?3.5:myStyle==='counter'?3.2:kickSpd;
+      let finalSpd = is322gk ? 1.5   // relance courte posée (3-2-2)
+        : myStyle==='direct' ? 2.2   // dégagement franc
+        : myStyle==='counter'? 2.0
+        : 1.8;                        // dégagement normal
       if(recv){kickToP(gkp||recv,recv,finalSpd);G.gkCoolT=1.5;logEvent(`${is322gk?'Relance':'Dégagement'} de ${gkp?.name||'GB'} pour ${recv.name}`,teams[ati].color+'66');}
       setPhase('BUILDUP');break;
     }
