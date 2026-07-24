@@ -467,6 +467,13 @@ function nav(p){
     // Sélection d'équipe en plein écran (masque le canvas, sidebar = 100%).
     if(p === 'teamsel'){ app.classList.add('teamsel-mode'); }
     else { app.classList.remove('teamsel-mode'); }
+    // ── PANNEAU DE MENU EN PLEIN ÉCRAN (mobile) ────────────────────────
+    // Tout écran de CONTENU (paramètres, stats, tactique, ligue, coupe…) doit
+    // s'afficher en grand par-dessus le terrain, pas dans la bande étroite du
+    // bas où c'était illisible. Le panneau "match" est la seule exception :
+    // on y veut le terrain visible. Voir la règle CSS #app.panel-open.
+    if(p==='match'){ app.classList.remove('panel-open'); }
+    else { app.classList.add('panel-open'); }
   }
   // Si aucun profil actif → afficher l'écran de sélection de profil
   if(!activeProfileId && p !== 'profiles'){
@@ -778,18 +785,25 @@ function renderSettings(){
     })()}
     ${(function(){
       const on = !!(window.gameAudio && window.gameAudio.isEnabled());
+      const vol = window.gameAudio ? Math.round(window.gameAudio.getVolume()*100) : 80;
       return card(`
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Son du match</div>
         <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-          Ambiance de foule, sifflets de l'arbitre, bruits de frappe et montée sur les buts. Entièrement synthétisé (aucun téléchargement). Le son démarre après ton premier clic (exigence du navigateur).
+          Ambiance de foule, sifflets, bruits de frappe et montée sur les buts. Le son démarre après ton premier clic (exigence du navigateur).
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;margin-bottom:10px">
           <button onclick="if(window.gameAudio&&!window.gameAudio.isEnabled())window.gameAudio.toggle();renderSettings()" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?'var(--gold)':'var(--b1)'};background:${on?'rgba(240,192,40,.14)':'var(--dark)'};color:${on?'var(--gold)':'var(--muted)'}">
             <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">🔊 ACTIVÉ</div>
           </button>
           <button onclick="if(window.gameAudio&&window.gameAudio.isEnabled())window.gameAudio.toggle();renderSettings()" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${!on?'#8840e0':'var(--b1)'};background:${!on?'rgba(136,64,224,.16)':'var(--dark)'};color:${!on?'#b98cf0':'var(--muted)'}">
             <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">🔇 COUPÉ</div>
           </button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:16px">🔉</span>
+          <input type="range" min="0" max="100" value="${vol}" oninput="if(window.gameAudio){window.gameAudio.setVolume(this.value/100);document.getElementById('vol-lbl').textContent=this.value+'%';}" style="flex:1;accent-color:var(--gold);cursor:pointer">
+          <span id="vol-lbl" style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;color:var(--gold);min-width:38px;text-align:right">${vol}%</span>
+          <button onclick="window.gameAudio&&window.gameAudio.test()" style="padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--b1);background:var(--dark);color:var(--muted);font-size:11px;font-weight:700">Tester</button>
         </div>
       `);
     })()}

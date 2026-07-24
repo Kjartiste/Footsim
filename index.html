@@ -90,6 +90,19 @@ html:fullscreen, body:fullscreen{width:100%;height:100%;background:var(--bg,#0d1
   .btn{min-height:36px;padding:6px 10px}
   .modal{width:calc(100vw - 16px);max-height:80dvh;overflow-y:auto}
   .htoverlay>div{max-height:80dvh;overflow-y:auto}
+
+  /* ── PANNEAU DE MENU EN PLEIN ÉCRAN (mobile) ──────────────────────────
+     Problème : quand on ouvre Paramètres/Stats/Tactique/etc., le contenu
+     s'affichait dans la bande étroite SOUS le terrain (sidebar en order:2),
+     minuscule et presque illisible. Solution : dès qu'un panneau de CONTENU
+     est ouvert (classe panel-open posée par nav()), on masque le terrain et on
+     donne toute la hauteur à la sidebar. La barre d'onglets reste visible pour
+     revenir au Match. Le panneau "match" lui-même ne déclenche pas ce mode
+     (on veut voir le terrain). */
+  #app.panel-open #main{display:none}
+  #app.panel-open #sidebar{flex:1 1 100%;min-height:0}
+  #app.panel-open .spage.on{font-size:15px}
+  #app.panel-open .snav{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--b1)}
 }
 
 /* ── SIDEBAR HEADER ── */

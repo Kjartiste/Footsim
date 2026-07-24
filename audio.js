@@ -17,9 +17,11 @@
 let actx=null, master=null, crowdGain=null, crowdFilter=null, crowdSrc=null;
 let enabled=false, started=false;
 let _lastKick=0, _lastCrowdReact=0;
+let volume=0.8; // volume utilisateur [0,1]
 
-// Préférence persistante.
+// Préférences persistantes.
 try{ enabled = localStorage.getItem('footsim_sound')==='1'; }catch(e){}
+try{ const v=parseFloat(localStorage.getItem('footsim_volume')); if(isFinite(v)) volume=Math.max(0,Math.min(1,v)); }catch(e){}
 
 function _ensureContext(){
   if(actx) return true;
@@ -28,10 +30,10 @@ function _ensureContext(){
   try{
     actx=new AC();
     master=actx.createGain();
-    master.gain.value=0.7;
-    master.connect(actx.destination); // ← HAUT-PARLEURS (diff. de record.js)
+    master.gain.value=1.6*volume;      // gain global relevé (était 0.7) + volume utilisateur
+    master.connect(actx.destination);  // ← HAUT-PARLEURS (diff. de record.js)
 
-    // Rumeur de foule : bruit filtré, boucle continue à faible volume.
+    // Rumeur de foule : bruit filtré, boucle continue.
     const len=Math.floor(actx.sampleRate*4);
     const buf=actx.createBuffer(1, len, actx.sampleRate);
     const d=buf.getChannelData(0);
@@ -47,7 +49,7 @@ function _ensureContext(){
     crowdSrc.buffer=buf; crowdSrc.loop=true;
     crowdFilter=actx.createBiquadFilter();
     crowdFilter.type='lowpass'; crowdFilter.frequency.value=680;
-    crowdGain=actx.createGain(); crowdGain.gain.value=0.12;
+    crowdGain=actx.createGain(); crowdGain.gain.value=0.22;  // relevé (était 0.12)
     crowdSrc.connect(crowdFilter); crowdFilter.connect(crowdGain); crowdGain.connect(master);
     crowdSrc.start(0);
     return true;
@@ -73,10 +75,10 @@ function kick(strength){
     o.frequency.setValueAtTime(150+120*s, t);
     o.frequency.exponentialRampToValueAtTime(60, t+0.08);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.18*s, t+0.006);
-    g.gain.exponentialRampToValueAtTime(0.0001, t+0.12);
+    g.gain.exponentialRampToValueAtTime(0.38*s, t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.13);
     o.connect(g); g.connect(master);
-    o.start(t); o.stop(t+0.14);
+    o.start(t); o.stop(t+0.15);
     // Petit "thock" de contact : bruit très bref filtré.
     const nb=actx.createBufferSource();
     const L=Math.floor(actx.sampleRate*0.05);
@@ -84,7 +86,7 @@ function kick(strength){
     for(let i=0;i<L;i++) dd[i]=(Math.random()*2-1)*Math.pow(1-i/L,3);
     nb.buffer=b;
     const nf=actx.createBiquadFilter(); nf.type='bandpass'; nf.frequency.value=1200; nf.Q.value=0.8;
-    const ng=actx.createGain(); ng.gain.value=0.10*s;
+    const ng=actx.createGain(); ng.gain.value=0.22*s;   // relevé (était 0.10)
     nb.connect(nf); nf.connect(ng); ng.connect(master);
     nb.start(t);
   }catch(e){}
@@ -98,8 +100,8 @@ function whistle(long){
     const dur=long?0.9:0.5;
     const g=actx.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.20, t+0.02);
-    g.gain.linearRampToValueAtTime(0.20, t+dur-0.1);
+    g.gain.linearRampToValueAtTime(0.42, t+0.02);
+    g.gain.linearRampToValueAtTime(0.42, t+dur-0.1);
     g.gain.linearRampToValueAtTime(0, t+dur);
     const lfo=actx.createOscillator(), lfoG=actx.createGain();
     lfo.frequency.value=24; lfoG.gain.value=65; lfo.connect(lfoG);
@@ -150,6 +152,14 @@ function clampNum(v,a,b){ return Math.max(a,Math.min(b,typeof v==='number'&&isFi
 window.gameAudio = {
   kick, whistle, cheer, crowdReact,
   isEnabled: ()=>enabled,
+  getVolume: ()=>volume,
+  // Règle le volume global [0,1], persistant, appliqué en direct.
+  setVolume(v){
+    volume=Math.max(0,Math.min(1, (typeof v==='number'&&isFinite(v))?v:0.8));
+    try{ localStorage.setItem('footsim_volume', String(volume)); }catch(e){}
+    if(master){ try{ master.gain.setTargetAtTime(1.6*volume, actx.currentTime, 0.05); }catch(e){ master.gain.value=1.6*volume; } }
+    return volume;
+  },
   // Bascule le son. Démarre l'AudioContext au besoin (dans le geste de clic).
   toggle(){
     enabled=!enabled;
@@ -163,6 +173,8 @@ window.gameAudio = {
     if(!enabled) return;
     if(_ensureContext()) _resume();
   },
+  // Joue un petit son de test (pour régler le volume à l'oreille).
+  test(){ if(_ensureContext()){ _resume(); whistle(false); setTimeout(()=>kick(0.9),250); } },
 };
 
 // Débloque l'audio au premier clic (exigence navigateur), si le son est activé.
