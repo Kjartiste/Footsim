@@ -2855,6 +2855,15 @@ function toggleMatch(){
   else{
     if(G.phase==='END'){resetMatch();return;}
     G.running=true;G._paused=false;G._everStarted=true;document.getElementById('mbtn').textContent='⏸ Pause';
+    // Coup de sifflet d'engagement (vrai bruitage si présent).
+    try{ if(window.gameAudio&&window.gameAudio.isEnabled()&&G.minute===0) window.gameAudio.whistle(false); }catch(e){}
+    // Ambiance de stade selon le monde (carrière) — chaque univers a la sienne.
+    try{
+      if(window.gameAudio){
+        const _w=(typeof careerV2==='object'&&careerV2&&careerV2.nation)?careerV2.nation:null;
+        if(_w) window.gameAudio.setTheme(_w);
+      }
+    }catch(e){}
     _gifArmIfNeeded(); // démarre l'enregistrement GIF si coché avant le coup d'envoi
     if(G.minute===0&&!teams.some(T=>T.players.some(p=>p&&p._concertActive)))_triggerConcert();
     renderInjuryPanel(); // afficher d'emblée blessés / épuisés / faible endurance

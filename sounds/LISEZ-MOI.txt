@@ -1,0 +1,59 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║   VRAIS BRUITAGES POUR FOOTSIM — MODE D'EMPLOI                         ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+Le jeu joue de VRAIS sons si tu déposes des fichiers audio dans CE dossier
+(sounds/). Si un fichier est absent, le jeu utilise sa version synthétisée à
+la place — donc tu peux n'en mettre que quelques-uns.
+
+────────────────────────────────────────────────────────────────────────
+FICHIERS RECONNUS (mets-les directement dans ce dossier)
+────────────────────────────────────────────────────────────────────────
+
+  whistle.mp3        Sifflet COURT d'arbitre (faute, engagement, but)
+  whistle_long.mp3   Sifflet LONG (mi-temps, fin de match)
+  kick.mp3           Frappe / passe (impact du pied sur le ballon)
+  crowd.mp3          Ambiance de foule EN BOUCLE (fond de stade, ~10-30 s)
+  cheer.mp3          Clameur / explosion de joie (but marqué)
+  ooh.mp3            Réaction d'occasion manquée (facultatif)
+  click.mp3          Clic de bouton / navigation dans les menus (facultatif)
+  confirm.mp3        Validation d'une action forte (lancer un match…) (facultatif)
+
+  ── AMBIANCES DE STADE PAR MONDE (fond thématique en boucle) ──
+  ambience_panthalassa.mp3   Ambiance du stade de Panthalassa (océan)
+  ambience_valoria.mp3       Ambiance du stade de Valoria (nature)
+  ambience_pilier.mp3        Ambiance du Pilier Céleste (céleste/magie)
+  ambience_rorang.mp3        Ambiance du stade de Rorang (mystique)
+  → Chaque monde joue SA propre ambiance de fond sous la foule. Un monde sans
+    fichier garde simplement la foule. Tu peux remplacer ces fichiers par les
+    tiens (même nom) pour changer l'ambiance d'un univers.
+
+Formats acceptés : .mp3 (recommandé), .ogg ou .wav.
+Le nom doit être EXACTEMENT celui ci-dessus (tout en minuscules).
+
+────────────────────────────────────────────────────────────────────────
+OÙ TROUVER DES SONS GRATUITS ET LIBRES DE DROITS
+────────────────────────────────────────────────────────────────────────
+
+  • Pixabay Audio    https://pixabay.com/sound-effects/   (aucune attribution
+                     requise, usage libre)
+  • Freesound        https://freesound.org/   (vérifie la licence : privilégie
+                     "Creative Commons 0")
+  • Mixkit           https://mixkit.co/free-sound-effects/
+
+  Cherche par exemple : "referee whistle", "football crowd", "ball kick",
+  "crowd cheer goal", "stadium ambience".
+
+────────────────────────────────────────────────────────────────────────
+CONSEILS
+────────────────────────────────────────────────────────────────────────
+
+  • crowd.mp3 doit BIEN BOUCLER (pas de silence au début/à la fin), sinon on
+    entend un "trou" toutes les X secondes. Un clip de 10-30 s suffit.
+  • Garde des fichiers légers (mp3 128 kbps, quelques centaines de Ko chacun)
+    pour ne pas alourdir le chargement du jeu.
+  • Après avoir ajouté/changé un fichier, RECHARGE la page (le jeu charge les
+    sons au démarrage de l'audio, c'est-à-dire à ton premier clic).
+  • Active le son et règle le volume dans Paramètres → Son du match.
+
+Une fois les fichiers en place, tout est automatique : aucun code à modifier.
