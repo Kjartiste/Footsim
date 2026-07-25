@@ -19,14 +19,14 @@ FICHIERS RECONNUS (mets-les directement dans ce dossier)
   click.mp3          Clic de bouton / navigation dans les menus (facultatif)
   confirm.mp3        Validation d'une action forte (lancer un match…) (facultatif)
 
-  ── AMBIANCES DE STADE PAR MONDE (fond thématique en boucle) ──
-  ambience_panthalassa.mp3   Ambiance du stade de Panthalassa (océan)
-  ambience_valoria.mp3       Ambiance du stade de Valoria (nature)
-  ambience_pilier.mp3        Ambiance du Pilier Céleste (céleste/magie)
-  ambience_rorang.mp3        Ambiance du stade de Rorang (mystique)
-  → Chaque monde joue SA propre ambiance de fond sous la foule. Un monde sans
-    fichier garde simplement la foule. Tu peux remplacer ces fichiers par les
-    tiens (même nom) pour changer l'ambiance d'un univers.
+  ── AMBIANCES PAR THÈME DE STADE (fond en boucle) ──
+  ambience_forest.mp3        Stade "forêt"  → ambiance boisée
+  ambience_snow.mp3          Stade "neige"  → vent froid
+  ambience_greek.mp3         Stade "grec"   → ambiance mystique
+  ambience_bamboo.mp3        Stade "bambou" → nature nocturne
+  → L'ambiance suit le THÈME DE STADE choisi (pas le pays). Les stades urbains
+    ou neutres (moderne, classique, city, handball, synthétique) gardent la
+    foule seule. Remplace un fichier (même nom) pour changer une ambiance.
 
 Formats acceptés : .mp3 (recommandé), .ogg ou .wav.
 Le nom doit être EXACTEMENT celui ci-dessus (tout en minuscules).

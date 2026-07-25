@@ -44,11 +44,14 @@ const SAMPLE_FILES={
   cheer:        ['sounds/cheer.mp3'],
   click:        ['sounds/click.mp3'],
   confirm:      ['sounds/confirm.mp3'],
-  // Ambiances de stade par monde (fond sonore thématique, en boucle).
-  ambience_panthalassa: ['sounds/ambience_panthalassa.mp3'],
-  ambience_valoria:     ['sounds/ambience_valoria.mp3'],
-  ambience_pilier:      ['sounds/ambience_pilier.mp3'],
-  ambience_rorang:      ['sounds/ambience_rorang.mp3'],
+  // Ambiances par THÈME DE STADE (fond sonore, en boucle). L'ambiance suit le
+  // décor du stade choisi (forêt, neige…), pas le pays. Les thèmes urbains /
+  // neutres (modern, classic, city, handball, synthetic) n'ont pas d'ambiance
+  // dédiée : ils gardent la foule seule, ce qui est plus juste.
+  ambience_forest: ['sounds/ambience_forest.mp3'],
+  ambience_snow:   ['sounds/ambience_snow.mp3'],
+  ambience_greek:  ['sounds/ambience_greek.mp3'],
+  ambience_bamboo: ['sounds/ambience_bamboo.mp3'],
 };
 // Sons optionnels non livrés : le jeu les cherche seulement si tu les ajoutes
 // toi-même dans sounds/ (dans ce cas, dé-commente la ligne voulue).
@@ -93,7 +96,7 @@ async function _loadSamples(){
     }catch(e){}
   }
   // Lance l'ambiance thématique du monde courant (jouée sous la foule).
-  const w=_currentWorld();
+  const w=_currentTheme();
   if(w) _setAmbience(w);
 }
 
@@ -117,9 +120,9 @@ function _playSample(key, gain, rate){
 // discrètement SOUS le murmure de foule. Donne une identité sonore au stade
 // selon le thème, au lieu d'une foule générique partout.
 let _ambSrc=null, _ambGain=null, _ambKey=null;
-function _setAmbience(worldId){
+function _setAmbience(themeId){
   if(!actx) return;
-  const key='ambience_'+worldId;
+  const key='ambience_'+themeId;
   if(_ambKey===key) return;             // déjà en cours
   // Coupe l'ambiance précédente en fondu.
   if(_ambSrc){
@@ -144,9 +147,11 @@ function _setAmbience(worldId){
     _ambGain.gain.linearRampToValueAtTime(0.35, t+1.2); // fond discret
   }catch(e){ _ambSrc=null; }
 }
-// Détecte le monde courant (partie carrière), sinon rien.
-function _currentWorld(){
-  try{ if(typeof careerV2==='object' && careerV2 && careerV2.nation) return careerV2.nation; }catch(e){}
+// Détecte le THÈME DE STADE courant (forest, snow, greek, bamboo…) pour choisir
+// l'ambiance. On lit stadiumTheme() défini par le jeu ; repli sur un override.
+function _currentTheme(){
+  try{ if(typeof stadiumTheme==='function'){ const t=stadiumTheme(); if(t) return t; } }catch(e){}
+  try{ if(window._stadiumTheme) return window._stadiumTheme; }catch(e){}
   return window._audioTheme||null;
 }
 
@@ -357,11 +362,11 @@ window.gameAudio = {
     _playSample(kind==='confirm'?'confirm':'click', kind==='confirm'?0.5:0.35, 0.98+Math.random()*0.06);
   },
   isEnabled: ()=>enabled,
-  // Change l'ambiance de stade selon le monde ('panthalassa','valoria',
-  // 'pilier','rorang'). Appelable à tout moment ; fondu automatique.
-  setTheme(worldId){
-    window._audioTheme=worldId||null;
-    if(enabled && actx && worldId) _setAmbience(worldId);
+  // Change l'ambiance selon le THÈME DE STADE ('forest','snow','greek',
+  // 'bamboo'…). Les thèmes sans ambiance dédiée gardent la foule seule.
+  setTheme(themeId){
+    window._audioTheme=themeId||null;
+    if(enabled && actx && themeId) _setAmbience(themeId);
   },
   getVolume: ()=>volume,
   // Règle le volume global [0,1], persistant, appliqué en direct.

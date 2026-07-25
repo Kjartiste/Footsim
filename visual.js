@@ -672,6 +672,8 @@ function setStadiumTheme(t){
   window._stadiumTheme=t;
   try{ localStorage.setItem('footsim_stadium', t); }catch(e){}
   _pitchCache=null; _standsCache=null; // force la reconstruction terrain + tribunes
+  // Met à jour l'ambiance sonore pour coller au nouveau thème de stade.
+  try{ if(window.gameAudio && window.gameAudio.isEnabled()) window.gameAudio.setTheme(t); }catch(e){}
   // Re-render les écrans qui affichent le sélecteur, s'ils sont ouverts.
   if(typeof renderSettings==='function' && document.getElementById('settings-out')) renderSettings();
   if(typeof _renderDirectorInfra==='function' && (document.getElementById('career-director-content')?.innerHTML||'').indexOf('Infrastructures')>=0){
@@ -2857,11 +2859,11 @@ function toggleMatch(){
     G.running=true;G._paused=false;G._everStarted=true;document.getElementById('mbtn').textContent='⏸ Pause';
     // Coup de sifflet d'engagement (vrai bruitage si présent).
     try{ if(window.gameAudio&&window.gameAudio.isEnabled()&&G.minute===0) window.gameAudio.whistle(false); }catch(e){}
-    // Ambiance de stade selon le monde (carrière) — chaque univers a la sienne.
+    // Ambiance de fond selon le THÈME DE STADE (forêt, neige…) — pas le pays.
     try{
       if(window.gameAudio){
-        const _w=(typeof careerV2==='object'&&careerV2&&careerV2.nation)?careerV2.nation:null;
-        if(_w) window.gameAudio.setTheme(_w);
+        const _th=(typeof stadiumTheme==='function')?stadiumTheme():null;
+        if(_th) window.gameAudio.setTheme(_th);
       }
     }catch(e){}
     _gifArmIfNeeded(); // démarre l'enregistrement GIF si coché avant le coup d'envoi
