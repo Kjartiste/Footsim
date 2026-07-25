@@ -33,21 +33,32 @@ let volume=0.8; // volume utilisateur [0,1]
 //   sounds/cheer.mp3         → clameur / but
 //   sounds/ooh.mp3           → réaction d'occasion (facultatif)
 // Tu peux en mettre certains seulement : chaque son manquant est synthétisé.
+// NB : on ne liste qu'UN format par son (celui réellement livré) pour éviter
+// que le navigateur logue des 404 en essayant .ogg/.wav inexistants. Les sons
+// optionnels non livrés (crowd, ooh) ne sont PAS listés ici : ajoute-les via un
+// override si tu en as (voir setCustomSample), sinon ils restent synthétisés.
 const SAMPLE_FILES={
-  whistle:      ['sounds/whistle.mp3','sounds/whistle.ogg','sounds/whistle.wav'],
-  whistle_long: ['sounds/whistle_long.mp3','sounds/whistle_long.ogg','sounds/whistle_long.wav'],
-  kick:         ['sounds/kick.mp3','sounds/kick.ogg','sounds/kick.wav'],
-  crowd:        ['sounds/crowd.mp3','sounds/crowd.ogg','sounds/crowd.wav'],
-  cheer:        ['sounds/cheer.mp3','sounds/cheer.ogg','sounds/cheer.wav'],
-  ooh:          ['sounds/ooh.mp3','sounds/ooh.ogg','sounds/ooh.wav'],
-  click:        ['sounds/click.mp3','sounds/click.ogg','sounds/click.wav'],
-  confirm:      ['sounds/confirm.mp3','sounds/confirm.ogg','sounds/confirm.wav'],
+  whistle:      ['sounds/whistle.mp3'],
+  whistle_long: ['sounds/whistle_long.mp3'],
+  kick:         ['sounds/kick.mp3'],
+  cheer:        ['sounds/cheer.mp3'],
+  click:        ['sounds/click.mp3'],
+  confirm:      ['sounds/confirm.mp3'],
   // Ambiances de stade par monde (fond sonore thématique, en boucle).
   ambience_panthalassa: ['sounds/ambience_panthalassa.mp3'],
   ambience_valoria:     ['sounds/ambience_valoria.mp3'],
   ambience_pilier:      ['sounds/ambience_pilier.mp3'],
   ambience_rorang:      ['sounds/ambience_rorang.mp3'],
 };
+// Sons optionnels non livrés : le jeu les cherche seulement si tu les ajoutes
+// toi-même dans sounds/ (dans ce cas, dé-commente la ligne voulue).
+//   crowd → ambiance de foule en boucle ; ooh → réaction d'occasion.
+try{
+  if(window._footsimExtraSounds){
+    if(window._footsimExtraSounds.crowd) SAMPLE_FILES.crowd=['sounds/crowd.mp3'];
+    if(window._footsimExtraSounds.ooh)   SAMPLE_FILES.ooh=['sounds/ooh.mp3'];
+  }
+}catch(e){}
 const _samples={};       // nom → AudioBuffer décodé (si trouvé)
 let _samplesTried=false;
 let _crowdSampleSrc=null; // source de l'ambiance échantillonnée (si présente)

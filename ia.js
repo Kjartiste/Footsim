@@ -447,6 +447,7 @@ function aiDecide(dt=0.016){
     });
     if(gkShotSpells.length && G._gkSpellCool[ati]<=0 && Math.random()<0.09){
       const sp=SPELLS.find(x=>x.id===pick(gkShotSpells));
+      if(!sp){ G.atkTi=ati; setPhase('GOALKICK'); return; } // sort introuvable : dégagement normal
       G._gkSpellCool[ati]=9; // cooldown court façon Inazuma : ~9 s entre deux tentatives
       logEvent(`🧤✨ Le gardien ${carrier.name} tente l'impensable...`,teams[ati].color);
       doSpell(carrier,ati,dti,sp,ati===0?WW:0);
@@ -1487,6 +1488,9 @@ function _spellDurMult(caster){
   return Math.max(0.75, Math.min(1.5, 1+(tec-50)/130));
 }
 function doSpell(carrier,ati,dti,sp,goalX){
+  // Garde-fou global : un sort undefined (id obsolète, sélection vide) ne doit
+  // jamais faire planter la boucle de jeu. On abandonne proprement le sort.
+  if(!sp || typeof sp.mp!=='number'){ return; }
   const mult=_spellDurMult(carrier);
   const complet = window.GS && window.GS.statMode==='complet';
   // En Lite sans modif de durée : chemin direct (comportement actuel).
@@ -1613,6 +1617,10 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
         const contreChance=0.06*tecTrigD*mentalitySpellMult(dti,false);
         if(Math.random()<contreChance){
           const cSp=SPELLS.find(x=>x.id===pick(contreSpells));
+          // Garde-fou : si le sort choisi n'existe pas dans SPELLS (id obsolète
+          // sur un joueur édité/personnalisé), on abandonne le contre au lieu
+          // de crasher tout le jeu sur cSp.mp undefined.
+          if(!cSp){ continue; }
           dp.mp=Math.max(0,dp.mp-cSp.mp);
           // Duel de techniques : plus le contre est puissant (et le défenseur
           // solide), plus il a de chances de repousser le tir adverse.
