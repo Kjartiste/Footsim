@@ -4,6 +4,8 @@
 function setPhase(ph){
   G.phase=ph;G.phTick=0;
   if(ph!=='FREEKICK')G._fkWall=null; // le mur ne subsiste jamais hors coup franc
+  // Le placement de coup de pied arrêté ne survit pas au changement de phase.
+  if(ph!=='FREEKICK'&&ph!=='THROWIN'&&ph!=='CORNER') G._setpTargets=null;
   // Au GOALKICK, annuler les courses hors-ballon des attaquants adverses
   // pour qu'ils ne restent pas dans la surface du gardien
   if(ph==='GOALKICK'){
@@ -12,6 +14,18 @@ function setPhase(ph){
   }
   const el=document.getElementById('hphase');
   if(el)el.textContent=PHASE_LABELS[ph]||ph;
+  // ── SIFFLET DE L'ARBITRE ────────────────────────────────────────────────
+  // Coup de sifflet sur les phases qui, dans un vrai match, en déclenchent un :
+  // faute→coup franc, corner, penalty. (L'engagement et la mi-temps sont
+  // sifflés ailleurs.) Court délai anti-doublon via _lastWhistlePh.
+  try{
+    if(window.gameAudio && window.gameAudio.isEnabled()){
+      if((ph==='FREEKICK'||ph==='PENALTY_KICK'||ph==='CORNER') && G._lastWhistlePh!==ph){
+        window.gameAudio.whistle(false);
+      }
+    }
+    G._lastWhistlePh=ph;
+  }catch(e){}
 }
 
 function copyMatchLog(source){
@@ -1261,32 +1275,71 @@ function aiDecide(dt=0.016){
       break;
     }
     case 'FREEKICK':{
-      if(G.phTick<5)return;
-      // Constituer le mur au tout début de la phase : les 2-3 défenseurs les
-      // plus proches de l'axe ballon→but du camp défenseur s'alignent.
+      // ── MISE EN PLACE PHYSIQUE DU COUP FRANC ────────────────────────────
+      // Comme dans un vrai match : le mur se forme sur la ligne ballon→but à
+      // distance réglementaire, le tireur se place derrière le ballon, et on
+      // laisse un court temps de placement avant de jouer. La séquence est
+      // pilotée par phTick (temps depuis le début de la phase).
+      // Choisir le tireur (meilleur spécialiste) une fois pour toute la phase.
+      const fkCand=byR(ati,'ATT','MC','MO','MOG','MOD','MDC');
+      const sh=fkCand.length?fkCand.reduce((b,p)=>((p.s.tec*1.2+p.s.sht)>(b.s.tec*1.2+b.s.sht)?p:b)):null;
+      if(!sh){setPhase('BUILDUP');G._fkWall=null;G._setpTargets=null;return;}
+
+      // Constituer le mur (2-3 défenseurs) au tout début de la phase.
       if(!G._fkWall){
         const cand=teams[dti].players.filter(d=>!d.red&&d.hp>0&&d.pos!=='GB');
         cand.sort((a,b)=>Math.hypot(a.x-G.ball.x,a.y-G.ball.y)-Math.hypot(b.x-G.ball.x,b.y-G.ball.y));
-        const n=Math.min(3,Math.max(2,cand.length>=4?3:2));
+        const distGoalFK=Math.abs(oppGoalX-G.ball.x);
+        const n = distGoalFK<WW*0.30 ? Math.min(3,Math.max(2,cand.length>=4?3:2)) : 1;
         G._fkWall=cand.slice(0,n).map(d=>d.id);
       }
-      // Le meilleur tireur de coup franc s'en charge (technique + tir), pas un
-      // joueur au hasard — ainsi avoir un spécialiste dans l'équipe compte.
-      const fkCand=byR(ati,'ATT','MC','MO','MOG','MOD','MDC');
-      const sh=fkCand.length?fkCand.reduce((b,p)=>((p.s.tec*1.2+p.s.sht)>(b.s.tec*1.2+b.s.sht)?p:b)):null;
-      if(!sh){setPhase('BUILDUP');G._fkWall=null;return;}
-      giveB(sh);
-      // ── COUP FRANC JOUÉ PLUTÔT QUE FRAPPÉ ──────────────────────────────
-      // Avant, TOUT coup franc partait en frappe directe, même à 60 m du but.
-      // Dans le football réel on ne frappe que dans un rayon crédible ; au-delà,
-      // on joue court pour repartir en jeu construit. On décide selon la
-      // distance réelle au but, avec une part de coups francs joués même en
-      // position de frappe (35%), comme dans le jeu moderne.
-      const _fkDist=Math.abs(oppGoalX-sh.x);
-      const _fkShootable=_fkDist < WW*0.30; // ~30% de la longueur du terrain
+
+      // Positionnement physique (via _setpTargets, honoré par roleTarget).
+      // Le mur s'aligne sur la ligne ballon→but, à ~9,15m (échelle terrain).
+      const WALL_DIST = Math.max(6, WW*0.09);
+      const bgx=oppGoalX-G.ball.x, bgy=PCY-G.ball.y, bl=Math.hypot(bgx,bgy)||1;
+      const ux=bgx/bl, uy=bgy/bl;                 // direction ballon→but
+      G._setpTargets={};
+      const wallIds=G._fkWall||[];
+      wallIds.forEach((id,i)=>{
+        const d=teams[dti].players.find(x=>x.id===id); if(!d) return;
+        // Alignés perpendiculairement à la ligne de tir, épaule contre épaule.
+        const perpX=-uy, perpY=ux;
+        const off=(i-(wallIds.length-1)/2)*1.7; // espacement du mur
+        G._setpTargets[id]={
+          x:clamp(G.ball.x+ux*WALL_DIST+perpX*off, 2, WW-2),
+          y:clamp(G.ball.y+uy*WALL_DIST+perpY*off, 2, WH-2),
+        };
+      });
+      // Le tireur se poste juste derrière le ballon (opposé au but).
+      G._setpTargets[sh.id]={
+        x:clamp(G.ball.x-ux*2.2, 2, WW-2),
+        y:clamp(G.ball.y-uy*2.2, 2, WH-2),
+      };
+      // Un second joueur vient proposer l'option du coup franc joué à deux.
       const _fkMate=pick(actP(ati).filter(p=>p!==sh && p.pos!=='GB' && !p.red && p.hp>0 && !p.hasBall));
+      if(_fkMate){
+        G._setpTargets[_fkMate.id]={
+          x:clamp(G.ball.x-ux*3.5+(-uy)*4, 2, WW-2),
+          y:clamp(G.ball.y-uy*3.5+ux*4, 2, WH-2),
+        };
+      }
+
+      // Temps de placement : on attend que ça se mette en place (~25 ticks)
+      // avant de jouer. Le ballon reste immobile, posé au sol.
+      G.ball.vx=0; G.ball.vy=0;
+      const FK_SETUP_TICKS=25;
+      if(G.phTick<FK_SETUP_TICKS){
+        if(G.phTick===1) logEvent(`Coup franc — ${sh.name} se prépare, le mur se place...`,teams[ati].color+'77');
+        return;
+      }
+      giveB(sh);
+      G._setpTargets=null; // placement terminé : les joueurs reprennent la main
+      // ── COUP FRANC JOUÉ PLUTÔT QUE FRAPPÉ ──────────────────────────────
+      const _fkDist=Math.abs(oppGoalX-sh.x);
+      const _fkShootable=_fkDist < WW*0.30;
       if(_fkMate && (!_fkShootable || Math.random()<0.35)){
-        G._fkWall=null; // pas de frappe : le mur se dissout
+        G._fkWall=null;
         logEvent(`Coup franc joué par ${sh.name}...`,teams[ati].color+'aa');
         kickToP(sh,_fkMate,2.0);
         setTimeout(()=>{

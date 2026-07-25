@@ -497,6 +497,10 @@ let G={
   running:false,minute:0,half:1,
   scores:[0,0],shots:[0,0],tackles:[0,0],corners:[0,0],throwins:[0,0],fouls:[0,0],possT:[0,0],
   ball:{x:PCX,y:PCY,vx:0,vy:0,trail:[],spin:0},
+  // ── ARBITRE ────────────────────────────────────────────────────────────
+  // Un arbitre physique suit le jeu à distance, se déplace vers les fautes et
+  // se dessine sur le terrain. tx/ty = cible de déplacement (comme un joueur).
+  ref:{x:PCX,y:PCY-8,tx:PCX,ty:PCY-8,vx:0,vy:0},
   owner:null,atkTi:0,
   phase:'KICKOFF',phTick:0,
   minTick:0,aiTick:0,

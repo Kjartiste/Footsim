@@ -863,7 +863,7 @@ function physStep(dt,rawDt){
     // vraiment jusqu'au ballon et que les relais viennent proposer un appui —
     // au lieu de rester figés dans leur position de formation.
     const _setp = G._setpTargets && G._setpTargets[p.id];
-    if(_setp && G.phase==='THROWIN'){ t.x=_setp.x; t.y=_setp.y; t.pressing=false; t.marking=false; }
+    if(_setp && (G.phase==='THROWIN'||G.phase==='FREEKICK'||G.phase==='CORNER')){ t.x=_setp.x; t.y=_setp.y; t.pressing=false; t.marking=false; }
     // Pressing : calcul une seule fois, utilisé partout dans ce bloc
     const isDefending  = eti !== G.atkTi;
     const myPressStr   = isDefending ? (strat(eti).press||0.5) : 0;
@@ -1275,6 +1275,33 @@ function physStep(dt,rawDt){
   }
   b.trail.push({x:b.x,y:b.y});
   if(b.trail.length>22)b.trail.shift();
+
+  // ═══ ARBITRE ═══
+  // L'arbitre suit le jeu en restant à ~8-12 unités du ballon, légèrement en
+  // diagonale (jamais dans la trajectoire), et se rapproche sur les phases
+  // arrêtées (faute/coup franc) pour "gérer" l'action. Mouvement lissé.
+  if(G.ref){
+    const r=G.ref;
+    const setPiece = G.phase==='FREEKICK'||G.phase==='CORNER'||G.phase==='PENALTY_KICK';
+    // Cible : décalée du ballon, du côté opposé au centre pour ne pas gêner.
+    const offY = (b.y<WH/2? 6 : -6);
+    const offX = (b.vx>=0? -5 : 5);
+    if(setPiece){
+      // Se poste près du ballon pour surveiller le coup franc.
+      r.tx = clamp(b.x + offX*0.6, 3, WW-3);
+      r.ty = clamp(b.y + (b.y<WH/2?4:-4), 3, WH-3);
+    } else {
+      r.tx = clamp(b.x + offX, 3, WW-3);
+      r.ty = clamp(b.y + offY, 3, WH-3);
+    }
+    const rdx=r.tx-r.x, rdy=r.ty-r.y, rd=Math.hypot(rdx,rdy);
+    // L'arbitre trotte : vitesse modérée, plus vive s'il est distancé.
+    const refSpd = Math.min(rd*0.08, 0.9) * (G.running?1:0.3);
+    if(rd>0.5){ r.vx=lerp(r.vx||0, (rdx/rd)*refSpd, 0.15); r.vy=lerp(r.vy||0, (rdy/rd)*refSpd, 0.15); }
+    else { r.vx*=0.8; r.vy*=0.8; }
+    r.x=clamp(r.x+r.vx*dt*60, 2, WW-2);
+    r.y=clamp(r.y+r.vy*dt*60, 2, WH-2);
+  }
 
   // ═══ PHYSICAL TACKLES ═══
   // When a defender from the opposite team gets close enough to the ball carrier,

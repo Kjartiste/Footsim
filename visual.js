@@ -1881,6 +1881,26 @@ function lighten(hex,amt){
   return`rgb(${Math.min(255,r+255*amt)},${Math.min(255,g+255*amt)},${Math.min(255,b+255*amt)})`;
 }
 
+function drawReferee(){
+  const r=G.ref; if(!r) return;
+  const rx=wx(r.x), ry=wy(r.y), rad=ws(0.95);
+  ctx.save();
+  // Ombre portée.
+  ctx.globalAlpha=0.25; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(rx, ry+rad*0.7, rad*0.9, rad*0.4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+  // Corps : maillot noir d'arbitre, liseré jaune (tenue classique).
+  const grd=ctx.createLinearGradient(rx-rad, ry-rad, rx+rad, ry+rad);
+  grd.addColorStop(0,'#2a2a2a'); grd.addColorStop(1,'#111');
+  ctx.fillStyle=grd;
+  ctx.beginPath(); ctx.arc(rx, ry, rad, 0, Math.PI*2); ctx.fill();
+  ctx.lineWidth=Math.max(1,ws(0.14)); ctx.strokeStyle='#f0c028';
+  ctx.stroke();
+  // Petit "sifflet" suggéré : point clair.
+  ctx.fillStyle='#f5f5f5';
+  ctx.beginPath(); ctx.arc(rx+rad*0.35, ry-rad*0.1, rad*0.22, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
 function drawBall(){
   const b=G.ball;
   const bx=wx(b.x),by=wy(b.y);
@@ -2635,6 +2655,7 @@ function frame(ts){
           G._firstHalfKickoffTi=G._kickoffTi??G.atkTi;
           logEvent('⏸ Mi-temps !','#f0c028');
           G.phase='HALFTIME';
+          try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.whistle(true); }catch(e){}
           G._halfLog=G.log.slice();
           document.getElementById('hphase').textContent='MI-TEMPS';
           _hideAddedTimeBadge();
@@ -2711,6 +2732,7 @@ function frame(ts){
   drawBallLight();
   drawGlow();
   teams.forEach(T=>T.players.forEach(p=>{if(p)drawPlayer(T,p);}));
+  drawReferee();
   drawBall();
   drawParticles();
   if(shaking) ctx.restore();
