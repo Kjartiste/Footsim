@@ -544,7 +544,21 @@ function startMatchFromPreMatch(){
     window._prematchOnStart();
     window._prematchOnStart=null;
   } else {
-    placeKickoff(G._kickoffTi!==undefined?G._kickoffTi:(Math.random()<.5?0:1));
+    const _atk = (G._kickoffTi!==undefined)?G._kickoffTi:(Math.random()<.5?0:1);
+    // ── ENTRÉE DES JOUEURS ──────────────────────────────────────────────
+    // Au coup d'envoi initial, on lance la séquence d'entrée (les joueurs
+    // marchent, se placent, puis le match démarre). Repli sur le démarrage
+    // direct si le module d'entrée n'est pas dispo ou désactivé.
+    if(window._walkoutEnabled!==false && typeof startWalkout==='function' && G.half===1 && (!G.scores||(G.scores[0]===0&&G.scores[1]===0)||G._customScore)){
+      try{ if(window.gameAudio) window.gameAudio.primeOnGesture&&window.gameAudio.primeOnGesture(); }catch(e){}
+      const started = startWalkout(_atk, ()=>{
+        try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.whistle(false); }catch(e){}
+      });
+      try{ if(window.gameAudio){ const _th=(typeof stadiumTheme==='function')?stadiumTheme():null; if(_th) window.gameAudio.setTheme(_th); } }catch(e){}
+      if(btn)btn.textContent='⏸ Pause';
+      if(started) return;
+    }
+    placeKickoff(_atk);
     G.running=true;G._paused=false;
     if(btn)btn.textContent='⏸ Pause';
   }

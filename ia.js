@@ -1225,12 +1225,17 @@ function aiDecide(dt=0.016){
         const inward=[7,12,6][i]*side*-1;
         G._setpTargets[h.id]={x:clamp(b.x+depth,2,WW-2), y:clamp(b.y+inward,3,WH-3)};
       });
-      // Le lanceur est-il arrivé au ballon ? (tolérance courte)
-      const atBall=Math.hypot(thrower.x-b.x,thrower.y-b.y) < 1.4;
-      if(!atBall && G.phTick<45){
-        // On patiente que le lanceur atteigne la ligne (borne de sécurité à
-        // ~45 ticks pour ne jamais bloquer la phase si un obstacle l'empêche).
+      // Le lanceur rejoint la ligne rapidement. Si vraiment trop loin, on
+      // patiente peu (12 ticks max) puis on le place directement sur la ligne
+      // pour ne pas ralentir le jeu — une touche doit être rapide.
+      const atBall=Math.hypot(thrower.x-b.x,thrower.y-b.y) < 2.2;
+      if(!atBall && G.phTick<12){
         return;
+      }
+      if(!atBall){
+        // Placement direct sur le point de touche (le lanceur "arrive").
+        thrower.x=clamp(b.x,2,WW-2); thrower.y=clamp(b.y,1,WH-1);
+        thrower.vx=0; thrower.vy=0;
       }
       giveB(thrower);
       G._setpTargets=null; // remise en jeu effectuée : on relâche le placement
@@ -1255,7 +1260,7 @@ function aiDecide(dt=0.016){
           logEvent(`${thrower.name} remet pour ${target.name}`,teams[ati].color+'88');
         }
         setPhase('BUILDUP');
-      },420/speedMult);
+      },200/speedMult);
       break;
     }
     case 'PENALTY_KICK':{
@@ -1325,6 +1330,25 @@ function aiDecide(dt=0.016){
           y:clamp(G.ball.y-uy*3.5+ux*4, 2, WH-2),
         };
       }
+      // ── ÉCARTEMENT RÉGLEMENTAIRE DES ADVERSAIRES ────────────────────────
+      // Aucun défenseur (hors mur) ne doit rester collé au tireur : la règle
+      // impose 9,15 m. Tout adversaire trop proche du ballon est repoussé à
+      // distance légale, dans la direction où il se trouve déjà (il "recule").
+      const MIN_OPP_DIST = WALL_DIST; // même distance que le mur
+      teams[dti].players.forEach(d=>{
+        if(d.red||d.hp<=0||d.pos==='GB') return;
+        if(wallIds.includes(d.id)) return;         // le mur est déjà placé
+        const ddx=d.x-G.ball.x, ddy=d.y-G.ball.y, dd=Math.hypot(ddx,ddy);
+        if(dd < MIN_OPP_DIST){
+          // Direction depuis le ballon vers le défenseur (ou latérale si dessus).
+          const ndx = dd>0.3 ? ddx/dd : -ux;
+          const ndy = dd>0.3 ? ddy/dd : -uy;
+          G._setpTargets[d.id]={
+            x:clamp(G.ball.x+ndx*(MIN_OPP_DIST+1.5), 2, WW-2),
+            y:clamp(G.ball.y+ndy*(MIN_OPP_DIST+1.5), 2, WH-2),
+          };
+        }
+      });
 
       // Temps de placement : on attend que ça se mette en place (~25 ticks)
       // avant de jouer. Le ballon reste immobile, posé au sol.
