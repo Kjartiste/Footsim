@@ -1284,21 +1284,24 @@ function physStep(dt,rawDt){
     const r=G.ref;
     const setPiece = G.phase==='FREEKICK'||G.phase==='CORNER'||G.phase==='PENALTY_KICK';
     // Cible : décalée du ballon, du côté opposé au centre pour ne pas gêner.
-    const offY = (b.y<WH/2? 6 : -6);
-    const offX = (b.vx>=0? -5 : 5);
+    // L'arbitre reste plus LOIN du ballon (10-14 u) qu'avant : il suit le jeu
+    // en diagonale sans coller à l'action.
+    const offY = (b.y<WH/2? 10 : -10);
+    const offX = (b.vx>=0? -9 : 9);
     if(setPiece){
-      // Se poste près du ballon pour surveiller le coup franc.
-      r.tx = clamp(b.x + offX*0.6, 3, WW-3);
-      r.ty = clamp(b.y + (b.y<WH/2?4:-4), 3, WH-3);
+      r.tx = clamp(b.x + offX*0.5, 3, WW-3);
+      r.ty = clamp(b.y + (b.y<WH/2?7:-7), 3, WH-3);
     } else {
       r.tx = clamp(b.x + offX, 3, WW-3);
       r.ty = clamp(b.y + offY, 3, WH-3);
     }
     const rdx=r.tx-r.x, rdy=r.ty-r.y, rd=Math.hypot(rdx,rdy);
-    // L'arbitre trotte : vitesse modérée, plus vive s'il est distancé.
-    const refSpd = Math.min(rd*0.08, 0.9) * (G.running?1:0.3);
-    if(rd>0.5){ r.vx=lerp(r.vx||0, (rdx/rd)*refSpd, 0.15); r.vy=lerp(r.vy||0, (rdy/rd)*refSpd, 0.15); }
-    else { r.vx*=0.8; r.vy*=0.8; }
+    // L'arbitre trotte tranquillement : vitesse plafonnée bas et lissée fort,
+    // pour un déplacement posé (jamais de sprint saccadé). Il n'accélère un peu
+    // que s'il est vraiment distancé.
+    const refSpd = Math.min(rd*0.035, 1.4) * (G.running?1:0.2);
+    if(rd>1.2){ r.vx=lerp(r.vx||0, (rdx/rd)*refSpd, 0.06); r.vy=lerp(r.vy||0, (rdy/rd)*refSpd, 0.06); }
+    else { r.vx*=0.85; r.vy*=0.85; }
     r.x=clamp(r.x+r.vx*dt*60, 2, WW-2);
     r.y=clamp(r.y+r.vy*dt*60, 2, WH-2);
   }

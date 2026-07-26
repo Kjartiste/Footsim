@@ -1295,8 +1295,9 @@ function aiDecide(dt=0.016){
       }
 
       // Positionnement physique (via _setpTargets, honoré par roleTarget).
-      // Le mur s'aligne sur la ligne ballon→but, à ~9,15m (échelle terrain).
-      const WALL_DIST = Math.max(6, WW*0.09);
+      // Le mur s'aligne sur la ligne ballon→but à distance réglementaire
+      // (~9,15 m ≈ 13% de la longueur du terrain), bien détaché du ballon.
+      const WALL_DIST = Math.max(8, WW*0.13);
       const bgx=oppGoalX-G.ball.x, bgy=PCY-G.ball.y, bl=Math.hypot(bgx,bgy)||1;
       const ux=bgx/bl, uy=bgy/bl;                 // direction ballon→but
       G._setpTargets={};
@@ -1305,16 +1306,16 @@ function aiDecide(dt=0.016){
         const d=teams[dti].players.find(x=>x.id===id); if(!d) return;
         // Alignés perpendiculairement à la ligne de tir, épaule contre épaule.
         const perpX=-uy, perpY=ux;
-        const off=(i-(wallIds.length-1)/2)*1.7; // espacement du mur
+        const off=(i-(wallIds.length-1)/2)*2.4; // espacement du mur (plus large)
         G._setpTargets[id]={
           x:clamp(G.ball.x+ux*WALL_DIST+perpX*off, 2, WW-2),
           y:clamp(G.ball.y+uy*WALL_DIST+perpY*off, 2, WH-2),
         };
       });
-      // Le tireur se poste juste derrière le ballon (opposé au but).
+      // Le tireur se poste derrière le ballon (opposé au but), à distance de course.
       G._setpTargets[sh.id]={
-        x:clamp(G.ball.x-ux*2.2, 2, WW-2),
-        y:clamp(G.ball.y-uy*2.2, 2, WH-2),
+        x:clamp(G.ball.x-ux*3.5, 2, WW-2),
+        y:clamp(G.ball.y-uy*3.5, 2, WH-2),
       };
       // Un second joueur vient proposer l'option du coup franc joué à deux.
       const _fkMate=pick(actP(ati).filter(p=>p!==sh && p.pos!=='GB' && !p.red && p.hp>0 && !p.hasBall));
@@ -1328,7 +1329,7 @@ function aiDecide(dt=0.016){
       // Temps de placement : on attend que ça se mette en place (~25 ticks)
       // avant de jouer. Le ballon reste immobile, posé au sol.
       G.ball.vx=0; G.ball.vy=0;
-      const FK_SETUP_TICKS=25;
+      const FK_SETUP_TICKS=16;
       if(G.phTick<FK_SETUP_TICKS){
         if(G.phTick===1) logEvent(`Coup franc — ${sh.name} se prépare, le mur se place...`,teams[ati].color+'77');
         return;

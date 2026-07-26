@@ -1881,9 +1881,28 @@ function lighten(hex,amt){
   return`rgb(${Math.min(255,r+255*amt)},${Math.min(255,g+255*amt)},${Math.min(255,b+255*amt)})`;
 }
 
+function _drawWalkoutBanner(){
+  if(!G._walkout) return;
+  try{
+    const cv=document.getElementById('pitch'); if(!cv) return;
+    const W=cv.width, H=cv.height;
+    ctx.save();
+    ctx.globalAlpha=0.85;
+    const txt = G._walkout.stage>=2 ? 'Les joueurs prennent place…' : 'Entrée des équipes…';
+    ctx.font='700 '+Math.round(H*0.045)+'px Barlow Condensed, sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const tw=ctx.measureText(txt).width;
+    ctx.fillStyle='rgba(8,12,10,0.72)';
+    const bw=tw+H*0.08, bh=H*0.09, bx=W/2-bw/2, by=H*0.06;
+    ctx.beginPath(); ctx.roundRect?ctx.roundRect(bx,by,bw,bh,bh*0.3):ctx.rect(bx,by,bw,bh); ctx.fill();
+    ctx.fillStyle='#f0c028';
+    ctx.fillText(txt, W/2, by+bh/2);
+    ctx.restore();
+  }catch(e){}
+}
 function drawReferee(){
   const r=G.ref; if(!r) return;
-  const rx=wx(r.x), ry=wy(r.y), rad=ws(0.95);
+  const rx=wx(r.x), ry=wy(r.y), rad=ws(window.gameMode==='11v11' ? 1.1 : 1.55);
   ctx.save();
   // Ombre portée.
   ctx.globalAlpha=0.25; ctx.fillStyle='#000';
@@ -2611,7 +2630,22 @@ function frame(ts){
   }
 
   if(G.running&&G.phase!=='HALFTIME'&&G.phase!=='END'){
-    G.minTick+=rawDt*speedMult;
+    // ── ENTRÉE DES JOUEURS ──────────────────────────────────────────────
+    // Pendant la séquence d'entrée, on anime la marche des joueurs mais on
+    // saute l'IA, la physique de match et le chrono. Le rendu normal (plus bas)
+    // dessine les joueurs à leur position courante. Le vrai coup d'envoi part
+    // à la fin de tickWalkout.
+    if(G._walkout){
+      try{ if(typeof tickWalkout==='function') tickWalkout(dt); }catch(e){ G._walkout=null; }
+    } else {
+    // Le chrono ne tourne pas pendant la MISE EN PLACE d'un coup arrêté
+    // (placement du mur/tireur) : ces quelques secondes de préparation ne
+    // doivent pas grignoter le temps de jeu ni donner l'impression que le
+    // chrono "traîne". Il reprend dès que le jeu redémarre.
+    const _settingUp = (G.phase==='FREEKICK'||G.phase==='CORNER') && G.phTick<26;
+    if(!_settingUp){
+      G.minTick+=rawDt*speedMult;
+    }
     if(G.minTick>=SEC_PER_MIN){
       G.minTick=0;G.minute++;
       // Coach IA de l'équipe adverse : réévalue mentalité/changements chaque
@@ -2693,6 +2727,7 @@ function frame(ts){
     physStep(dt,rawDt);
     processPendingSubs();
     _concertTick(rawDt);
+    } // fin du else (hors séquence d'entrée)
   }
   // Extra time handling (outside minTick block — checked every frame when running)
   if(G.running){
@@ -2736,6 +2771,7 @@ function frame(ts){
   teams.forEach(T=>T.players.forEach(p=>{if(p)drawPlayer(T,p);}));
   drawReferee();
   drawBall();
+  if(G._walkout){ try{ _drawWalkoutBanner(); }catch(e){} }
   drawParticles();
   if(shaking) ctx.restore();
   if(zooming) ctx.restore();
@@ -2891,9 +2927,35 @@ function toggleMatch(){
   if(G.running){G.running=false;G._paused=true;document.getElementById('mbtn').textContent='▶ Reprendre';}
   else{
     if(G.phase==='END'){resetMatch();return;}
+    // ── ENTRÉE DES JOUEURS (premier coup d'envoi seulement) ─────────────
+    // Au tout début du match, on lance la séquence d'entrée : les joueurs
+    // marchent sur la pelouse, se mettent en rang, puis se placent, et le jeu
+    // ne démarre (sifflet + coup d'envoi) qu'à la fin. Aux reprises (mi-temps,
+    // reprise après pause), on démarre normalement.
+    const _firstStart = (G.minute===0 && G.half===1 && !G._everStarted && window._walkoutEnabled!==false && typeof startWalkout==='function');
     G.running=true;G._paused=false;G._everStarted=true;document.getElementById('mbtn').textContent='⏸ Pause';
-    // Coup de sifflet d'engagement (vrai bruitage si présent).
-    try{ if(window.gameAudio&&window.gameAudio.isEnabled()&&G.minute===0) window.gameAudio.whistle(false); }catch(e){}
+    if(_firstStart){
+      const _atk = (G._kickoffTi!=null)?G._kickoffTi:(Math.random()<.5?0:1);
+      try{ if(window.gameAudio) window.gameAudio.primeOnGesture&&window.gameAudio.primeOnGesture(); }catch(e){}
+      startWalkout(_atk, ()=>{
+        // À la fin de l'entrée : sifflet d'engagement + ambiance.
+        try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.whistle(false); }catch(e){}
+      });
+      // Ambiance de stade dès l'entrée.
+      try{ if(window.gameAudio){ const _th=(typeof stadiumTheme==='function')?stadiumTheme():null; if(_th) window.gameAudio.setTheme(_th); } }catch(e){}
+      _gifArmIfNeeded();
+      renderInjuryPanel();
+      return;
+    }
+    // Coup de sifflet d'engagement (vrai bruitage si présent). Petit délai pour
+    // laisser le contexte audio démarrer et l'échantillon se charger au tout
+    // premier clic (sinon le sifflet du coup d'envoi initial est muet).
+    try{
+      if(window.gameAudio&&window.gameAudio.isEnabled()&&G.minute===0){
+        window.gameAudio.primeOnGesture&&window.gameAudio.primeOnGesture();
+        setTimeout(()=>{ try{ window.gameAudio.whistle(false); }catch(e){} }, 350);
+      }
+    }catch(e){}
     // Ambiance de fond selon le THÈME DE STADE (forêt, neige…) — pas le pays.
     try{
       if(window.gameAudio){
