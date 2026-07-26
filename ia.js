@@ -3144,7 +3144,12 @@ function goalScored(scorer,ati,goalX,assister){
   setTimeout(()=>{
     G._celebrating=false;
     if(G._paused||G.phase==='HALFTIME'||G.phase==='END')return;
-    showTacBtns(true);G.running=true;placeKickoff(1-scoringTeam);setPhase('KICKOFF');
+    showTacBtns(true);G.running=true;
+    // L'équipe qui ENCAISSE engage. On se base sur l'équipe RÉELLE du but
+    // (pas l'équipe de contrôle si le buteur était "dominé"), pour que
+    // l'engagement revienne toujours au bon camp.
+    const _realScoringTeam=(teams[0].players.includes(scorer)?0:1);
+    placeKickoff(1-_realScoringTeam);setPhase('KICKOFF');
   },2200/speedMult);
 }
 

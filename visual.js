@@ -2652,7 +2652,9 @@ function frame(ts){
           G._h1EndMinute=G.minute;
           G.minute=45;
           G.minTick=0;
-          G._firstHalfKickoffTi=G._kickoffTi??G.atkTi;
+          // _firstHalfKickoffTi est déjà figé au coup d'envoi (voir placeKickoff).
+          // On ne le recalcule PLUS ici : le faire depuis _kickoffTi (écrasé par
+          // les engagements après but) donnait une valeur fausse.
           logEvent('⏸ Mi-temps !','#f0c028');
           G.phase='HALFTIME';
           try{ if(window.gameAudio&&window.gameAudio.isEnabled()) window.gameAudio.whistle(true); }catch(e){}
@@ -2749,6 +2751,17 @@ function frame(ts){
 function placeKickoff(atkTi){
   G.atkTi=atkTi;
   G._kickoffTi=atkTi; // remember for halftime second-half kickoff logic
+  // ── ENGAGEMENT INITIAL FIGÉ ────────────────────────────────────────────
+  // BUG corrigé : _firstHalfKickoffTi était calculé À LA MI-TEMPS depuis
+  // _kickoffTi, or _kickoffTi est écrasé à CHAQUE engagement (dont après chaque
+  // but : placeKickoff(1-scoringTeam)). Après un but en 1re période, il ne
+  // valait donc plus l'équipe du COUP D'ENVOI mais celle du dernier engagement,
+  // faussant l'engagement de la 2e mi-temps. On fige donc l'engagement d'ouverture
+  // ICI, au tout premier engagement d'un match (half 1, minute 0), une seule fois.
+  if(G.half===1 && G.minute===0 && !G._openingKickoffSet){
+    G._firstHalfKickoffTi=atkTi;
+    G._openingKickoffSet=true;
+  }
   freeB();
   G.ball.x=PCX;G.ball.y=PCY;G.ball.vx=0;G.ball.vy=0;G.ball.trail=[];G.ball.spin=0;
   teams.forEach((T,ti)=>T.players.forEach((p,pi)=>{
@@ -2777,7 +2790,7 @@ function resetMatch(){
   G.minute=0;G.half=1;G.scores=[0,0];G.shots=[0,0];G.tackles=[0,0];G.corners=[0,0];G.throwins=[0,0];G.fouls=[0,0];
   G._addedH1=null;G._addedH2=null;G._injuryCount=0;_hideAddedTimeBadge();
   G.possT=[0,0];G.ptcl=[];G.phase='KICKOFF';G.phTick=0;G.minTick=0;G.aiTick=0;G.flash=0;G.log=[];
-  G.leagueMode=false;G.penaltyWinner=undefined;G._kickoffTi=Math.random()<.5?0:1;G._firstHalfKickoffTi=G._kickoffTi;
+  G.leagueMode=false;G.penaltyWinner=undefined;G._kickoffTi=Math.random()<.5?0:1;G._firstHalfKickoffTi=G._kickoffTi;G._openingKickoffSet=false;
   G._customScore=[0,0];G._singleHalf=false;
   G._lastPasser=[null,null]; G.matchEvents=[]; G._kickoffBuild=undefined;
   teams.forEach(T=>{
