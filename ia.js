@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════
 function setPhase(ph){
   G.phase=ph;G.phTick=0;
+  G._phaseStart=(typeof performance!=='undefined'?performance.now():Date.now()); // horodatage début de phase
   if(ph!=='FREEKICK')G._fkWall=null; // le mur ne subsiste jamais hors coup franc
   // Le placement de coup de pied arrêté ne survit pas au changement de phase.
   if(ph!=='FREEKICK'&&ph!=='THROWIN'&&ph!=='CORNER') G._setpTargets=null;
@@ -326,6 +327,19 @@ function aiDecide(dt=0.016){
             else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
             if(Math.random()<0.12*(1-(carrier.s.res||50)/99)){injurePlayer(ati,carrier,true);}
           } else { logEvent(`Faute sur ${carrier.name}`,'#f0c028'); }
+          // ── LOI DE L'AVANTAGE ──────────────────────────────────────────────
+          // Pour une faute NON sanctionnée d'un carton et hors zone dangereuse,
+          // l'arbitre laisse souvent jouer si le porteur garde le ballon — ça
+          // évite de hacher le jeu, comme un vrai arbitre. On rend alors la
+          // balle à l'équipe victime sans arrêter le jeu.
+          const _nearOwnGoalFK = (ati===0) ? carrier.x>WW*0.72 : carrier.x<WW*0.28; // proche du but adverse = position à ne pas gâcher
+          const _minorFoul = cr>=.14; // pas de carton
+          if(_minorFoul && Math.random()<0.45 && !_nearOwnGoalFK){
+            if(carrier){ giveB(carrier); G.atkTi=ati; }
+            logEvent(`Avantage ! L'arbitre laisse jouer`,'#8fd694');
+            setPhase('BUILDUP');
+            return;
+          }
           setPhase('FREEKICK');
         }
         return;
@@ -1141,6 +1155,16 @@ function aiDecide(dt=0.016){
           if(opp.yc>=2&&!hasRed(dti)){opp.red=true;logEvent(`🟥 ${opp.name} EXPULSÉ ! (équipe à 6)`,'#e02030');}else if(opp.yc>=2){logEvent(`🟨 ${opp.name} — 2e jaune (limite atteinte)`,'#f0c028');}
           else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
         } else logEvent(`Faute sur ${carrier.name}`,'#f0c028');
+        // Loi de l'avantage (voir plus haut) : faute mineure hors zone
+        // dangereuse → l'arbitre laisse jouer pour ne pas hacher le jeu.
+        const _minorFoul2 = cr>=.08;
+        const _nearGoal2 = (ati===0) ? carrier.x>WW*0.72 : carrier.x<WW*0.28;
+        if(_minorFoul2 && Math.random()<0.45 && !_nearGoal2){
+          if(carrier){ giveB(carrier); G.atkTi=ati; }
+          logEvent(`Avantage ! L'arbitre laisse jouer`,'#8fd694');
+          setPhase('BUILDUP');
+          break;
+        }
         setPhase('FREEKICK');
       }
       break;
@@ -1154,7 +1178,14 @@ function aiDecide(dt=0.016){
       break;
     }
     case 'CORNER':{
-      if(G.phTick<5)return;
+      // Délai de placement réel (~0,8s à ×1, plus court en accéléré) au lieu
+      // d'un compteur de ticks qui prenait ~8s à vitesse normale.
+      {
+        const _now=(typeof performance!=='undefined'?performance.now():Date.now());
+        const _el=(_now-(G._phaseStart||_now))/1000;
+        const _spd=(typeof speedMult==='number'&&speedMult>0)?speedMult:1;
+        if(_el < 0.8/_spd) return;
+      }
       const kicker=pick(byR(ati,'MC','MO','MOG','MOD','MDC','ATT','AG','AD'));
       const header=pick(byR(ati,'ATT','ATT2','DC','DCD','DCG').filter(p=>!p.hasBall));
       if(!kicker||!header){setPhase('BUILDUP');return;}
@@ -1351,11 +1382,17 @@ function aiDecide(dt=0.016){
       });
 
       // Temps de placement : on attend que ça se mette en place (~25 ticks)
-      // avant de jouer. Le ballon reste immobile, posé au sol.
+      // Temps de placement RÉEL, corrélé à la vitesse de jeu : ~1 seconde à
+      // vitesse ×1, et proportionnellement plus court quand le jeu est accéléré
+      // (le mur/tireur se placent vite). Basé sur l'horloge, pas sur phTick qui
+      // n'avance que ~0,6×/s (16 ticks = 27s à ×1, beaucoup trop lent).
       G.ball.vx=0; G.ball.vy=0;
-      const FK_SETUP_TICKS=16;
-      if(G.phTick<FK_SETUP_TICKS){
-        if(G.phTick===1) logEvent(`Coup franc — ${sh.name} se prépare, le mur se place...`,teams[ati].color+'77');
+      const _now=(typeof performance!=='undefined'?performance.now():Date.now());
+      const _elapsed=(_now-(G._phaseStart||_now))/1000;           // secondes réelles
+      const _spd=(typeof speedMult==='number'&&speedMult>0)?speedMult:1;
+      const FK_SETUP_SEC = 1.0 / _spd;                            // ~1s à ×1, 0,33s à ×3
+      if(_elapsed < FK_SETUP_SEC){
+        if(G.phTick===1) logEvent(`Coup franc — ${sh.name} se prépare...`,teams[ati].color+'77');
         return;
       }
       giveB(sh);
