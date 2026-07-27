@@ -241,7 +241,24 @@ function spawnEsprit(x,y){
 }
 
 // Generic fallback spawnSpell
+// Affiche un carton rouge bien visible à l'endroit du joueur expulsé, avant
+// qu'il ne quitte le terrain. Rend l'expulsion CLAIRE (avant, le joueur
+// disparaissait sans rien montrer).
+function showRedCard(p){
+  if(!p || !G.ptcl) { if(!G.ptcl) G.ptcl=[]; }
+  try{
+    const x=p&&isFinite(p.x)?p.x:PCX, y=p&&isFinite(p.y)?p.y:PCY;
+    // Le carton rouge qui monte, gros et net.
+    G.ptcl.push({t:'redcard', x, y:y-2, l:150, m:150});
+    G.ptcl.push({t:'lbl', x, y:y-6, tx:'🟥 CARTON ROUGE', col:'#e02030', l:150, m:150, sz:1.5});
+    // Petit flash rouge autour.
+    G.ptcl.push({t:'ring_expand', x, y, col:'#e02030', maxR:7, l:34, m:34});
+    G.flash=Math.max(G.flash||0, 8); G.flashCol='#e02030';
+  }catch(e){}
+}
 function spawnSpell(x,y,sp){
+  if(!sp) return; // sort introuvable (id obsolète) : on n'anime rien, pas de crash
+  if(!G.ptcl) G.ptcl=[];
   for(let i=0;i<18;i++){
     const a=Math.random()*Math.PI*2,s=rng(.25,1.0);
     G.ptcl.push({t:'s',x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:42,m:42,col:sp.pc||'#fff',sz:rng(.18,.6)});
@@ -2003,6 +2020,23 @@ function drawParticles(){
         ctx.strokeText(p.tx,lx,ly);
         ctx.fillStyle=p.col||'#fff';
         ctx.fillText(p.tx,lx,ly);
+      }
+    } else if(p.t==='redcard'){
+      // Carton rouge qui s'élève et reste bien visible.
+      const prog=1-a;
+      const cx=wx(p.x), cy=wy(p.y)-ws(2)*prog; // monte légèrement
+      if(isFinite(cx)&&isFinite(cy)){
+        const cw=ws(1.4), ch=ws(2.0);
+        ctx.globalAlpha=Math.min(1, a*1.6);
+        // ombre
+        ctx.fillStyle='rgba(0,0,0,0.35)';
+        ctx.fillRect(cx-cw/2+ws(0.12), cy-ch/2+ws(0.12), cw, ch);
+        // carton
+        ctx.fillStyle='#e02030';
+        ctx.fillRect(cx-cw/2, cy-ch/2, cw, ch);
+        ctx.strokeStyle='#8a1420'; ctx.lineWidth=Math.max(1,ws(0.08));
+        ctx.strokeRect(cx-cw/2, cy-ch/2, cw, ch);
+        ctx.globalAlpha=1;
       }
     } else if(p.t==='ring_expand'){
       const prog=1-a;const curR=ws(p.maxR||4)*prog;

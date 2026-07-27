@@ -323,7 +323,7 @@ function aiDecide(dt=0.016){
           const cr=Math.random();
           if(opp&&cr<.14){
             opp.yc++;
-            if(opp.yc>=2){opp.red=true;logEvent(`🟥 ${opp.name} EXPULSÉ !`,'#e02030');}
+            if(opp.yc>=2){opp.red=true;showRedCard(opp);logEvent(`🟥 ${opp.name} EXPULSÉ !`,'#e02030');}
             else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
             if(Math.random()<0.12*(1-(carrier.s.res||50)/99)){injurePlayer(ati,carrier,true);}
           } else { logEvent(`Faute sur ${carrier.name}`,'#f0c028'); }
@@ -1152,7 +1152,7 @@ function aiDecide(dt=0.016){
         const cr=Math.random();
         if(cr<.08&&opp){
           opp.yc++;
-          if(opp.yc>=2&&!hasRed(dti)){opp.red=true;logEvent(`🟥 ${opp.name} EXPULSÉ ! (équipe à 6)`,'#e02030');}else if(opp.yc>=2){logEvent(`🟨 ${opp.name} — 2e jaune (limite atteinte)`,'#f0c028');}
+          if(opp.yc>=2&&!hasRed(dti)){opp.red=true;showRedCard(opp);logEvent(`🟥 ${opp.name} EXPULSÉ ! (équipe à 6)`,'#e02030');}else if(opp.yc>=2){logEvent(`🟨 ${opp.name} — 2e jaune (limite atteinte)`,'#f0c028');}
           else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
         } else logEvent(`Faute sur ${carrier.name}`,'#f0c028');
         // Loi de l'avantage (voir plus haut) : faute mineure hors zone
@@ -2303,7 +2303,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const tgt=pick(byR(dti,'ATT','MO','MC','DC').filter(p=>Math.hypot(p.x-carrier.x,p.y-carrier.y)<12));
     if(tgt){
       carrier.yc=(carrier.yc||0)+1;
-      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
+      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
       else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');
       if(isMal){tgt.injLevel=3;tgt.injT=irng(8,15)*60;tgt.hp=Math.max(0,tgt.hp-25);G.ptcl.push({t:'lbl',x:tgt.x,y:tgt.y-5,tx:'💀 MALÉFIQUE !',col:sp.col,l:60,m:60,sz:1.4});logEvent(`💀 ${carrier.name} — Tacle Maléfique ! ${tgt.name} hors match !`,sp.col);}
       else{injurePlayer(dti,tgt,true);G.ptcl.push({t:'lbl',x:tgt.x,y:tgt.y-5,tx:'💢 TACLE !',col:sp.col,l:50,m:50,sz:1.3});logEvent(`💢 ${carrier.name} — Tacle malveillant sur ${tgt.name} !`,sp.col);}
@@ -2312,7 +2312,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
       freeB();G.atkTi=dti;setPhase('FREEKICK');
     }else{
       carrier.yc=(carrier.yc||0)+1;
-      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
+      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
       else logEvent(`🟨 Carton jaune — ${carrier.name} (tacle dans le vide)`,'#f0c028');
       setPhase('BUILDUP');
     }
@@ -2363,7 +2363,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
       if(Math.random()<caughtP){
         logEvent(`🚨 Sifflé ! Main de ${carrier.name}`,'#e02030');
         carrier.yc=(carrier.yc||0)+1;
-        if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
+        if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
         else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');
         G.atkTi=dti;
         if(inBox){const kicker=pick(byR(dti,'ATT','MO','MC'))||pick(actP(dti));if(kicker){giveB(kicker);setPhase('PENALTY_KICK');}logEvent(`⚡ PENALTY ${teams[dti].name} !`,teams[dti].color);}
@@ -2384,7 +2384,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const r=Math.random();
     if(inBox&&r<0.25){logEvent(`🎭 PENALTY !`,teams[dti].color);G.atkTi=ati;setTimeout(()=>{const k=pick(byR(ati,'ATT','MO','MC'))||carrier;if(k){giveB(k);setPhase('PENALTY_KICK');}},600/speedMult);}
     else if(r<0.75){logEvent(`🎭 Coup franc !`,'#ff7043');G.atkTi=ati;setPhase('FREEKICK');}
-    else{carrier.yc=(carrier.yc||0)+1;if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');const o=pick(byR(dti,'DC','MC'));if(o){giveB(o);G.atkTi=dti;}setPhase('BUILDUP');}
+    else{carrier.yc=(carrier.yc||0)+1;if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');const o=pick(byR(dti,'DC','MC'));if(o){giveB(o);G.atkTi=dti;}setPhase('BUILDUP');}
 
   } else if(sp.id==='simulation'){
     // Chute théâtrale
