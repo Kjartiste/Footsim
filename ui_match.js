@@ -624,7 +624,7 @@ function renderSettings(){
   const out=document.getElementById('settings-out');
   if(!out) return;
   const complet = window.isComplet && window.isComplet();
-  const card=(inner)=>`<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:14px;margin-bottom:12px">${inner}</div>`;
+  const card=(inner)=>`<div class="card">${inner}</div>`;
   const modeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Mode de statistiques</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
