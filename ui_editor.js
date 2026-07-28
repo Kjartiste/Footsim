@@ -40,10 +40,69 @@ function editP(){
   }catch(e){ return null; }
 }
 
+// ── EN-TÊTE DE PROFIL PREMIUM (façon Football Manager) ─────────────────────
+// Bandeau de prestige affiché en haut de la fiche joueur : grand portrait,
+// nom / poste / club / race, gros badge OVR, et barres d'attributs animées.
+// Purement visuel et en lecture seule — l'éditeur complet reste dessous et
+// intact. Utilise les données déjà présentes sur le joueur (aucune logique
+// métier touchée).
+function _premiumPlayerHeader(p, T){
+  try{
+    const ovr = (typeof _pOvr==='function') ? _pOvr(p) : 50;
+    const eff = (typeof playerMatchOvr==='function') ? playerMatchOvr(p) : ovr;
+    const diff = eff - ovr;
+    const col = T.color || 'var(--gold)';
+    const ovrCol = ovr>=80?'#18c860':ovr>=68?'#f0c028':ovr>=55?'#5b9bd5':'#8aa0b5';
+    const s = p.s||{};
+    const attrs = [
+      ['Vitesse', s.spd||0, '⚡'],
+      ['Tir',     s.sht||0, '🎯'],
+      ['Défense', s.def||0, '🛡'],
+      ['Technique',s.tec||0,'✨'],
+      ['Endurance',s.stam||0,'🔋'],
+      ['Mana',    s.mp||0,  '🔮'],
+    ];
+    const bar = (lbl,val,ic)=>{
+      const v = Math.max(0,Math.min(99,val));
+      const bc = v>=80?'#18c860':v>=65?'#f0c028':v>=50?'#5b9bd5':'#7a8fa5';
+      return `<div class="pph-attr">
+        <div class="pph-attr__top"><span>${ic} ${lbl}</span><b>${val}</b></div>
+        <div class="pph-attr__track"><div class="pph-attr__fill" style="width:${v}%;background:linear-gradient(90deg,${bc},${bc}cc)"></div></div>
+      </div>`;
+    };
+    const raceLbl = (p.race && p.race!=='human' && typeof raceMeta==='function') ? (raceMeta(p.race).name||p.race) : 'Humain';
+    const ageLbl = p.age ? `${p.age} ans` : '';
+    return `
+    <div class="pph" style="--club:${col}">
+      <div class="pph__banner"></div>
+      <div class="pph__body">
+        <div class="pph__portrait" style="border-color:${col}">
+          ${p.img?`<img src="${p.img}" alt="">`:`<span style="color:${col}">${p.ini||'?'}</span>`}
+        </div>
+        <div class="pph__id">
+          <div class="pph__name">${p.name||'—'}</div>
+          <div class="pph__meta">
+            <span class="pph__pos">${p.pos||'?'}</span>
+            <span class="pph__club" style="color:${col}">${T.name||''}</span>
+            ${raceLbl?`<span class="pph__race">${raceLbl}</span>`:''}
+            ${ageLbl?`<span class="pph__age">${ageLbl}</span>`:''}
+          </div>
+        </div>
+        <div class="pph__ovr" style="--oc:${ovrCol}">
+          <b>${ovr}</b><span>OVR</span>
+          ${diff!==0?`<i class="pph__ovr-diff" style="color:${diff>0?'#18c860':'#ff6472'}">${diff>0?'▲':'▼'}${Math.abs(diff)}</i>`:''}
+        </div>
+      </div>
+      <div class="pph__attrs">${attrs.map(a=>bar(a[0],a[1],a[2])).join('')}</div>
+    </div>`;
+  }catch(e){ return ''; }
+}
+
 function _renderPlayerEditor(p,T,source){
   const label={player:'',bench:' (Banc)',reserve:' (Réserviste)'}[source]||'';
   document.getElementById('mttl').textContent=p.name+' · '+p.pos+label;
   document.getElementById('mcnt').innerHTML=`
+  ${_premiumPlayerHeader(p,T)}
   <div style="display:flex;gap:11px;align-items:flex-start;margin-bottom:12px">
     <div style="position:relative">
       <div class="av" id="mav" style="width:52px;height:52px;font-size:15px;font-weight:800;cursor:pointer;border-color:${T.color}60;background:${T.color}22" onclick="document.getElementById('fup').click()" title="Cliquer pour changer la photo">
