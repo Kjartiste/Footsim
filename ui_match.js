@@ -472,7 +472,10 @@ function nav(p){
     // s'afficher en grand par-dessus le terrain, pas dans la bande étroite du
     // bas où c'était illisible. Le panneau "match" est la seule exception :
     // on y veut le terrain visible. Voir la règle CSS #app.panel-open.
-    if(p==='match'){ app.classList.remove('panel-open'); }
+    // Le panneau "match" garde le terrain visible ; "career" a déjà son propre
+    // plein écran (career-mode). Tous les autres onglets passent en plein écran
+    // via panel-open.
+    if(p==='match'||p==='career'){ app.classList.remove('panel-open'); }
     else { app.classList.add('panel-open'); }
   }
   // Si aucun profil actif → afficher l'écran de sélection de profil

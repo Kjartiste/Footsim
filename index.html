@@ -52,6 +52,20 @@ html[data-textsize="tresgrand"] .slogo{zoom:1.3}
 #app.career-mode .sdivider{display:none}
 #app.career-mode #sp-career{display:block!important;flex:1;overflow-y:auto}
 #app.career-mode #sidebar{display:flex;flex-direction:column}
+/* ── TOUS LES ONGLETS DE CONTENU EN PLEIN ÉCRAN ─────────────────────────
+   Comme le mode Carrière, tout onglet de contenu (paramètres, stats, ligue,
+   coupe, tactique…) s'affiche EN GRAND par-dessus le terrain, au lieu d'être
+   coincé dans la barre latérale étroite (260px) où c'était peu ergonomique.
+   La classe panel-open est posée par nav() pour tout onglet sauf "Match".
+   La barre d'onglets (.snav) reste visible pour naviguer / revenir au match. */
+#app.panel-open #main{display:none}
+#app.panel-open #sidebar{width:100vw;max-width:100vw;flex:1;display:flex;flex-direction:column}
+#app.panel-open .spage.on{flex:1;overflow-y:auto}
+/* Barre d'onglets horizontale en haut quand un panneau est en plein écran
+   (au lieu de la colonne verticale étroite), pour naviguer facilement. */
+#app.panel-open .snav{flex-direction:row;flex-wrap:wrap;overflow-x:auto;overflow-y:hidden;padding:6px 10px;gap:4px;flex-shrink:0;border-bottom:1px solid var(--b2)}
+#app.panel-open .slogo,#app.panel-open .sdivider,#app.panel-open .nav-sec{display:none}
+#app.panel-open .ntab{flex:0 0 auto;white-space:nowrap}
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--panel);border-right:1px solid var(--b2);display:flex;flex-direction:column;overflow:hidden}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
