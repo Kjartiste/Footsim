@@ -48,6 +48,7 @@
   --fg-dim:#4a6483;
 
   --accent:#f0c028;          /* or */
+  --accent-club:var(--accent); /* teinte du club dirigé (posée en carrière, repli or) */
   --accent-ink:#0a0f16;      /* texte sur accent */
   --pos:#25d366;             /* positif / victoire */
   --neg:#ff4d5e;             /* négatif / défaite */
@@ -72,6 +73,7 @@
   --fg-dim:#95a3b6;
 
   --accent:#f0b400;
+  --accent-club:var(--accent);
   --accent-ink:#12161c;
   --pos:#0fa958;
   --neg:#e0243a;
@@ -129,10 +131,10 @@
   border:var(--ink-w) solid var(--ink);border-radius:var(--r-md);padding:var(--sp-1)}
 .fm-tab{flex:1;font-family:var(--font-display);font-size:var(--fs-body);font-weight:800;
   letter-spacing:.5px;text-transform:uppercase;cursor:pointer;text-align:center;
-  padding:var(--sp-2) var(--sp-3);border-radius:var(--r-sm);border:none;background:transparent;
-  color:var(--fg-muted);transition:background var(--t-fast),color var(--t-fast)}
-.fm-tab:hover{color:var(--fg)}
-.fm-tab.is-active{background:var(--accent);color:var(--accent-ink)}
+  padding:var(--sp-2) var(--sp-3);border-radius:var(--r-pill);border:none;background:transparent;
+  color:var(--fg-muted);transition:background var(--t-med),color var(--t-med),box-shadow var(--t-med)}
+.fm-tab:hover{color:var(--fg);background:var(--surface-2)}
+.fm-tab.is-active{background:var(--accent);color:var(--accent-ink);box-shadow:var(--shadow-sm)}
 
 /* ── LIGNE / ROW (listes, tableaux légers) ─────────────────────────────── */
 .fm-row{display:flex;align-items:center;gap:var(--sp-3);
@@ -145,6 +147,15 @@
 .fm-row__title{font-weight:800;font-size:var(--fs-body);color:var(--fg);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fm-row__sub{font-size:var(--fs-sm);color:var(--fg-muted)}
+
+/* ── LISTE ZÉBRÉE (style FM : une ligne sur deux, sans bordures) ─────────
+   Additif : n'affecte que les .fm-row placées dans un .fm-list--striped.
+   Le hover s'anime, la ligne se soulève très légèrement. */
+.fm-list--striped .fm-row{border:none;border-radius:var(--r-sm);background:transparent}
+.fm-list--striped .fm-row + .fm-row{margin-top:0}
+.fm-list--striped .fm-row:nth-child(even){background:var(--surface-2)}
+.fm-list--striped .fm-row:hover{background:var(--surface-3);
+  transform:translateX(2px);border:none}
 
 /* ── BADGE / PASTILLE ──────────────────────────────────────────────────── */
 .fm-pill{display:inline-flex;align-items:center;gap:6px;

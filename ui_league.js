@@ -2873,6 +2873,9 @@ function renderCareerV2(){
 // ── Écran de choix : Manager ou Dirigeant ────────────────────────────
 function renderCareerV2Choice(){
   const el = document.getElementById('career-out'); if(!el) return;
+  // Hors carrière active : réinitialiser la teinte club sur l'or (évite qu'elle
+  // "fuite" sur les écrans neutres après une session de direction).
+  try{ document.documentElement.style.setProperty('--accent-club','var(--accent)'); }catch(e){}
   const hasOldCareer = !!careerState;
 
   let h = '<div style="padding:12px;max-width:600px;margin:0 auto">';
@@ -3370,6 +3373,13 @@ function renderCareerDirector(el){
   const C = careerV2;
   const club = C.club;
   const region = WORLDS.getRegion(C.nation||'panthalassa', club.region);
+  // ── Identité visuelle du club : expose sa couleur en variable CSS globale.
+  //    Les accents contextuels (onglet actif, valeurs clés, filets) peuvent
+  //    ainsi pointer sur var(--accent-club) avec repli automatique sur l'or.
+  try{
+    const _cc = club.color || (region && region.color) || '#f0c028';
+    document.documentElement.style.setProperty('--accent-club', _cc);
+  }catch(e){}
   const _nat = WORLDS.get(C.nation) || PANTHALASSA;
   const pyramid = (_nat.pyramid||PANTHALASSA.pyramid).find(function(p){return p.id===club.level;});
   const ss = C.season_stats;
@@ -3393,21 +3403,33 @@ function renderCareerDirector(el){
   let tabBtns = '';
   tabs.forEach(function(tab){
     tabBtns += '<button id="cdtab-'+tab+'" onclick="renderCareerDirectorTab(\''+tab+'\')"'
-      + ' style="flex:1;padding:11px 4px 10px;background:var(--dark);border:none;border-bottom:2px solid transparent;'
-      + 'color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.3px;cursor:pointer;transition:color .15s,background .15s,border-color .15s;white-space:nowrap">'
+      + ' style="flex:1;padding:9px 4px;margin:2px;background:var(--dark);border:none;border-radius:999px;'
+      + 'color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.3px;cursor:pointer;transition:color .18s,background .18s,box-shadow .18s;white-space:nowrap">'
       + tabLabels[tab]+'</button>';
   });
 
   let html = '<div style="min-height:100vh;background:var(--bg,#060e1a);display:flex;flex-direction:column">';
 
   // ── Header ──────────────────────────────────────────────────────────
-  html += '<div style="background:linear-gradient(135deg,var(--dark) 0%,'+(region?region.color+'22':'#1a2a3a')+' 100%);'
-    + 'border-bottom:2px solid '+(region?region.color:'var(--b1)')+';padding:16px 20px">';
+  // Teinté par la couleur du CLUB dirigé (identité), repli région puis neutre.
+  const _hdrCol = club.color || (region && region.color) || null;
+  html += '<div style="background:linear-gradient(135deg,var(--dark) 0%,'+(_hdrCol?_hdrCol+'22':'#1a2a3a')+' 100%);'
+    + 'border-bottom:2px solid '+(_hdrCol||'var(--b1)')+';padding:16px 20px">';
   html += '<div style="display:flex;align-items:center;gap:14px">';
-  // Logo club
-  html += '<div style="width:52px;height:52px;border-radius:12px;background:'
-    + club.color+';display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;'
-    + 'box-shadow:0 4px 12px '+club.color+'44">🏟</div>';
+  // Logo club — vrai blason SVG (56px) si le club en a un, sinon repli emoji.
+  // On réutilise BadgeCache.dataURI, déjà employé partout ailleurs dans l'UI.
+  const _hasBadge = club.badge && typeof BadgeCache !== 'undefined';
+  if(_hasBadge){
+    html += '<div style="width:56px;height:56px;flex-shrink:0;display:flex;align-items:center;'
+      + 'justify-content:center;border-radius:12px;background:radial-gradient(circle at 50% 40%,'
+      + club.color+'33,transparent 70%);box-shadow:0 4px 14px '+club.color+'44">'
+      + '<img src="'+BadgeCache.dataURI(club.badge,56)+'" width="56" height="56" '
+      + 'style="object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))"></div>';
+  } else {
+    html += '<div style="width:56px;height:56px;border-radius:12px;background:'
+      + club.color+';display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;'
+      + 'box-shadow:0 4px 14px '+club.color+'44">🏟</div>';
+  }
   // Infos club
   html += '<div style="flex:1;min-width:0">';
   html += '<div style="font-size:22px;font-weight:900;color:var(--fg);letter-spacing:.5px">'+club.name+(typeof _teamScopeLabel==='function'?_teamScopeLabel():'')+'</div>';
@@ -3471,19 +3493,17 @@ function renderCareerDirector(el){
 
   // Style onglet actif (après injection DOM)
   function setActiveTab(tab){
-    const accent = (region && region.color) ? region.color : 'var(--gold)';
+    const accent = club.color || (region && region.color) || '#f0c028';
     document.querySelectorAll('[id^="cdtab-"]').forEach(function(b){
-      b.style.borderBottomColor='transparent';
       b.style.color='var(--muted)';
       b.style.background='var(--dark)';
       b.style.boxShadow='none';
     });
     const active = document.getElementById('cdtab-'+tab);
     if(active){
-      active.style.borderBottomColor=accent;
       active.style.color='#fff';
-      active.style.background='linear-gradient(180deg,rgba(255,255,255,0.04),transparent)';
-      active.style.boxShadow='inset 0 -6px 10px -8px '+accent;
+      active.style.background=accent;
+      active.style.boxShadow='0 2px 8px '+accent+'55';
     }
   }
 
@@ -3504,9 +3524,18 @@ function renderCareerDirectorTab(tab){
   // Un manager ne peut pas ouvrir un onglet réservé aux dirigeants (infra,
   // sponsors, finances) — on le renvoie vers la Vue.
   if(typeof _tabAllowed === 'function' && !_tabAllowed(tab)) tab = 'overview';
-  document.querySelectorAll('[id^="cdtab-"]').forEach(function(b){b.classList.remove('btng');});
+  // Onglet actif : capsule teintée par la couleur du club (cohérent avec le
+  // rendu initial de setActiveTab). On évite la classe .btng (fond or fixe).
+  const _tabAccent = (club && club.color) || '#f0c028';
+  document.querySelectorAll('[id^="cdtab-"]').forEach(function(b){
+    b.style.color='var(--muted)'; b.style.background='var(--dark)'; b.style.boxShadow='none';
+  });
   const activeBtn = document.getElementById('cdtab-'+tab);
-  if(activeBtn) activeBtn.classList.add('btng');
+  if(activeBtn){
+    activeBtn.style.color='#fff';
+    activeBtn.style.background=_tabAccent;
+    activeBtn.style.boxShadow='0 2px 8px '+_tabAccent+'55';
+  }
   if(tab==='overview') el.innerHTML = _renderDirectorOverview();
   else if(tab==='squad') el.innerHTML = _renderDirectorSquad();
   else if(tab==='mercato') el.innerHTML = _renderDirectorMercato();

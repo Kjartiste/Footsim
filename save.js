@@ -413,6 +413,13 @@ function startCareerDirector(regionId, clubId, nationId){
     const pt=PILIER_TEAMS.find(function(t){ return t.name===clubName; });
     if(pt && pt.badge) clubBadge = pt.badge;
   }
+  // Club créé de zéro (ou club existant sans blason) : on génère un blason
+  // vectoriel DÉTERMINISTE à partir du nom → stable entre sessions, et affiché
+  // partout (bannière, classements, buteurs) via BadgeCache, au lieu de l'emoji.
+  if(!clubBadge && typeof BadgeGenerator!=='undefined'){
+    try{ clubBadge = BadgeGenerator.fromSeed(clubName, {colors:[clubColor,'#ffffff','#f0c028']}); }
+    catch(e){ clubBadge = null; }
+  }
   // Niveau de départ : si on REPREND un club existant, on prend SON niveau
   // réel (sa division), pas le plus bas de la région. Sinon (club créé), on
   // démarre en bas de la pyramide régionale.
