@@ -556,6 +556,17 @@ input[type=range]:focus{outline:none}
   </div>
 </div>
 
+<!-- MAN-DOWN MODAL (réorganisation après exclusion) -->
+<div class="htoverlay" id="mandown-modal" style="display:none">
+  <div class="htmodal" style="width:420px">
+    <div class="ht-title" style="color:#e02030">🟥 Un joueur exclu</div>
+    <div class="ht-hint" style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--muted);text-align:center;margin:6px 0 14px;letter-spacing:.5px">
+      Ton équipe joue à 6. Choisis une formation à 5 joueurs de champ pour te réorganiser.
+    </div>
+    <div id="mandown-options" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+  </div>
+</div>
+
 <!-- SUB MODAL (mid-game) -->
 <div class="moverlay" id="sub-modal">
   <div class="modal">
@@ -622,6 +633,7 @@ input[type=range]:focus{outline:none}
 <script src="ia.js"></script>
 <script src="visual.js"></script>
 <script src="walkout.js"></script>
+<script src="devtools.js"></script>
 <script src="record.js"></script>
 <script src="badges.js"></script>
 <script src="staff.js"></script>

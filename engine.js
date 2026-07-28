@@ -1115,6 +1115,10 @@ function physStep(dt,rawDt){
   // Ball
   const b=G.ball;
   const own=ownerP();
+  // Filet de sécurité : si G.owner pointe vers un joueur qui n'est plus sur le
+  // terrain (exclu/blessé), ownerP() renvoie null. On libère alors le ballon
+  // pour qu'il redevienne récupérable au lieu de rester "possédé" par un fantôme.
+  if(G.owner && !own){ const _ghost=G.owner; G.owner=null; allP().forEach(p=>{ if(p.id===_ghost) p.hasBall=false; }); }
   if(own&&own.hasBall){
     b.x=lerp(b.x,own.x+own.vx*dt*.5,.26);
     b.y=lerp(b.y,own.y+own.vy*dt*.5,.26);

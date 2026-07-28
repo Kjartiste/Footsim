@@ -1,6 +1,37 @@
 // ═══════════════════════════════════════════════════
 // IA.JS — IA, décisions, sorts, buts
 // ═══════════════════════════════════════════════════
+
+// ── RÉORGANISATION APRÈS EXCLUSION ─────────────────────────────────────────
+// Appelé quand l'équipe `ti` vient de subir une exclusion (elle passe à 6).
+// Équipe humaine → ouvre une petite fenêtre de choix (4 formations à 5 de
+// champ). Équipe IA → choisit directement une formation sensée selon le score.
+function onPlayerSentOff(ti){
+  try{
+    if(!teams[ti]) return;
+    // Déterminer si l'équipe est humaine.
+    let human=false;
+    try{ human = Array.isArray(G._humanTeams) ? !!G._humanTeams[ti] : (ti===0); }catch(e){ human=(ti===0); }
+    if(human && typeof window.openManDownWindow==='function'){
+      window.openManDownWindow(ti);
+    } else {
+      // IA : choix automatique. Si menée ou à égalité tardive → plus offensif ;
+      // si en tête → bloc défensif. Par défaut, équilibré (2-2-1).
+      let pick='221';
+      try{
+        const my=G.scores[ti], opp=G.scores[1-ti];
+        if(my<opp) pick = (G.minute>65?'131':'212');   // menée : chercher à revenir
+        else if(my>opp) pick='311';                    // devant : sécuriser
+        else pick = (G.minute>70?'311':'221');         // nul : prudence en fin de match
+      }catch(e){}
+      if(typeof applyManDownFormation==='function') applyManDownFormation(ti, pick);
+      const fn=(window.MANDOWN_FORMS&&window.MANDOWN_FORMS[pick])?window.MANDOWN_FORMS[pick].n:pick;
+      logEvent(`${teams[ti].name} se réorganise en ${fn}`, teams[ti].color+'aa');
+    }
+  }catch(e){}
+}
+if(typeof window!=='undefined') window.onPlayerSentOff=onPlayerSentOff;
+
 function setPhase(ph){
   G.phase=ph;G.phTick=0;
   G._phaseStart=(typeof performance!=='undefined'?performance.now():Date.now()); // horodatage début de phase
@@ -323,7 +354,7 @@ function aiDecide(dt=0.016){
           const cr=Math.random();
           if(opp&&cr<.14){
             opp.yc++;
-            if(opp.yc>=2){opp.red=true;showRedCard(opp);logEvent(`🟥 ${opp.name} EXPULSÉ !`,'#e02030');}
+            if(opp.yc>=2){opp.red=true;showRedCard(opp);logEvent(`🟥 ${opp.name} EXPULSÉ !`,'#e02030');onPlayerSentOff(dti);}
             else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
             if(Math.random()<0.12*(1-(carrier.s.res||50)/99)){injurePlayer(ati,carrier,true);}
           } else { logEvent(`Faute sur ${carrier.name}`,'#f0c028'); }
@@ -1152,7 +1183,7 @@ function aiDecide(dt=0.016){
         const cr=Math.random();
         if(cr<.08&&opp){
           opp.yc++;
-          if(opp.yc>=2&&!hasRed(dti)){opp.red=true;showRedCard(opp);logEvent(`🟥 ${opp.name} EXPULSÉ ! (équipe à 6)`,'#e02030');}else if(opp.yc>=2){logEvent(`🟨 ${opp.name} — 2e jaune (limite atteinte)`,'#f0c028');}
+          if(opp.yc>=2&&!hasRed(dti)){opp.red=true;showRedCard(opp);logEvent(`🟥 ${opp.name} EXPULSÉ ! (équipe à 6)`,'#e02030');onPlayerSentOff(dti);}else if(opp.yc>=2){logEvent(`🟨 ${opp.name} — 2e jaune (limite atteinte)`,'#f0c028');}
           else logEvent(`🟨 Carton jaune — ${opp.name}`,'#f0c028');
         } else logEvent(`Faute sur ${carrier.name}`,'#f0c028');
         // Loi de l'avantage (voir plus haut) : faute mineure hors zone
@@ -1640,6 +1671,10 @@ function doSpell(carrier,ati,dti,sp,goalX){
   return ret;
 }
 function _doSpellRaw(carrier,ati,dti,sp,goalX){
+  // Garde-fou d'entrée : _doSpellRaw est parfois appelé directement (pas via
+  // doSpell). On refuse tout sort/porteur invalide pour ne JAMAIS planter la
+  // boucle de jeu (un sort undefined ou un porteur nul est simplement ignoré).
+  if(!sp || typeof sp.mp!=='number' || !carrier){ return; }
   // ── Attributs magiques (mode Complet, sinon neutres) ─────────────────
   // Coût en mana modulé par le "Contrôle du mana" + trait "Mage-né".
   let _mCost = (typeof magCostMult==='function') ? magCostMult(carrier) : 1;
@@ -2303,7 +2338,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const tgt=pick(byR(dti,'ATT','MO','MC','DC').filter(p=>Math.hypot(p.x-carrier.x,p.y-carrier.y)<12));
     if(tgt){
       carrier.yc=(carrier.yc||0)+1;
-      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
+      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');onPlayerSentOff(ati);}
       else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');
       if(isMal){tgt.injLevel=3;tgt.injT=irng(8,15)*60;tgt.hp=Math.max(0,tgt.hp-25);G.ptcl.push({t:'lbl',x:tgt.x,y:tgt.y-5,tx:'💀 MALÉFIQUE !',col:sp.col,l:60,m:60,sz:1.4});logEvent(`💀 ${carrier.name} — Tacle Maléfique ! ${tgt.name} hors match !`,sp.col);}
       else{injurePlayer(dti,tgt,true);G.ptcl.push({t:'lbl',x:tgt.x,y:tgt.y-5,tx:'💢 TACLE !',col:sp.col,l:50,m:50,sz:1.3});logEvent(`💢 ${carrier.name} — Tacle malveillant sur ${tgt.name} !`,sp.col);}
@@ -2312,7 +2347,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
       freeB();G.atkTi=dti;setPhase('FREEKICK');
     }else{
       carrier.yc=(carrier.yc||0)+1;
-      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
+      if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');onPlayerSentOff(ati);}
       else logEvent(`🟨 Carton jaune — ${carrier.name} (tacle dans le vide)`,'#f0c028');
       setPhase('BUILDUP');
     }
@@ -2363,7 +2398,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
       if(Math.random()<caughtP){
         logEvent(`🚨 Sifflé ! Main de ${carrier.name}`,'#e02030');
         carrier.yc=(carrier.yc||0)+1;
-        if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}
+        if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');onPlayerSentOff(ati);}
         else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');
         G.atkTi=dti;
         if(inBox){const kicker=pick(byR(dti,'ATT','MO','MC'))||pick(actP(dti));if(kicker){giveB(kicker);setPhase('PENALTY_KICK');}logEvent(`⚡ PENALTY ${teams[dti].name} !`,teams[dti].color);}
@@ -2384,7 +2419,7 @@ function _doSpellRaw(carrier,ati,dti,sp,goalX){
     const r=Math.random();
     if(inBox&&r<0.25){logEvent(`🎭 PENALTY !`,teams[dti].color);G.atkTi=ati;setTimeout(()=>{const k=pick(byR(ati,'ATT','MO','MC'))||carrier;if(k){giveB(k);setPhase('PENALTY_KICK');}},600/speedMult);}
     else if(r<0.75){logEvent(`🎭 Coup franc !`,'#ff7043');G.atkTi=ati;setPhase('FREEKICK');}
-    else{carrier.yc=(carrier.yc||0)+1;if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');}else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');const o=pick(byR(dti,'DC','MC'));if(o){giveB(o);G.atkTi=dti;}setPhase('BUILDUP');}
+    else{carrier.yc=(carrier.yc||0)+1;if(carrier.yc>=2&&!hasRed(ati)){carrier.red=true;showRedCard(carrier);logEvent(`🟥 ${carrier.name} EXPULSÉ !`,'#e02030');onPlayerSentOff(ati);}else logEvent(`🟨 Carton jaune — ${carrier.name}`,'#f0c028');const o=pick(byR(dti,'DC','MC'));if(o){giveB(o);G.atkTi=dti;}setPhase('BUILDUP');}
 
   } else if(sp.id==='simulation'){
     // Chute théâtrale

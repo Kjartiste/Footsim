@@ -380,6 +380,19 @@ const FORM_ROLES={
   '1332':['GB','DC','DD','DG','MOG','MO','MOD'],
 };
 
+// ── FORMATIONS À 5 JOUEURS DE CHAMP (après une exclusion : GB + 5) ──────────
+// Quand une équipe passe à 6 (un expulsé), les positions ne collent plus (ex.
+// un 1-4-1 qui perd son unique défenseur → 0 défenseur). On propose alors une
+// formation à 5 joueurs de champ, sensée, pour se réorganiser.
+const MANDOWN_FORMS={
+  '221': { n:'2-2-1', d:'Équilibré à 6',            roles:['GB','DC','DD','MC','MC','ATT'] },
+  '212': { n:'2-1-2', d:'Contre rapide',            roles:['GB','DC','DD','MDC','ATT','ATT'] },
+  '311': { n:'3-1-1', d:'Bloc défensif',            roles:['GB','DG','DC','DD','MC','ATT'] },
+  '131': { n:'1-3-1', d:'Milieu dense',             roles:['GB','DC','MC','MC','MC','ATT'] },
+};
+// Ordre d'affichage des 4 options dans la fenêtre.
+const MANDOWN_ORDER=['221','212','311','131'];
+
 // ── Sort par défaut cohérent avec le poste (remplace le 'tech' universel) ──
 // Renvoie un tableau [sortId] varié selon le poste. Déterministe si un seed est
 // fourni (nom du joueur), sinon aléatoire léger. Tous les ids existent dans SPELLS.
@@ -804,7 +817,15 @@ const strat=ti=>{
   if(mode==='attack'){ base.atk*=1.40; base.def*=0.65; base.press=Math.min(1.5,base.press+0.3); base.attDepth=(base.attDepth||0)+8; base.runFreq=Math.min(2.5,(base.runFreq||1)+0.8); }
   return base;
 };
-const ownerP=()=>G.owner?allP().find(p=>p.id===G.owner):null;
+const ownerP=()=>{
+  if(!G.owner) return null;
+  const p=allP().find(q=>q.id===G.owner);
+  // Un joueur exclu (rouge) ou sorti (blessure grave) ne peut pas être le
+  // porteur : s'il l'était encore par erreur, on considère le ballon libre.
+  // Évite qu'un sort ou une action cible un joueur qui n'est plus sur le terrain.
+  if(!p || p.red || p.hp<=0 || p.injLevel>=3){ return null; }
+  return p;
+};
 // Camp d'un joueur : les objets joueur ne portent pas d'indice d'équipe, on le
 // déduit de l'effectif dans lequel il figure. Renvoie 0, 1, ou -1 si introuvable
 // (joueur retiré, sort de domination en cours…).
@@ -931,6 +952,32 @@ function applyFormationRoles(ti){
   if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
   if(typeof restoreTeamRoles==='function') restoreTeamRoles(ti);
 }
+
+// Réorganise une équipe réduite à 6 (après une exclusion) selon une formation
+// à 5 joueurs de champ (formId ∈ MANDOWN_FORMS). Réassigne les postes des
+// joueurs NON exclus/actifs pour éviter les configurations absurdes (0 déf…).
+function applyManDownFormation(ti, formId){
+  const T=teams[ti]; if(!T||!T.players) return;
+  const form=MANDOWN_FORMS[formId]; if(!form) return;
+  // Joueurs encore sur le terrain (hors exclus/blessés graves).
+  const active=T.players.filter(p=>p&&!p.red&&p.hp>0&&(p.injLevel==null||p.injLevel<3));
+  if(!active.length) return;
+  // Gardien d'abord, puis les joueurs de champ dans l'ordre.
+  const gk=active.find(p=>p.pos==='GB')||active[0];
+  const outfield=active.filter(p=>p!==gk);
+  const roles=form.roles;                 // ['GB','DC','DD','MC','MC','ATT']
+  gk.pos='GB'; gk.posDef='GB'; gk.posAtk='GB';
+  // Assigner les 5 postes de champ aux joueurs restants (dans l'ordre dispo).
+  const fieldRoles=roles.slice(1);        // sans le GB
+  outfield.slice(0,fieldRoles.length).forEach((p,i)=>{
+    p.pos=fieldRoles[i]; p.posDef=fieldRoles[i]; p.posAtk=fieldRoles[i];
+  });
+  // Mémoriser la formation réduite en cours (pour l'affichage / le moteur).
+  T._manDownForm=formId;
+  if(typeof ensureRoleArrays==='function') ensureRoleArrays(ti);
+  if(typeof restoreTeamRoles==='function') restoreTeamRoles(ti);
+}
+if(typeof window!=='undefined'){ window.applyManDownFormation=applyManDownFormation; window.MANDOWN_FORMS=MANDOWN_FORMS; window.MANDOWN_ORDER=MANDOWN_ORDER; }
 
 function formBase(ti,pi){
   const T = teams[ti];

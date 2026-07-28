@@ -1300,3 +1300,46 @@ function renderStars(n,col){
   for(let i=0;i<5;i++)h+='<span style="color:'+(i<n?col:'rgba(255,255,255,.15)')+';font-size:14px">\u2605</span>';
   return h;
 }
+
+// ── FENÊTRE DE RÉORGANISATION APRÈS EXCLUSION ──────────────────────────────
+// Ouvre une petite fenêtre (façon mi-temps) proposant 4 formations à 5 joueurs
+// de champ. Met le jeu en pause le temps du choix, applique et reprend.
+function openManDownWindow(ti){
+  try{
+    const modal=document.getElementById('mandown-modal');
+    const wrap=document.getElementById('mandown-options');
+    if(!modal||!wrap||typeof MANDOWN_FORMS==='undefined'){
+      // Repli : si l'UI n'est pas dispo, on applique une formation par défaut.
+      if(typeof applyManDownFormation==='function') applyManDownFormation(ti,'221');
+      return;
+    }
+    // Pause du match pendant le choix.
+    window._manDownPrevRunning = G.running;
+    G.running=false; G._paused=true;
+    const order=(typeof MANDOWN_ORDER!=='undefined')?MANDOWN_ORDER:Object.keys(MANDOWN_FORMS);
+    wrap.innerHTML = order.map(id=>{
+      const f=MANDOWN_FORMS[id];
+      return `<button class="btn" style="flex-direction:column;align-items:center;gap:3px;padding:14px 8px;justify-content:center"
+        onclick="chooseManDown(${ti},'${id}')">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:1px;color:var(--gold)">${f.n}</div>
+        <div style="font-size:9px;color:var(--muted)">${f.d}</div>
+      </button>`;
+    }).join('');
+    modal.style.display='flex';
+  }catch(e){
+    if(typeof applyManDownFormation==='function') applyManDownFormation(ti,'221');
+  }
+}
+function chooseManDown(ti, formId){
+  try{
+    if(typeof applyManDownFormation==='function') applyManDownFormation(ti, formId);
+    const f=(typeof MANDOWN_FORMS!=='undefined'&&MANDOWN_FORMS[formId])?MANDOWN_FORMS[formId].n:formId;
+    if(typeof logEvent==='function') logEvent(`Réorganisation en ${f}`, (teams[ti]?.color||'#fff')+'aa');
+  }catch(e){}
+  const modal=document.getElementById('mandown-modal');
+  if(modal) modal.style.display='none';
+  // Reprise du match si on l'avait mis en pause.
+  if(window._manDownPrevRunning){ G.running=true; G._paused=false; }
+  window._manDownPrevRunning=undefined;
+}
+if(typeof window!=='undefined'){ window.openManDownWindow=openManDownWindow; window.chooseManDown=chooseManDown; }
