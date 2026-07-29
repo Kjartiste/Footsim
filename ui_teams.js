@@ -250,7 +250,15 @@ function teamCardStats(teamRef){
   if(teamRef && Array.isArray(teamRef.players) && teamRef.players.length){
     squad = teamRef;
   } else if(key && typeof savedTeams!=='undefined'){
-    squad = savedTeams.find(t=>t && (t._presetId===key || t._presetId===teamRef.presetId || t.name===teamRef.name));
+    // Match strict : on n'accepte une correspondance que sur des identifiants
+    // NON vides, sinon deux équipes aux champs `undefined` collient sur le même
+    // squad (t._presetId===undefined matcherait toutes les entrées sans presetId).
+    const pid = (teamRef && (teamRef.presetId || teamRef._presetId)) || null;
+    const nm  = (teamRef && teamRef.name) || null;
+    squad = savedTeams.find(t=>t && (
+      (pid && (t._presetId===pid || t.presetId===pid)) ||
+      (nm && t.name===nm)
+    ));
   }
   // Pas d'effectif détaillé (équipe générée à la volée) → estimation par palier.
   if(!squad || !Array.isArray(squad.players) || !squad.players.length){
@@ -258,8 +266,13 @@ function teamCardStats(teamRef){
   }
 
   const all=[...squad.players, ...(squad.bench||[])];
-  const cacheKey = key + ':' + all.length;
-  if(_teamOvrCache[cacheKey]) return _teamOvrCache[cacheKey];
+  // Clé de cache VRAIMENT unique par équipe. Auparavant `key+':'+taille`
+  // provoquait une collision : deux équipes différentes de même taille
+  // d'effectif (fréquent) avec un `key` vide/partagé récupéraient le résultat
+  // mis en cache de la PREMIÈRE → toutes affichaient les mêmes notes.
+  const uniq = (teamRef && (teamRef._presetId || teamRef.presetId)) || (squad && squad._presetId) || (teamRef && teamRef.name) || (squad && squad.name) || '';
+  const cacheKey = uniq ? (uniq + ':' + all.length) : null;
+  if(cacheKey && _teamOvrCache[cacheKey]) return _teamOvrCache[cacheKey];
 
   const lines={def:[],mid:[],att:[]};
   let sum=0;
@@ -273,7 +286,7 @@ function teamCardStats(teamRef){
     ovr: Math.round(sum/all.length),
     att: avg(lines.att), mid: avg(lines.mid), def: avg(lines.def),
   };
-  _teamOvrCache[cacheKey]=res;
+  if(cacheKey) _teamOvrCache[cacheKey]=res;
   return res;
 }
 // Couleur d'un OVR (échelle FIFA : or / argent / bronze-ish adaptée au thème).
