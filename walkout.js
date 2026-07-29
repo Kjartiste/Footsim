@@ -70,12 +70,19 @@ window.startWalkout = function(atkTi, onDone){
 // que G._walkout existe. Déplace les joueurs vers leur cible du stage courant.
 window.tickWalkout = function(dt){
   const W = G._walkout; if(!W) return;
-  W.t += (dt||0.016);
+  // Le tout premier dt après le clic peut être aberrant (frame de reprise,
+  // onglet qui se réveille…). On le borne pour éviter un saut initial.
+  let d_t = dt || 0.016;
+  if(d_t > 0.05) d_t = 0.016;   // ignore les pics (>50 ms) au démarrage
+  W.t += d_t;
 
-  // Vitesse en unités-terrain PAR SECONDE (proportionnelle à dt), pour une
-  // durée d'entrée constante (~2-3 s) quel que soit le framerate.
+  // Vitesse en unités-terrain PAR SECONDE, avec une montée en régime douce sur
+  // la première demi-seconde (ease-in) : les joueurs accélèrent depuis l'arrêt
+  // au lieu de démarrer à pleine vitesse → plus de saccade au début.
   const speedPerSec = 38;
-  const step0 = Math.min(3, speedPerSec * (dt||0.016)); // borné pour éviter les sauts
+  const ramp = (W.stage===0) ? Math.min(1, W.t/0.5) : 1;   // 0→1 sur 0,5 s
+  const eased = ramp*ramp*(3-2*ramp);                       // smoothstep
+  const step0 = Math.min(3, speedPerSec * eased * d_t);
   let allArrived = true;
 
   W.list.forEach(fp=>{
@@ -88,8 +95,10 @@ window.tickWalkout = function(dt){
     if(d>0.4){
       allArrived=false;
       const step=Math.min(d, step0);
-      fp.p.vx = (dx/d)*step;
-      fp.p.vy = (dy/d)*step;
+      // Lissage de la vélocité (au lieu d'un saut instantané de vx/vy).
+      const nvx=(dx/d)*step, nvy=(dy/d)*step;
+      fp.p.vx += (nvx - fp.p.vx)*0.35;
+      fp.p.vy += (nvy - fp.p.vy)*0.35;
       fp.p.x += fp.p.vx;
       fp.p.y += fp.p.vy;
     } else {
