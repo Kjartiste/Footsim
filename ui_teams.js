@@ -222,23 +222,46 @@ function _seedFromName(str){
 // OVR de base attendu par palier/division, pour les équipes générées à la volée
 // (championnats Valoria/Pilier) qui n'ont pas d'effectif détaillé. Donne des
 // notes cohérentes et STABLES (mêmes valeurs à chaque affichage).
-function _tierBaseOvr(teamRef){
+//
+// Barème calé sur l'échelle réelle du jeu (7 crans, cf. _levelRank de board.js) :
+//   d1 (élite) ~88 · d2 ~80 · d3 ~73 · r1 ~60 · r2 ~50 · r3 ~42 · dh (district) ~33
+// Bornes globales 27..96 : le district des bas-fonds descend à ~27, l'élite pro
+// monte à ~96. Chaque équipe varie de façon stable (±7) autour du centre de son
+// niveau, de sorte que deux clubs d'une même division diffèrent sans se croiser
+// entre divisions.
+const _OVR_BY_LEVEL = { d1:88, d2:80, d3:73, r1:60, r2:50, r3:42, dh:33 };
+// Cas spécial « Le Pilier Céleste » : championnat de bon niveau européen
+// (Eredivisie / Liga Portugal / Ligue 1). On resserre ses pros autour de ~72-88
+// plutôt que la pleine échelle mondiale : d1≈84, d2≈79, d3≈74.
+const _OVR_BY_LEVEL_PILIER = { d1:84, d2:79, d3:74 };
+function _levelOf(teamRef){
+  // Priorité au champ level explicite ; sinon on infère depuis division/tier.
+  const raw = String((teamRef&&teamRef.level)||'').split('_')[0].toLowerCase();
+  if(_OVR_BY_LEVEL[raw]!=null) return raw;
   const tier=(teamRef&&teamRef.tier)||'regional';
-  // Fourchette centrale par palier.
-  const base = tier==='pro' ? 78 : tier==='regional' ? 64 : tier==='district' ? 52 : 60;
-  // Ajustement selon le "niveau" de division si disponible (D1>D2>…).
-  let divAdj = 0;
   const div = String((teamRef&&teamRef.division)||'');
   const m = div.match(/(\d+)/);
-  if(m){ divAdj = -(parseInt(m[1],10)-1)*3; } // chaque cran de division ≈ -3
-  // Variation stable par équipe : ±6.
+  const n = m ? parseInt(m[1],10) : 1;
+  if(tier==='pro')      return ['d1','d2','d3'][Math.min(n-1,2)] || 'd3';
+  if(tier==='regional') return ['r1','r2','r3'][Math.min(n-1,2)] || 'r2';
+  if(tier==='district') return 'dh';
+  return 'r2';
+}
+function _tierBaseOvr(teamRef){
+  const isPilier = (teamRef && (teamRef.region==='Le Pilier' ||
+    /pilier/i.test(String((teamRef&&teamRef.country)||''))));
+  const lvl = _levelOf(teamRef);
+  let center = (isPilier && _OVR_BY_LEVEL_PILIER[lvl]!=null)
+    ? _OVR_BY_LEVEL_PILIER[lvl]
+    : (_OVR_BY_LEVEL[lvl]!=null ? _OVR_BY_LEVEL[lvl] : 55);
+  // Variation stable par équipe : ±7 autour du centre du niveau.
   const seed = _seedFromName((teamRef&&teamRef.name)||'');
-  const jitter = (seed % 13) - 6;
-  const ovr = Math.max(38, Math.min(90, base + divAdj + jitter));
+  const jitter = (seed % 15) - 7;
+  const ovr = Math.max(27, Math.min(96, center + jitter));
   // Répartition att/mil/déf autour de l'OVR, variée mais déterministe.
-  const a = Math.max(35, Math.min(93, ovr + ((seed>>3)%7) - 3));
-  const md= Math.max(35, Math.min(93, ovr + ((seed>>6)%7) - 3));
-  const d = Math.max(35, Math.min(93, ovr + ((seed>>9)%7) - 3));
+  const a = Math.max(24, Math.min(97, ovr + ((seed>>3)%7) - 3));
+  const md= Math.max(24, Math.min(97, ovr + ((seed>>6)%7) - 3));
+  const d = Math.max(24, Math.min(97, ovr + ((seed>>9)%7) - 3));
   return { ovr:ovr, att:a, mid:md, def:d, approx:true };
 }
 // Renvoie {ovr, att, mid, def} pour une équipe (0-99). Utilise l'effectif réel
@@ -247,7 +270,11 @@ function teamCardStats(teamRef){
   const key = (teamRef && (teamRef.presetId || teamRef._presetId || teamRef.name)) || null;
   // Retrouver l'effectif complet.
   let squad = null;
-  if(teamRef && Array.isArray(teamRef.players) && teamRef.players.length){
+  // 1) Roster FIGÉ (roster.js) : source de vérité pour Valoria/Pilier.
+  const _R = (typeof FIXED_ROSTERS!=='undefined') ? FIXED_ROSTERS : (window.FIXED_ROSTERS||null);
+  if(_R && teamRef && teamRef.name && _R[teamRef.name]){
+    squad = _R[teamRef.name];
+  } else if(teamRef && Array.isArray(teamRef.players) && teamRef.players.length){
     squad = teamRef;
   } else if(key && typeof savedTeams!=='undefined'){
     // Match strict : on n'accepte une correspondance que sur des identifiants
@@ -286,6 +313,14 @@ function teamCardStats(teamRef){
     ovr: Math.round(sum/all.length),
     att: avg(lines.att), mid: avg(lines.mid), def: avg(lines.def),
   };
+  // Garde-fou : un effectif résolu qui ne fournit pas les trois lignes
+  // (att/mid/def) n'est pas un vrai effectif d'équipe pour cette carte — il a
+  // probablement été résolu par erreur (mauvais match) ou est un template
+  // partagé sans attaquant. Dans ce cas on préfère l'estimation par palier,
+  // variée et cohérente, plutôt qu'afficher "—" et des notes figées.
+  if(res.att==null || res.mid==null || res.def==null){
+    return _tierBaseOvr(teamRef);
+  }
   if(cacheKey) _teamOvrCache[cacheKey]=res;
   return res;
 }
@@ -338,12 +373,48 @@ function teamSelLoad(presetId){
 // Charge une équipe de division Valoria (VALORIA_TEAMS) dans un créneau. Son
 // effectif est généré à la volée, avec un niveau (OVR) échelonné selon le
 // palier : pro > régional > district. Le blason (déterministe) est appliqué.
+// ── ROSTER FIGÉ : hydratation ──────────────────────────────────────────
+// roster.js ne stocke que les données persistantes d'un joueur
+// (name/pos/ini/race/s/spells). hydratePlayer y rajoute le bloc d'état runtime
+// (position sur le terrain, animation, buffs, méta-match) attendu par le moteur.
+function hydratePlayer(src, tid, idx, onBench){
+  const PCY_ = (typeof PCY!=='undefined')?PCY:0;
+  return Object.assign({
+    id:`fx${tid}p${idx}`, img:'', _img:null,
+    x:-10, y:PCY_, vx:0, vy:0, tx:-10, ty:PCY_,
+    hp:100, mp:100, yc:0, red:false, stunT:0, hasBall:false,
+    injLevel:0, injT:0, mG:0, mSh:0, mTk:0, mSp:0,
+    _hm:0, _fm:0,
+    _spdDebuff:0,_charmed:0,_atkBuff:0,_pacified:0,_invis:0,_folie:0,_aile:0,_sixsens:0,_sylvestre:0,_dragon:0,
+    bobPhase:0, wPhaseX:0, wPhaseY:0, wSpeed:1.8,
+    runT:0, runTx:0, runTy:0, runCool:0, dribCurve:0, tackleCool:0,
+    onBench: !!onBench,
+  }, {
+    name:src.name, pos:src.pos, ini:src.ini||(src.name||'?').slice(0,2).toUpperCase(),
+    race:src.race||'human', s:Object.assign({},src.s), spells:(src.spells||[]).slice(),
+  });
+}
+// Renvoie {players,bench,reserves} hydratés depuis le roster figé, ou null.
+function fixedRosterFor(name, tid){
+  const R = (typeof FIXED_ROSTERS!=='undefined') ? FIXED_ROSTERS : (window.FIXED_ROSTERS||null);
+  if(!R || !R[name]) return null;
+  const raw = R[name];
+  let k = 0;
+  const hy = (arr, bench)=> (arr||[]).map(p=>hydratePlayer(p, tid, k++, bench));
+  return { players:hy(raw.players,false), bench:hy(raw.bench,true), reserves:hy(raw.reserves,false) };
+}
+
 function loadValoriaTeamIntoSlot(name, ti){
   const vt=(window.VALORIA_TEAMS||[]).find(t=>t.name===name)
         || (window.PILIER_TEAMS||[]).find(t=>t.name===name);
   if(!vt){ logEvent('❌ Équipe introuvable','#e02030'); return; }
-  const tierOvr = vt.tier==='pro'?70 : vt.tier==='regional'?60 : 52; // district plus faible
-  const gen = mkCupNPCTeamData({name:vt.name,color:vt.color,ovr:tierOvr}, Math.abs(_hashStr(vt.name))%9999);
+  // Effectif FIGÉ (roster.js) en priorité — stable, calibré par niveau.
+  // Repli sur la génération à la volée si le club n'est pas encore dans le roster.
+  let gen = fixedRosterFor(vt.name, ti);
+  if(!gen){
+    const tierOvr = vt.tier==='pro'?70 : vt.tier==='regional'?60 : 52;
+    gen = mkCupNPCTeamData({name:vt.name,color:vt.color,ovr:tierOvr}, Math.abs(_hashStr(vt.name))%9999);
+  }
   teams[ti].name = vt.name;
   teams[ti].color = vt.color;
   teams[ti].img = '';
