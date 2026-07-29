@@ -739,14 +739,14 @@ function closeLeagueEdit(){leagueEditId=null;leagueEditTeam=null;closeM();}
 // CUP MODE
 // ═══════════════════════════════════════════════════════════
 const CUP_FORMATS=[
-  {id:'elim',    name:'Élimination directe',              desc:"Tu perds, tu rentres chez toi. Un seul match par tour, sans filet de sécurité. Le format le plus brutal qui soit.",                                               type:'knockout',    legs:1, thirdPlace:false},
-  {id:'elim_3e', name:'Élim. directe + match de bronze',  desc:"Comme le format classique, mais les deux perdants des demies se retrouvent pour décider du troisième et quatrième place.",                                         type:'knockout',    legs:1, thirdPlace:true},
-  {id:'ar',      name:'Aller-retour',                     desc:"Match aller, match retour. C'est le score cumulé sur les deux matchs qui compte. En cas d'égalité parfaite, tirs au but pour désigner le vainqueur.",              type:'knockout',    legs:2, thirdPlace:false},
-  {id:'ar_fin',  name:'Aller-retour, finale sur un match',desc:"Aller-retour jusqu'en demi-finales, puis une grande finale disputée sur un seul match. Ce format a été longtemps utilisé en Copa Libertadores.",                  type:'knockout',    legs:2, singleFinal:true, thirdPlace:false},
-  {id:'gr_elim', name:'Phase de groupes + K.O. direct',   desc:"D'abord tout le monde joue en poule pour se jauger, puis les meilleurs s'éliminent directement. C'est le format de la Coupe du Monde et de l'Euro.",             type:'groups_ko',   legs:1, thirdPlace:true},
-  {id:'gr_ar',   name:'Phase de groupes + aller-retour',  desc:"Une poule pour commencer, puis chaque confrontation en phase éliminatoire se joue sur deux matchs. C'est le vrai format de la Ligue des Champions.",             type:'groups_ko',   legs:2, thirdPlace:false},
-  {id:'double',  name:'Double élimination',               desc:"Une défaite ne t'élimine pas tout de suite. Tu passes dans le tableau des perdants et tu peux encore remporter le titre. Deux défaites et c'est terminé.",       type:'double_elim', legs:1, thirdPlace:false},
-  {id:'gr_final',name:'Play-offs (poule finale)',          desc:"Deux poules initiales, puis les deux premiers de chaque groupe se retrouvent dans une poule finale de 4. Le classement de cette poule décide du vainqueur et de l'ordre des montées.",  type:'groups_final', legs:1, thirdPlace:false},
+  {id:'elim',    name:'Élimination directe',              desc:"Tu perds, tu rentres chez toi. Un match, pas de deuxième chance.",                                               type:'knockout',    legs:1, thirdPlace:false},
+  {id:'elim_3e', name:'Élim. directe + match de bronze',  desc:"Élimination directe. Les deux perdants des demies jouent pour le bronze.",                                         type:'knockout',    legs:1, thirdPlace:true},
+  {id:'ar',      name:'Aller-retour',                     desc:"Match aller, match retour. Le cumul décide, sinon tirs au but.",              type:'knockout',    legs:2, thirdPlace:false},
+  {id:'ar_fin',  name:'Aller-retour, finale sur un match',desc:"Aller-retour jusqu'aux demies, puis une finale sèche.",                  type:'knockout',    legs:2, singleFinal:true, thirdPlace:false},
+  {id:'gr_elim', name:'Phase de groupes + K.O. direct',   desc:"On se jauge en poules, puis c'est la guerre en éliminatoires.",             type:'groups_ko',   legs:1, thirdPlace:true},
+  {id:'gr_ar',   name:'Phase de groupes + aller-retour',  desc:"Poules, puis chaque tour se joue en aller-retour. Le format Ligue des Champions.",             type:'groups_ko',   legs:2, thirdPlace:false},
+  {id:'double',  name:'Double élimination',               desc:"Une défaite te sort pas. Tu tombes chez les perdants et tu peux encore tout rafler. Deux défaites, là c'est mort.",       type:'double_elim', legs:1, thirdPlace:false},
+  {id:'gr_final',name:'Play-offs (poule finale)',          desc:"Deux poules, puis les meilleurs se retrouvent dans une poule finale à 4.",  type:'groups_final', legs:1, thirdPlace:false},
 ];
 
 let cupState=null,cupCurrentMatch=null;

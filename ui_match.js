@@ -240,7 +240,7 @@ function htChangePos(ti,pi,newPos){
   // de formation : il prend les gants avec le malus habituel.
   if(newPos==='GB'&&p.pos!=='GB'&&!preMatch&&!p._emergencyGK){
     applyEmergencyGKMalus(p); // fixe p.pos='GB' + applique le malus
-    logEvent(`🧤⚠️ ${p.name} n'est pas gardien de formation — il prend les gants avec un malus !`,'#f0c028');
+    logEvent(`🧤⚠️ ${p.name} n'est pas gardien de formation. Il prend les gants avec un malus !`,'#f0c028');
   } else {
     p.pos=newPos;
   }
@@ -536,9 +536,9 @@ function renderModeScreen(){
   const out = document.getElementById('mode-out');
   if(!out) return;
   const modes = [
-    {id:'5v5',   n:'5 contre 5',   sub:'Foot à 5 · Futsal',       col:'#8840e0', field:'1 gardien + 4 joueurs', desc:'Format nerveux et rapide. Petits effectifs, beaucoup de duels, scores élevés. Le cœur du jeu en futsal.', icon:'⚡', featured:true, badge:'⚡ RAPIDE', tags:['⏱️ Matchs courts','🔥 Rythme intense','😎 Facile à prendre en main']},
-    {id:'7v7',   n:'7 contre 7',   sub:'Format classique',        col:'#f0c028', field:'1 gardien + 6 joueurs', desc:'Le mode historique de FootSim. Équilibre parfait entre tactique et action.', icon:'⚽', featured:true, badge:'⭐ POPULAIRE', tags:['⏱️ Durée moyenne','⚖️ Rythme équilibré','🎯 Le plus joué']},
-    {id:'11v11', n:'11 contre 11', sub:'Football à 11',           col:'#18c860', field:'1 gardien + 10 joueurs', desc:'Le vrai football à 11 dans toute sa profondeur. Grandes équipes, formations complètes, jeu de position et 3 changements max.', icon:'🏟️', tags:['⏱️ Matchs longs','🧠 Rythme posé','📈 Plus exigeant']},
+    {id:'5v5',   n:'5 contre 5',   sub:'Foot à 5 · Futsal',       col:'#8840e0', field:'1 gardien + 4 joueurs', desc:'Petits effectifs, beaucoup de duels, scores élevés.', icon:'⚡', featured:true, badge:'RAPIDE', tags:['Matchs courts','Rythme intense','Facile à prendre en main']},
+    {id:'7v7',   n:'7 contre 7',   sub:'Format classique',        col:'#f0c028', field:'1 gardien + 6 joueurs', desc:'Le mode historique de FootSim.', icon:'⚽', featured:true, badge:'POPULAIRE', tags:['Durée moyenne','Rythme équilibré','Le plus joué']},
+    {id:'11v11', n:'11 contre 11', sub:'Football à 11',           col:'#18c860', field:'1 gardien + 10 joueurs', desc:'Football à 11 complet. 3 changements max.', icon:'🏟️', tags:['Matchs longs','Rythme posé','Plus exigeant']},
   ];
   const cur = window.gameMode || '7v7';
   let h = '<div class="mode-head">Choisis ton mode</div>'
@@ -628,46 +628,45 @@ function renderSettings(){
   const modeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Mode de statistiques</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Choisis la profondeur du jeu. <b>Lite</b> : 6 statistiques simples, prise en main rapide — c'est le jeu classique.
-      <b>Complet</b> : des dizaines d'attributs détaillés (physique, technique, mental) façon manager. En Lite, les stats détaillées sont ignorées.
+      <b>Lite</b> 6 stats. <b>Complet</b> attributs détaillés (physique, technique, mental).
     </div>
     <div style="display:flex;gap:8px">
       <button onclick="setStatMode('lite')" style="flex:1;padding:12px 8px;border-radius:10px;cursor:pointer;border:2px solid ${!complet?'var(--gold)':'var(--b1)'};background:${!complet?'rgba(240,192,40,.14)':'var(--dark)'};color:${!complet?'var(--gold)':'var(--muted)'}">
-        <div style="font-size:15px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">⚡ LITE</div>
-        <div style="font-size:9px;margin-top:2px;opacity:.85">6 stats · simple & rapide</div>
+        <div style="font-size:15px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">LITE</div>
+        <div style="font-size:9px;margin-top:2px;opacity:.85">6 stats</div>
       </button>
       <button onclick="setStatMode('complet')" style="flex:1;padding:12px 8px;border-radius:10px;cursor:pointer;border:2px solid ${complet?'#8840e0':'var(--b1)'};background:${complet?'rgba(136,64,224,.16)':'var(--dark)'};color:${complet?'#b98cf0':'var(--muted)'}">
-        <div style="font-size:15px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">📊 COMPLET</div>
-        <div style="font-size:9px;margin-top:2px;opacity:.85">stats détaillées · profondeur</div>
+        <div style="font-size:15px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">COMPLET</div>
+        <div style="font-size:9px;margin-top:2px;opacity:.85">Attributs détaillés</div>
       </button>
     </div>
     <div style="font-size:9px;color:var(--muted);margin-top:10px;padding:7px 9px;background:var(--panel);border:1px solid var(--b1);border-radius:6px">
-      Mode actuel : <b style="color:${complet?'#b98cf0':'var(--gold)'}">${complet?'COMPLET':'LITE'}</b>${complet?' — les fiches joueurs affichent tous les attributs détaillés.':' — les fiches joueurs affichent les 6 statistiques de base.'}
+      Mode <b style="color:${complet?'#b98cf0':'var(--gold)'}">${complet?'COMPLET':'LITE'}</b>. ${complet?'Les fiches joueurs affichent tous les attributs détaillés.':'Les fiches joueurs affichent les 6 stats de base.'}
     </div>
   `);
   const camOn = !window.GS || window.GS.cameraFx!==false;
   const camCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Effets de caméra</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Secousses d'écran et zoom cinématique sur les temps forts (buts, gros sorts). Purement visuel. Désactive si tu préfères une vue stable ou sur un appareil moins puissant.
+      Secousses et zoom sur les temps forts.
     </div>
     <div style="display:flex;gap:8px">
       <button onclick="setCameraFx(true)" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${camOn?'var(--gold)':'var(--b1)'};background:${camOn?'rgba(240,192,40,.14)':'var(--dark)'};color:${camOn?'var(--gold)':'var(--muted)'}">
-        <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">🎬 ACTIVÉS</div>
+        <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">ACTIVÉS</div>
       </button>
       <button onclick="setCameraFx(false)" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${!camOn?'#8840e0':'var(--b1)'};background:${!camOn?'rgba(136,64,224,.16)':'var(--dark)'};color:${!camOn?'#b98cf0':'var(--muted)'}">
-        <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">⏸ DÉSACTIVÉS</div>
+        <div style="font-size:14px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">DÉSACTIVÉS</div>
       </button>
     </div>
   `);
   const saveCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Sauvegarde</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Exportez vos profils et carrières dans un fichier de secours, ou restaurez une sauvegarde. Utile pour changer d'appareil ou en cas de problème.
+      Exporte ou restaure tes sauvegardes.
     </div>
     <div style="display:flex;gap:8px">
-      <button onclick="exportSaveFile()" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--gold);background:rgba(240,192,40,.14);color:var(--gold);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">⬇ EXPORTER</button>
-      <button onclick="document.getElementById('save-import-input').click()" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--b2);background:var(--dark);color:var(--text);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">⬆ IMPORTER</button>
+      <button onclick="exportSaveFile()" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--gold);background:rgba(240,192,40,.14);color:var(--gold);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">EXPORTER</button>
+      <button onclick="document.getElementById('save-import-input').click()" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--b2);background:var(--dark);color:var(--text);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">IMPORTER</button>
     </div>
     <input id="save-import-input" type="file" accept="application/json,.json" style="display:none" onchange="importSaveFile(this)">
   `);
@@ -679,7 +678,7 @@ function renderSettings(){
   const textSizeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Taille du texte</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Grossit toute l'interface (texte, boutons, icônes) si c'est trop petit à ton goût.
+      Taille de l'interface.
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       ${tsBtn('normal','Normal')}
@@ -706,7 +705,7 @@ function renderSettings(){
   const themeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Thème</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:12px">
-      Six ambiances. Prends celle qui te ressemble.
+      Ambiance visuelle.
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       ${_themeDefs.map(t=>{
@@ -742,7 +741,7 @@ function renderSettings(){
   const diffCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Difficulté IA</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Règle directement la force des adversaires en carrière (championnat, coupes, amicaux, barrages). L'effet est appliqué aux stats adverses — tu le vois tout de suite dans l'OVR affiché à l'avant-match.
+      Force des adversaires en carrière.
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       ${diffBtn('easy')}${diffBtn('normal')}${diffBtn('hard')}${diffBtn('legend')}
@@ -756,15 +755,15 @@ function renderSettings(){
   const fsCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Affichage</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Cache le menu et le navigateur. Le jeu prend tout l'écran.
+      Le jeu occupe tout l'écran.
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div>
         <div style="font-size:11px;font-weight:800;color:var(--text)">Mode plein écran</div>
-        <div style="font-size:8px;color:var(--muted);margin-top:1px">${fsSupported?'Échap pour quitter.':'Non pris en charge par ce navigateur (iOS Safari) : le menu sera simplement masqué.'}</div>
+        <div style="font-size:8px;color:var(--muted);margin-top:1px">${fsSupported?'Échap pour quitter.':'Non pris en charge sur iOS Safari. Le menu sera simplement masqué.'}</div>
       </div>
       <button onclick="toggleTheaterMode()" style="flex-shrink:0;padding:8px 12px;border-radius:9px;cursor:pointer;border:2px solid ${fsOn?'var(--gold)':'var(--b1)'};background:${fsOn?'rgba(240,192,40,.14)':'var(--dark)'};color:${fsOn?'var(--gold)':'var(--muted)'}">
-        <div style="font-size:11px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;white-space:nowrap">${fsOn?'⛶ QUITTER':'⛶ ACTIVER'}</div>
+        <div style="font-size:11px;font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;white-space:nowrap">${fsOn?'QUITTER':'ACTIVER'}</div>
       </button>
     </div>
   `);
@@ -773,7 +772,7 @@ function renderSettings(){
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
       Les bases en quelques minutes : modes, équipes, tactique, sorts, carrière.
     </div>
-    <button onclick="if(typeof startTutorial==='function')startTutorial()" style="width:100%;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--gold);background:rgba(240,192,40,.14);color:var(--gold);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">🎓 REVOIR LA VISITE GUIDÉE</button>
+    <button onclick="if(typeof startTutorial==='function')startTutorial()" style="width:100%;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--gold);background:rgba(240,192,40,.14);color:var(--gold);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">REVOIR LA VISITE GUIDÉE</button>
   `);
   out.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;padding:6px 4px 10px">⚙️ Paramètres</div>
@@ -790,7 +789,7 @@ function renderSettings(){
       return card(`
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Ambiance cinéma</div>
         <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-          Vignette douce et halos de projecteurs pour une ambiance de match en nocturne. Purement esthétique — désactive pour une image plus plate ou sur un appareil moins puissant.
+          Vignette et halos de projecteurs en match.
         </div>
         <div style="display:flex;gap:8px">
           <button onclick="toggleCinemaFx();renderSettings()" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?'var(--gold)':'var(--b1)'};background:${on?'rgba(240,192,40,.14)':'var(--dark)'};color:${on?'var(--gold)':'var(--muted)'}">
@@ -808,7 +807,7 @@ function renderSettings(){
       return card(`
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Son du match</div>
         <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-          Ambiance de foule, sifflets, bruits de frappe et montée sur les buts. Le son démarre après ton premier clic (exigence du navigateur).
+          Foule, sifflets et ambiance de match.
         </div>
         <div style="display:flex;gap:8px;margin-bottom:10px">
           <button onclick="if(window.gameAudio&&!window.gameAudio.isEnabled())window.gameAudio.toggle();renderSettings()" style="flex:1;padding:10px 8px;border-radius:10px;cursor:pointer;border:2px solid ${on?'var(--gold)':'var(--b1)'};background:${on?'rgba(240,192,40,.14)':'var(--dark)'};color:${on?'var(--gold)':'var(--muted)'}">
