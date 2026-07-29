@@ -706,7 +706,7 @@ function renderSettings(){
   const themeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Thème</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:12px">
-      Choisis ton ambiance : du sombre classique aux dégradés manga/street. Le fond reste lisible, la couleur vit sur les bords.
+      Six ambiances. Prends celle qui te ressemble.
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       ${_themeDefs.map(t=>{
@@ -756,8 +756,7 @@ function renderSettings(){
   const fsCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Affichage</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Le plein écran masque le menu et l'interface du navigateur. L'image garde ses proportions
-      quelle que soit la résolution ou le format d'écran.
+      Cache le menu et le navigateur. Le jeu prend tout l'écran.
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div>
@@ -772,7 +771,7 @@ function renderSettings(){
   const tutoCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Visite guidée</div>
     <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Un rappel des bases de FootSim : modes, équipes, tactique, sorts et carrière. Idéal pour se rafraîchir la mémoire ou découvrir le jeu.
+      Les bases en quelques minutes : modes, équipes, tactique, sorts, carrière.
     </div>
     <button onclick="if(typeof startTutorial==='function')startTutorial()" style="width:100%;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid var(--gold);background:rgba(240,192,40,.14);color:var(--gold);font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">🎓 REVOIR LA VISITE GUIDÉE</button>
   `);
