@@ -3,6 +3,38 @@
 // Lignes 3870–9510 de l'ui.js d'origine.
 // ============================================================
 
+// ── ZONES DU CLASSEMENT DE LIGUE (réglable librement) ───────────────────
+// Chaque zone colore une barre à gauche des lignes concernées + apparaît dans
+// la légende. `from`/`to` sont des RANGS 1-based ; `to:-1` = jusqu'au dernier,
+// `to:-2` = avant-dernier, etc. Mets [] pour n'afficher aucune zone.
+// Exemple ligue à montée+Europe+relégation :
+//   {from:1,to:1, color:'#f0c028', label:'Champion'},
+//   {from:2,to:3, color:'#18c860', label:'Promotion'},
+//   {from:4,to:5, color:'#22b8cf', label:'Barrages'},
+//   {from:-2,to:-1,color:'#e02030', label:'Relégation'},
+const LEAGUE_ZONES = [
+  { from:1,  to:1,  color:'#f0c028', label:'Champion' },
+  { from:2,  to:3,  color:'#18c860', label:'Podium' },
+  { from:-1, to:-1, color:'#e02030', label:'Lanterne rouge' },
+];
+// Résout une zone (from/to éventuellement négatifs) en bornes concrètes.
+function _zoneBounds(z, total){
+  const f = z.from < 0 ? total + z.from + 1 : z.from;
+  const t = z.to   < 0 ? total + z.to   + 1 : z.to;
+  return { f:Math.min(f,t), t:Math.max(f,t) };
+}
+// Renvoie la zone (ou null) d'un rang 1-based.
+function _zoneForRank(rank1, total){
+  for(const z of LEAGUE_ZONES){ const b=_zoneBounds(z,total); if(rank1>=b.f && rank1<=b.t) return z; }
+  return null;
+}
+// hex (#rrggbb) → rgba avec alpha, pour teinter légèrement le fond d'une ligne.
+function _hexA(hex, a){
+  const m=/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex||'');
+  if(!m) return 'transparent';
+  return 'rgba('+parseInt(m[1],16)+','+parseInt(m[2],16)+','+parseInt(m[3],16)+','+a+')';
+}
+
 function saveLeague(){
   _safeLSSet('footsim7v7_league',leagueState);
   // Sauvegarder aussi dans le profil actif si possible
@@ -390,23 +422,41 @@ function renderLeague(){
     '<label class="btn" style="flex:1;justify-content:center;font-size:10px;cursor:pointer" title="Importer">⬆<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label>'+
     '</div>';
   // Standings
-  h+='<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:3px">Classement</div>'+
-    '<div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;overflow:hidden;margin-bottom:8px">'+
-    '<div style="display:grid;grid-template-columns:14px 1fr 18px 18px 18px 18px 22px 24px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1)">'+
-    ['#','Équipe','J','V','N','D','Dif','Pts',''].map((l,i)=>'<span style="font-size:8px;color:var(--muted);text-align:'+(i>1?'center':'left')+'">'+(i===7?'<b style="color:var(--gold)">'+l+'</b>':l)+'</span>').join('')+
+  const total = sorted.length;
+  const medals = ['🥇','🥈','🥉'];
+  // En-tête premium ligne (barre verticale or + titre) — style ligue, distinct
+  // des headers de groupe de coupe (pastille lettrée).
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
+     '<span style="width:4px;height:20px;border-radius:2px;background:var(--gold)"></span>'+
+     '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:17px;font-weight:900;letter-spacing:1.5px;color:var(--fg);text-transform:uppercase;line-height:1">Classement</span>'+
+     '<span style="flex:1;height:2px;background:linear-gradient(90deg,var(--b2),transparent);border-radius:2px"></span>'+
+     '</div>'+
+    '<div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;overflow:hidden;margin-bottom:6px">'+
+    '<div style="display:grid;grid-template-columns:4px 14px 1fr 16px 16px 16px 16px 20px 20px 22px 24px 22px;gap:0 2px;padding:3px 6px 3px 2px;border-bottom:1px solid var(--b1)">'+
+    ['','#','Équipe','J','V','N','D','BP','BC','Dif','Pts',''].map((l,i)=>'<span style="font-size:8px;color:var(--muted);text-align:'+(i>2?'center':'left')+'">'+(l==='Pts'?'<b style="color:var(--gold)">'+l+'</b>':l)+'</span>').join('')+
     '</div>'+
     sorted.map((s,rank)=>{
-      const t=leagueState.teams.find(x=>x.id===s.id),gd=s.GF-s.GA,isTop=rank===0&&s.P>0;
-      return '<div style="display:grid;grid-template-columns:14px 1fr 18px 18px 18px 18px 22px 24px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1);align-items:center;cursor:pointer;background:'+(isTop?'rgba(240,192,40,.04)':'transparent')+'" onclick="showStandingDetail(\'league\','+s.id+')" title="Voir les détails">'+
-        '<span style="font-size:9px;color:var(--muted);font-family:\'Barlow Condensed\',sans-serif;font-weight:700">'+(rank+1)+'</span>'+
+      const t=leagueState.teams.find(x=>x.id===s.id),gd=s.GF-s.GA;
+      const rank1=rank+1, zone=_zoneForRank(rank1,total);
+      const isTop=rank===0&&s.P>0;
+      const nameCol = isTop?'var(--gold)':(zone&&rank<3?zone.color:'var(--text)');
+      const rowBg = isTop?'rgba(240,192,40,.06)':(zone?_hexA(zone.color,.05):'transparent');
+      const badge = (rank<3)?('<span style="font-size:11px;margin-right:1px">'+medals[rank]+'</span>'):'<span style="font-size:9px;color:var(--muted);font-family:\'Barlow Condensed\',sans-serif;font-weight:700">'+rank1+'</span>';
+      return '<div style="display:grid;grid-template-columns:4px 14px 1fr 16px 16px 16px 16px 20px 20px 22px 24px 22px;gap:0 2px;padding:3px 6px 3px 0;border-bottom:1px solid var(--b1);align-items:center;cursor:pointer;background:'+rowBg+'" onclick="showStandingDetail(\'league\','+s.id+')" title="Voir les détails">'+
+        '<span style="width:4px;height:100%;min-height:16px;border-radius:2px;background:'+(zone?zone.color:'transparent')+'"></span>'+
+        '<span style="text-align:center">'+badge+'</span>'+
         '<span style="display:flex;align-items:center;gap:4px;min-width:0"><span style="width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+((typeof teamBadgeRefHTML==='function')?teamBadgeRefHTML(t,18):'<span style="width:5px;height:5px;border-radius:50%;background:'+t.color+'"></span>')+'</span>'+
-        '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+(isTop?'var(--gold)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+t.name+'</span></span>'+
-        [s.P,s.W,s.D,s.L].map(v=>'<span style="font-size:9px;text-align:center">'+v+'</span>').join('')+
+        '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:'+(rank<3?'800':'700')+';color:'+nameCol+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+t.name+'</span></span>'+
+        [s.P,s.W,s.D,s.L,s.GF,s.GA].map(v=>'<span style="font-size:9px;text-align:center">'+v+'</span>').join('')+
         '<span style="font-size:9px;text-align:center;color:'+(gd>0?'var(--green)':gd<0?'var(--red)':'var(--muted)')+'">'+( gd>0?'+':'')+gd+'</span>'+
         '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:12px;font-weight:900;text-align:center;color:'+(isTop?'var(--gold)':'var(--text)')+'">'+s.Pts+'</span>'+
-        '<span style="text-align:center"><button onclick="event.stopPropagation();openLeagueTeamEdit('+s.id+')" style="background:transparent;border:1px solid var(--b1);border-radius:3px;padding:1px 3px;cursor:pointer;font-size:9px;color:var(--muted)" title="Modifier l\'équipe">✏️</button></span>'+
+        '<span style="text-align:center"><button onclick="event.stopPropagation();openLeagueTeamEdit('+s.id+')" style="background:transparent;border:1px solid var(--b1);border-radius:3px;padding:1px 3px;cursor:pointer;font-size:9px;color:var(--muted)" title="Modifier l\'équipe">'+((typeof ICON!=='undefined')?ICON('edit',{size:10}):'✏️')+'</button></span>'+
         '</div>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'+
+    // Légende des zones.
+    (LEAGUE_ZONES.length?'<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:0 2px">'+
+      LEAGUE_ZONES.map(z=>'<span style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted)"><span style="width:8px;height:8px;border-radius:2px;background:'+z.color+'"></span>'+z.label+'</span>').join('')+
+    '</div>':'');
   // Top Scorers / Assists / Cards
   const ps=leagueState.playerStats||{};
   const allPS=Object.values(ps);
