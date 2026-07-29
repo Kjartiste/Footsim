@@ -960,11 +960,14 @@ function createCup(formatId,count,savedIdxs,npcSel){
     state.bracket=null;
     if(fmt.thirdPlace)state.thirdPlaceMatch=mkTie(null,null,1);
   } else if(fmt.type==='groups_final'){
-    // Play-offs : 2 poules initiales → poule finale des 2 premiers de chaque groupe.
+    // Play-offs : poules initiales → poule finale des qualifiés de chaque groupe.
+    // Respecte le nombre de poules (gc), d'équipes par poule (pg) et de
+    // qualifiés par poule (advance) choisis dans les réglages.
     state.phase='groups';
-    const gfCfg={gc:2,pg:cfg.pg,advance:2};
+    const adv=Math.max(1,Math.min(_cupAdvance,cfg.pg-1));
+    const gfCfg={gc:cfg.gc,pg:cfg.pg,advance:adv};
     state.groupCfg=gfCfg;
-    state.groups=buildGroupsAuto(ids,{gc:2,pg:cfg.pg},groupLegs).map(g=>({...g,phase:'initial'}));
+    state.groups=buildGroupsAuto(ids,{gc:cfg.gc,pg:cfg.pg},groupLegs).map(g=>({...g,phase:'initial'}));
     state.finalGroupLegs=groupLegs;
     state.bracket=null;
   } else if(fmt.type==='double_elim'){
@@ -1289,9 +1292,10 @@ function checkGroupsFinalDone(){
     const initials=groups.filter(g=>g.phase==='initial');
     if(!initials.length||!initials.every(g=>g.fixtures.every(f=>f.played)))return;
     const qualified=[];
+    const advN=(cupState.groupCfg&&cupState.groupCfg.advance)||2;
     initials.forEach(g=>{
       const s=sortStd(g.standings);
-      for(let r=0;r<Math.min(2,s.length);r++)qualified.push(s[r].id);
+      for(let r=0;r<Math.min(advN,s.length);r++)qualified.push(s[r].id);
     });
     if(qualified.length<2)return;
     const legs=cupState.finalGroupLegs||1;

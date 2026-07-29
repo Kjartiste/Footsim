@@ -37,7 +37,7 @@
     {
       target: ".ntab[onclick*=\"'mode'\"]", nav: 'mode',
       title: 'Choisir un mode',
-      body: "Tout commence ici. FootSim se joue surtout en <b>Futsal 5v5</b> et en <b>7v7</b> — rapides et spectaculaires. Le 11v11 existe aussi pour le football classique."
+      body: "Tout commence ici. FootSim se joue surtout en <b>Futsal 5v5</b> et en <b>7v7</b>. Le 11v11 existe aussi pour le football classique."
     },
     {
       target: ".ntab[onclick*=\"'setup'\"]", nav: 'setup',
@@ -47,17 +47,17 @@
     {
       target: ".ntab[onclick*=\"'teamsel'\"]", nav: 'teamsel',
       title: 'Sélectionner des équipes',
-      body: "Charge des équipes toutes faites : chaque <b>nation</b> (Sirènes, Valoria, le Pilier Céleste, Rorang…) a son identité et ses forces. À toi de bâtir ton affiche."
+      body: "Charge des équipes toutes faites. Chaque <b>nation</b> (Sirènes, Valoria, le Pilier Céleste, Rorang…) a son identité et ses forces."
     },
     {
       target: ".ntab[onclick*=\"'tactic'\"]", nav: 'tactic',
       title: 'Régler la tactique',
-      body: "Formation, pressing, style de jeu et <b>sorts</b> se paramètrent ici. Les sorts sont la signature de FootSim : ils peuvent renverser un match."
+      body: "Formation, pressing, style de jeu et <b>sorts</b> se règlent ici. Un sort peut renverser un match."
     },
     {
       target: ".ntab[onclick*=\"navMatch\"]", nav: null,
       title: 'Jouer le match',
-      body: "Quand tout est prêt, lance le match. Tu pourras intervenir à la mi-temps : changements, ajustements tactiques, et déclencher tes effets spéciaux."
+      body: "Lance le match. À la mi-temps tu peux changer tes joueurs, ajuster ta tactique et déclencher tes sorts."
     },
     {
       target: ".ntab[onclick*=\"'league'\"]", nav: 'league',
@@ -67,7 +67,7 @@
     {
       target: ".ntab[onclick*=\"'career'\"]", nav: 'career',
       title: 'Le mode Carrière',
-      body: "Le cœur du jeu sur le long terme : dirige un club, gère budget, staff, transferts et objectifs du board saison après saison."
+      body: "Dirige un club dans la durée. Budget, staff, transferts et objectifs du board."
     },
     {
       target: ".ntab[onclick*=\"'settings'\"]", nav: 'settings',

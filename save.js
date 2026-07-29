@@ -2535,7 +2535,7 @@ function renderCupSetup(el){
     </div>`:''}
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;letter-spacing:2px;color:var(--gold);margin-bottom:10px">NOUVELLE COUPE ${gameMode==='11v11'?'<span style="color:#18c860;font-size:11px">11v11</span>':'<span style="font-size:11px">7v7</span>'}</div>
     <div class="slbl" style="margin-bottom:5px">Format des règles</div>
-    <select class="inp" id="cup-fmt-sel" style="width:100%;margin-bottom:4px" onchange="_cupFmt=this.value;var _fd=document.getElementById('cup-fmt-desc');if(_fd)_fd.textContent=CUP_FORMATS.find(f=>f.id===this.value)?.desc||'';var _hg=['groups_ko','round_robin'].includes(CUP_FORMATS.find(f=>f.id===this.value)?.type);var _gc=document.getElementById('cup-groups-cfg');if(_gc)_gc.style.display=_hg?'block':'none';" >
+    <select class="inp" id="cup-fmt-sel" style="width:100%;margin-bottom:4px" onchange="_cupFmt=this.value;var _fd=document.getElementById('cup-fmt-desc');if(_fd)_fd.textContent=CUP_FORMATS.find(f=>f.id===this.value)?.desc||'';var _hg=['groups_ko','round_robin','groups_final'].includes(CUP_FORMATS.find(f=>f.id===this.value)?.type);var _gc=document.getElementById('cup-groups-cfg');if(_gc)_gc.style.display=_hg?'block':'none';" >
       ${CUP_FORMATS.map(f=>`<option value="${f.id}"${f.id===_cupFmt?' selected':''}>${f.name}</option>`).join('')}
     </select>
     <div id="cup-fmt-desc" style="font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.5">${fmtDesc}</div>
@@ -2543,7 +2543,7 @@ function renderCupSetup(el){
     <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:10px">
       ${[4,5,6,7,8,9,10,11,12,13,14,15,16].map(n=>`<button id="cn${n}" class="btn${n===_cupCount?' btng':''}" style="min-width:28px;justify-content:center;padding:4px 6px;font-size:11px" onclick="setCupCount(${n})">${n}</button>`).join('')}
     </div>
-    <div id="cup-groups-cfg" style="display:${['groups_ko','round_robin'].includes(CUP_FORMATS.find(f=>f.id===_cupFmt)?.type)?'block':'none'};margin-bottom:10px;">
+    <div id="cup-groups-cfg" style="display:${['groups_ko','round_robin','groups_final'].includes(CUP_FORMATS.find(f=>f.id===_cupFmt)?.type)?'block':'none'};margin-bottom:10px;">
       <div class="slbl" style="margin-bottom:5px">Nombre de groupes</div>
       <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:2px">
         ${[1,2,3,4,5,6,7,8].map(n=>`<button class="btn${n===_cupGC?' btng':''}" style="min-width:28px;justify-content:center;padding:4px 6px;font-size:11px" onclick="setCupGC(${n})">${n}</button>`).join('')}
@@ -2556,7 +2556,7 @@ function renderCupSetup(el){
       <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:2px">
         ${Array.from({length:_cupPG-1},(_,i)=>i+1).map(n=>`<button class="btn${n===_cupAdvance?' btng':''}" style="min-width:28px;justify-content:center;padding:4px 6px;font-size:11px" onclick="setCupAdvance(${n})">${n}</button>`).join('')}
       </div>
-      <div style="font-size:9px;color:var(--gold);margin-top:4px">${_cupGC} groupe${_cupGC>1?'s':''} × ${_cupPG} équipes = <b>${_cupGC*_cupPG} équipes</b> — ${_cupGC*_cupAdvance} qualifié${_cupGC*_cupAdvance>1?'s':''} pour la phase K.O.</div>
+      <div style="font-size:9px;color:var(--gold);margin-top:4px">${_cupGC} groupe${_cupGC>1?'s':''} × ${_cupPG} équipes = <b>${_cupGC*_cupPG} équipes</b>. ${_cupGC*_cupAdvance} qualifié${_cupGC*_cupAdvance>1?'s':''} pour ${CUP_FORMATS.find(f=>f.id===_cupFmt)?.type==='groups_final'?'la poule finale':'la phase K.O.'}.</div>
       <div class="slbl" style="margin:8px 0 5px">Matchs de poule</div>
       <div style="display:flex;gap:6px">
         <button class="btn${_cupGroupLegs===1?' btng':''}" style="flex:1;justify-content:center;padding:5px 8px;font-size:11px" onclick="setCupLegs(1)">Aller seulement</button>

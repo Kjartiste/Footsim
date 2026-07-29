@@ -542,7 +542,7 @@ function renderModeScreen(){
   ];
   const cur = window.gameMode || '7v7';
   let h = '<div class="mode-head">Choisis ton mode</div>'
-    + '<div class="mode-intro">FootSim se joue avant tout en <b style="color:#8840e0">Futsal 5 contre 5</b> et en <b style="color:#f0c028">7 contre 7</b> — les deux formats phares du jeu, rapides et spectaculaires. Le mode détermine le nombre de joueurs, les formations disponibles et la taille des effectifs ; l\'onglet <b>Équipes</b> s\'adapte automatiquement.</div>';
+    + '<div class="mode-intro">FootSim se joue surtout en <b style="color:#8840e0">Futsal 5 contre 5</b> et en <b style="color:#f0c028">7 contre 7</b>. Le mode fixe le nombre de joueurs et les formations.</div>';
   modes.forEach(m=>{
     const active = cur===m.id;
     const cls = 'mode-card' + (m.featured?' feat':'') + (active?' sel':'');
