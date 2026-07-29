@@ -76,18 +76,28 @@ function genFixtures(teams){
 
 function createLeague(teamCount,savedIdxs){
   ensureAIData();
+  // Badge déterministe (seedé sur le nom) pour toute équipe qui n'en a pas —
+  // sinon le classement affiche une simple pastille de couleur. fromSeed rend le
+  // même blason partout pour un nom donné (cohérent avec Valoria/Pilier).
+  const _mkBadge = function(name){
+    if(typeof BadgeGenerator!=='undefined' && BadgeGenerator.fromSeed){
+      try{ return BadgeGenerator.fromSeed(name, {text:(typeof teamIni==='function'?teamIni(name):'')}); }catch(e){}
+    }
+    return null;
+  };
   const allT=[
-    {id:0,name:teams[0].name,color:teams[0].color,isUser:true,uIdx:0},
-    {id:1,name:teams[1].name,color:teams[1].color,isUser:true,uIdx:1},
+    {id:0,name:teams[0].name,color:teams[0].color,badge:teams[0].badge||_mkBadge(teams[0].name),isUser:true,uIdx:0},
+    {id:1,name:teams[1].name,color:teams[1].color,badge:teams[1].badge||_mkBadge(teams[1].name),isUser:true,uIdx:1},
   ];
   (savedIdxs||[]).forEach(si=>{
     if(allT.length>=teamCount)return;
     const st=savedTeams[si];if(!st)return;
-    allT.push({id:allT.length,name:st.name,color:st.color,img:st.img||'',isSaved:true,savedIdx:si,isHuman:!!st.isHuman});
+    allT.push({id:allT.length,name:st.name,color:st.color,img:st.img||'',badge:st.badge||_mkBadge(st.name),isSaved:true,savedIdx:si,isHuman:!!st.isHuman});
   });
   let ai=0;
   while(allT.length<teamCount&&ai<AI_TEAM_DEFS.length){
-    allT.push({id:allT.length,name:AI_TEAM_DEFS[ai].name,color:AI_TEAM_DEFS[ai].color,isUser:false,aIdx:ai});ai++;
+    const def=AI_TEAM_DEFS[ai];
+    allT.push({id:allT.length,name:def.name,color:def.color,badge:def.badge||_mkBadge(def.name),isUser:false,aIdx:ai});ai++;
   }
   leagueState={teams:allT,playerStats:{},standings:allT.map(t=>({id:t.id,P:0,W:0,D:0,L:0,GF:0,GA:0,Pts:0})),
     fixtures:genFixtures(allT),currentFix:null,
@@ -353,6 +363,17 @@ function skipAllNPCFixtures(){
 
 function renderLeague(){
   const el=document.getElementById('league-out');if(!el)return;
+  // Backfill : les ligues créées avant l'ajout des badges n'en ont pas. On les
+  // génère à la volée (déterministe) pour que le classement affiche un blason.
+  if(leagueState && Array.isArray(leagueState.teams) && typeof BadgeGenerator!=='undefined' && BadgeGenerator.fromSeed){
+    let _added=false;
+    leagueState.teams.forEach(t=>{
+      if(t && !t.badge && !t.img){
+        try{ t.badge=BadgeGenerator.fromSeed(t.name,{text:(typeof teamIni==='function'?teamIni(t.name):'')}); _added=true; }catch(e){}
+      }
+    });
+    if(_added && typeof saveLeague==='function') saveLeague();
+  }
   // ── SETUP WIZARD ─────────────────────────────────────────
   if(leagueSetupMode||!leagueState){
     let roHTML='';
