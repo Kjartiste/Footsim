@@ -167,12 +167,11 @@ function clubOffset(club, lvl, rand){
     // demandée statistiquement, chaque club restant seedé indépendamment.
     //   offset  : poids   → rendu sur D1 (centre 74)
     const table = [
-      { lo:6,  hi:8,  w:12 },   // 80-82  (cadors)
-      { lo:4,  hi:5,  w:10 },   // 78-79
+      { lo:3,  hi:5,  w:14 },   // 77-79  (haut du peloton non-élite)
       { lo:1,  hi:3,  w:22 },   // 75-77
       { lo:0,  hi:1,  w:16 },   // 74-75
-      { lo:-2, hi:0,  w:24 },   // 72-74
-      { lo:-4, hi:-2, w:16 },   // 70-72
+      { lo:-2, hi:0,  w:26 },   // 72-74
+      { lo:-4, hi:-2, w:22 },   // 70-72
     ];
     const total = table.reduce((s,b)=>s+b.w,0);
     let r = rand()*total;
@@ -182,11 +181,15 @@ function clubOffset(club, lvl, rand){
   return Math.round((rand()*2-1)*1.2);           // ±1
 }
 
-function buildSquad(club){
+function buildSquad(club, eliteBonus){
   const lvl = levelOf(club);
   const baseCenter = centerFor(club, lvl);
   const rand = rng('ROSTER|'+club.name);
-  const center = baseCenter + clubOffset(club, lvl, rand);
+  // Bonus "élite" : réservé aux clubs phares du Pilier d1. Pour ces clubs, on
+  // neutralise l'offset pyramidal négatif (petit jitter +0..2 seulement) afin
+  // que le bonus se traduise vraiment en OVR élevé et stable.
+  const off = eliteBonus ? Math.round(rand()*2) : clubOffset(club, lvl, rand);
+  const center = baseCenter + (eliteBonus || 0) + off;
   const used = new Set();
   const players = ROLE7.map((pos,i)=>makePlayer(club,lvl,pos,i,rand,used,center));
   const bench   = BENCH_POS.map((pos,i)=>makePlayer(club,lvl,pos,i+7,rand,used,center-2));
@@ -197,11 +200,30 @@ function buildSquad(club){
   return { players, bench, reserves, _ovr:teamOvr, _lvl:lvl, _n:players.length+bench.length+reserves.length };
 }
 
+// Désigne les clubs "élite" par division. Déterministe → toujours les mêmes.
+//  - Pilier d1 (Grand Trône Divin) : 3 clubs phares → ~80-84 (élite continentale).
+//  - Valoria d1 (Ligue Valorienne) : 1 seul club phare → ~78 (le "Dinamo" local),
+//    le reste plafonnant plus bas. Niveau croate : un leader qui sort du lot.
+function buildEliteMap(clubs){
+  const elite = {};
+  // Pilier : 3 phares.
+  const pil = clubs.filter(c=> c.region==='Le Pilier' && levelOf(c)==='d1')
+    .map(c=>({c, h:seedNum('ELITE|'+c.name)})).sort((a,b)=>b.h-a.h);
+  [11,9,7].forEach((b,i)=>{ if(pil[i]) elite['ELITE|'+pil[i].c.name] = b; });
+  // Valoria : 1 phare (centre d1 Valoria = 70 → bonus ~8 vise ~78).
+  const val = clubs.filter(c=> (c.nation==='Valoria'||c.country==='Valoria'||VALORIA.includes(c)) && levelOf(c)==='d1')
+    .map(c=>({c, h:seedNum('ELITE|'+c.name)})).sort((a,b)=>b.h-a.h);
+  if(val[0]) elite['ELITE|'+val[0].c.name] = 8;
+  return elite;
+}
+
 // ── Génère et écrit roster.js ──────────────────────────────────────────
 const roster = {};
 const report = {};
+const eliteMap = buildEliteMap([...VALORIA, ...PILIER]);
 [...VALORIA, ...PILIER].forEach(club=>{
-  const sq = buildSquad(club);
+  const bonus = eliteMap['ELITE|'+club.name] || 0;
+  const sq = buildSquad(club, bonus);
   roster[club.name] = { players:sq.players, bench:sq.bench, reserves:sq.reserves };
   const k = (club.region==='Le Pilier'?'PIL:':'VAL:')+sq._lvl;
   (report[k]=report[k]||[]).push(sq._ovr);
