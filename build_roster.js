@@ -33,12 +33,23 @@ function rng(seedStr){ let a=seedNum(seedStr);
   return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
     t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
-// ── Barème OVR par niveau (identique à ui_teams._OVR_BY_LEVEL) ──────────
-const OVR_BY_LEVEL       = { d1:88, d2:80, d3:73, r1:60, r2:50, r3:42, dh:33 };
-const OVR_BY_LEVEL_PILIER= { d1:84, d2:79, d3:74 };
-// Valoria = niveau championnat croate (HNL) : élite plus modeste que le Pilier.
-// Top (Dinamo/Hajduk) ~74-78, gros clubs européens ~70-74, reste 62-70.
-const OVR_BY_LEVEL_VALORIA = { d1:74, d2:68, d3:63 };
+// ── Barème OVR — calé sur ta hiérarchie Pro / Semi-pro / Amateur ────────
+// Gap NET entre chaque bloc. Chez le Pilier, seuls d1/d2 sont "pro" ; d3 (1re
+// Céleste) est déjà semi-pro et se cale au niveau de r1 (d3 = r1). Le
+// déséquilibre interne (cadors détachés) ne vaut QUE pour les divisions pros —
+// un championnat pro à la portugaise/Eredivisie/Ligue 1 : 2-3 gros, reste modeste.
+//   PRO :   d1 ~76 (70-84, large) · d2 ~68 (63-77, large)
+//   —— gap ——
+//   SEMI :  d3 = r1 ~58 · r2 ~50 · r3 ~43   (amplitude serrée ±5)
+//   —— gap ——
+//   AMATEUR: dh ~33 (27-40)
+const OVR_BY_LEVEL        = { d1:80, d2:72, d3:58, r1:58, r2:50, r3:43, dh:33 };
+const OVR_BY_LEVEL_PILIER = { d1:74, d2:68 };          // pros du Pilier (semi/amateur = barème commun)
+const OVR_BY_LEVEL_VALORIA= { d1:70, d2:65 };          // Croatie : élite un cran sous le Pilier
+// Divisions PRO (déséquilibre interne fort) — le reste est resserré.
+const PRO_LEVELS = { d1:true, d2:true };
+// Amplitude interne (±) par cran : large chez les pros, serrée ailleurs.
+const SPREAD_BY_LEVEL = { d1:7, d2:7, d3:5, r1:5, r2:5, r3:5, dh:6 };
 
 const ROLE7 = ['GB','DC','DD','DG','MC','MC','ATT'];  // 7 titulaires
 const BENCH_POS = ['GB','DC','MC','MO','ATT'];         // 5 remplaçants
@@ -135,25 +146,53 @@ function makePlayer(club, lvl, pos, idx, rand, used, center){
   const seed = club.name+'|'+pos+'|'+idx;
   const race = raceFor(club, lvl, seed);
   const name = pickName(race, rand, used);
-  // OVR individuel : centre du club ±6, gardien/pièce maîtresse un peu au-dessus.
-  const indiv = Math.max(20, Math.min(97, Math.round(center + (rand()*12-6))));
+  // Amplitude interne des joueurs autour du centre du CLUB, selon le cran.
+  const sp = SPREAD_BY_LEVEL[lvl] != null ? SPREAD_BY_LEVEL[lvl] : 5;
+  const indiv = Math.max(20, Math.min(97, Math.round(center + (rand()*2-1)*sp)));
   const s = statsForOvr(indiv, pos, rand);
   const ini = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
   const spells = window.spellForPos ? window.spellForPos(pos, seed) : [];
   return { name, pos, ini, race, s, spells };
 }
 
+// Offset du CLUB par rapport au centre de sa division.
+// - Divisions PRO : distribution PYRAMIDALE progressive (pas une cloche plate).
+//   Sur une D1 à centre 74, cela vise, pour ~20 clubs :
+//     2-3 clubs 80+ · 1-2 à 78-80 · plusieurs 74-78 · plusieurs 72-74 · quelques 70-72
+//   → vraie hiérarchie : course au titre en haut, ventre mou, lutte au maintien.
+// - Semi-pro / amateur : championnats équilibrés → offset quasi nul (±1).
+function clubOffset(club, lvl, rand){
+  if(PRO_LEVELS[lvl]){
+    // Paliers d'offset pondérés (par rapport au centre). Reproduit la pyramide
+    // demandée statistiquement, chaque club restant seedé indépendamment.
+    //   offset  : poids   → rendu sur D1 (centre 74)
+    const table = [
+      { lo:6,  hi:8,  w:12 },   // 80-82  (cadors)
+      { lo:4,  hi:5,  w:10 },   // 78-79
+      { lo:1,  hi:3,  w:22 },   // 75-77
+      { lo:0,  hi:1,  w:16 },   // 74-75
+      { lo:-2, hi:0,  w:24 },   // 72-74
+      { lo:-4, hi:-2, w:16 },   // 70-72
+    ];
+    const total = table.reduce((s,b)=>s+b.w,0);
+    let r = rand()*total;
+    for(const b of table){ if((r-=b.w) <= 0){ return b.lo + Math.round(rand()*(b.hi-b.lo)); } }
+    return 0;
+  }
+  return Math.round((rand()*2-1)*1.2);           // ±1
+}
+
 function buildSquad(club){
   const lvl = levelOf(club);
-  const center = centerFor(club, lvl);
+  const baseCenter = centerFor(club, lvl);
   const rand = rng('ROSTER|'+club.name);
+  const center = baseCenter + clubOffset(club, lvl, rand);
   const used = new Set();
   const players = ROLE7.map((pos,i)=>makePlayer(club,lvl,pos,i,rand,used,center));
   const bench   = BENCH_POS.map((pos,i)=>makePlayer(club,lvl,pos,i+7,rand,used,center-2));
   const nRes    = reserveCount(lvl, rand);
   const reserves= [];
   for(let i=0;i<nRes;i++){ reserves.push(makePlayer(club,lvl,RES_POS[i%RES_POS.length],i+12,rand,used,center-4)); }
-  // OVR d'équipe réel (moyenne titulaires) pour vérif.
   const teamOvr = Math.round(players.reduce((a,p)=>a+ovrOfStats(p.s),0)/players.length);
   return { players, bench, reserves, _ovr:teamOvr, _lvl:lvl, _n:players.length+bench.length+reserves.length };
 }
