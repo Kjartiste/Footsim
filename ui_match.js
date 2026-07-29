@@ -695,14 +695,31 @@ function renderSettings(){
     </div>
     ${_stadiumSelectorHTML()}
   `);
+  const _themeDefs = [
+    { id:'dark',     name:'Sombre',    grad:'linear-gradient(160deg,#0a1220,#121f35)' },
+    { id:'light',    name:'Clair',     grad:'linear-gradient(160deg,#e8edf5,#f4f6fb)' },
+    { id:'neon',     name:'Néon',      grad:'radial-gradient(circle at 20% 10%,#2a1a4a,transparent 55%),radial-gradient(circle at 90% 85%,#0a3a5a,transparent 50%),linear-gradient(160deg,#0d0a1f,#141033)' },
+    { id:'sunset',   name:'Crépuscule',grad:'radial-gradient(circle at 80% 15%,#4a2545,transparent 55%),radial-gradient(circle at 10% 90%,#3a2a1a,transparent 55%),linear-gradient(165deg,#1a1025,#2a1830)' },
+    { id:'electric', name:'Électrique',grad:'radial-gradient(circle at 15% 20%,#1a4a7a,transparent 58%),radial-gradient(circle at 85% 85%,#5a2a6a,transparent 55%),linear-gradient(155deg,#0a1428,#122040)' },
+    { id:'vapor',    name:'Vaporwave', grad:'radial-gradient(circle at 25% 15%,#3a2a6a,transparent 55%),radial-gradient(circle at 80% 80%,#6a2a5a,transparent 55%),linear-gradient(160deg,#1a1440,#2a1a4a)' },
+  ];
   const themeCard = card(`
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Thème</div>
-    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px">
-      Ambiance manga sombre (par défaut) ou claire, façon planche noir & blanc à fort contraste.
+    <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:12px">
+      Choisis ton ambiance : du sombre classique aux dégradés manga/street. Le fond reste lisible, la couleur vit sur les bords.
     </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="setTheme('dark')" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid ${themeNow==='dark'?'var(--gold)':'var(--b1)'};background:${themeNow==='dark'?'rgba(240,192,40,.14)':'var(--dark)'};color:${themeNow==='dark'?'var(--gold)':'var(--muted)'};font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">🌙 SOMBRE</button>
-      <button onclick="setTheme('light')" style="flex:1;padding:11px 8px;border-radius:10px;cursor:pointer;border:2px solid ${themeNow==='light'?'var(--gold)':'var(--b1)'};background:${themeNow==='light'?'rgba(240,192,40,.14)':'var(--dark)'};color:${themeNow==='light'?'var(--gold)':'var(--muted)'};font-weight:900;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;font-size:13px">☀️ CLAIR</button>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${_themeDefs.map(t=>{
+        const on = themeNow===t.id;
+        return `<button onclick="setTheme('${t.id}')" style="padding:0;border-radius:10px;cursor:pointer;overflow:hidden;
+          border:2px solid ${on?'var(--gold)':'var(--b1)'};background:var(--dark);position:relative;aspect-ratio:16/10">
+          <span style="position:absolute;inset:0;background:${t.grad}"></span>
+          <span style="position:absolute;top:5px;left:6px;right:6px;height:11px;border-radius:3px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.10)"></span>
+          <span style="position:absolute;bottom:0;left:0;right:0;padding:5px 6px;background:linear-gradient(0deg,rgba(0,0,0,.72),transparent);
+            font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:11px;letter-spacing:.5px;
+            color:${on?'var(--gold)':'#fff'};text-align:left">${on?'✓ ':''}${t.name}</span>
+        </button>`;
+      }).join('')}
     </div>
   `);
   const diffNow = difficultyLevel();
@@ -815,8 +832,9 @@ function renderSettings(){
 }
 
 // Bascule le thème visuel (manga sombre / clair) et le mémorise.
+const THEME_IDS = ['dark','light','neon','sunset','electric','vapor'];
 function setTheme(t){
-  t = (t==='light') ? 'light' : 'dark';
+  if(THEME_IDS.indexOf(t) === -1) t = 'dark';
   document.documentElement.setAttribute('data-theme', t);
   try{ localStorage.setItem('footsim_theme', t); }catch(e){}
   if(typeof renderSettings==='function') renderSettings();
@@ -825,7 +843,9 @@ function setTheme(t){
 (function _restoreTheme(){
   try{
     const t = localStorage.getItem('footsim_theme');
-    if(t==='light' || t==='dark') document.documentElement.setAttribute('data-theme', t);
+    if(t && ['dark','light','neon','sunset','electric','vapor'].indexOf(t)!==-1){
+      document.documentElement.setAttribute('data-theme', t);
+    }
   }catch(e){}
 })();
 

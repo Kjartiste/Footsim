@@ -56,6 +56,85 @@ html,body{height:100%;background:var(--dark);color:var(--text);font-family:'Barl
    supporté. Le grain de body::before passe par-dessus → rendu premium. */
 body{background:var(--dark);background:linear-gradient(180deg,#0a1220 0%,#121f35 100%);background-attachment:fixed}
 
+/* ── THÈMES D'AMBIANCE (manga / street) ───────────────────────────────
+   Chaque thème redéfinit le fond du body avec des dégradés progressifs
+   (halos radiaux sur les bords + dégradé diagonal). Le fond reste globalement
+   sombre pour préserver la lisibilité des cartes et tableaux ; la couleur vit
+   sur les bords. Sélectionnables dans Paramètres → Thème. */
+[data-theme="neon"] body{
+  background:
+    radial-gradient(circle at 20% 8%, #2a1a4a 0%, transparent 50%),
+    radial-gradient(circle at 92% 82%, #0a3a5a 0%, transparent 45%),
+    linear-gradient(160deg, #0d0a1f 0%, #141033 50%, #0a1428 100%);
+  background-attachment:fixed;
+}
+[data-theme="sunset"] body{
+  background:
+    radial-gradient(circle at 82% 12%, #4a2545 0%, transparent 52%),
+    radial-gradient(ellipse at 8% 92%, #3a2a1a 0%, transparent 50%),
+    linear-gradient(165deg, #1a1025 0%, #2a1830 45%, #1a1420 100%);
+  background-attachment:fixed;
+}
+[data-theme="electric"] body{
+  background:
+    radial-gradient(circle at 14% 18%, #1a4a7a 0%, transparent 55%),
+    radial-gradient(circle at 86% 86%, #5a2a6a 0%, transparent 50%),
+    linear-gradient(155deg, #0a1428 0%, #122040 55%, #1a1838 100%);
+  background-attachment:fixed;
+}
+[data-theme="vapor"] body{
+  background:
+    radial-gradient(circle at 24% 14%, #3a2a6a 0%, transparent 50%),
+    radial-gradient(circle at 82% 82%, #6a2a5a 0%, transparent 50%),
+    linear-gradient(160deg, #1a1440 0%, #2a1a4a 50%, #3a1a45 100%);
+  background-attachment:fixed;
+}
+/* Panneaux/cartes légèrement teintés pour coller au fond de chaque ambiance. */
+[data-theme="neon"]     { --dark:#0d0a1f; --panel:#171232; --card:#1d1840; }
+[data-theme="sunset"]   { --dark:#1a1025; --panel:#241634; --card:#2e1c3c; }
+[data-theme="electric"] { --dark:#0a1428; --panel:#122040; --card:#182a4a; }
+[data-theme="vapor"]    { --dark:#1a1440; --panel:#241a52; --card:#2c2058; }
+
+/* ── HALOS ANIMÉS (respiration lente, "jeu vidéo") ─────────────────────
+   Uniquement sur les thèmes d'ambiance. Une couche fixe sous le contenu
+   (z-index 0, comme le grain) dont les halos dérivent et pulsent très
+   lentement (~26s). Subtil : donne de la vie sans distraire. Désactivé
+   automatiquement par le bloc prefers-reduced-motion plus bas. */
+[data-theme="neon"] body::after,
+[data-theme="sunset"] body::after,
+[data-theme="electric"] body::after,
+[data-theme="vapor"] body::after{
+  content:'';position:fixed;inset:-20%;z-index:0;pointer-events:none;
+  opacity:.5;mix-blend-mode:screen;
+  animation:ambientDrift 26s ease-in-out infinite;
+}
+[data-theme="neon"] body::after{
+  background:
+    radial-gradient(35% 45% at 22% 18%, rgba(120,70,220,.35), transparent 70%),
+    radial-gradient(40% 40% at 85% 80%, rgba(30,150,200,.30), transparent 70%);
+}
+[data-theme="sunset"] body::after{
+  background:
+    radial-gradient(38% 44% at 80% 16%, rgba(220,80,140,.32), transparent 70%),
+    radial-gradient(42% 42% at 12% 88%, rgba(220,140,60,.24), transparent 70%);
+}
+[data-theme="electric"] body::after{
+  background:
+    radial-gradient(36% 46% at 16% 22%, rgba(40,150,240,.34), transparent 70%),
+    radial-gradient(40% 40% at 86% 84%, rgba(150,60,220,.28), transparent 70%);
+}
+[data-theme="vapor"] body::after{
+  background:
+    radial-gradient(38% 44% at 26% 16%, rgba(120,80,230,.34), transparent 70%),
+    radial-gradient(42% 42% at 80% 82%, rgba(230,70,170,.30), transparent 70%);
+}
+@keyframes ambientDrift{
+  0%   { transform:translate(0,0)      scale(1);    opacity:.42; }
+  33%  { transform:translate(2.5%,-2%) scale(1.06); opacity:.55; }
+  66%  { transform:translate(-2%,2.5%) scale(1.03); opacity:.48; }
+  100% { transform:translate(0,0)      scale(1);    opacity:.42; }
+}
+
 /* ── TAILLE DU TEXTE ── réglage utilisateur (Paramètres) : grossit le
    contenu des pages (menus, carrière, paramètres...) comme un zoom
    navigateur. Important : on zoome les ENFANTS de .spage, jamais .spage
