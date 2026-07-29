@@ -157,6 +157,19 @@
 .fm-list--striped .fm-row:hover{background:var(--surface-3);
   transform:translateX(2px);border:none}
 
+/* ── SCORE PROÉMINENT (le résultat prime sur les noms — style EA/FM) ─────
+   .fm-score : bloc central "4–2" en gros chiffres tabulaires. Les noms
+   d'équipe qui l'entourent restent lisibles mais secondaires. */
+.fm-score{font-family:var(--font-display);font-weight:900;font-size:20px;
+  letter-spacing:1px;color:var(--fg);line-height:1;font-variant-numeric:tabular-nums;
+  padding:2px 10px;border-radius:var(--r-sm);background:var(--surface-3);
+  display:inline-flex;align-items:center;gap:2px;white-space:nowrap}
+.fm-score--lg{font-size:28px;padding:4px 14px}
+.fm-score__sep{opacity:.5;font-weight:700;margin:0 1px}
+.fm-team-name{font-size:11px;font-weight:700;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.fm-team-name--dim{color:var(--fg-muted)}
+
 /* ── BADGE / PASTILLE ──────────────────────────────────────────────────── */
 .fm-pill{display:inline-flex;align-items:center;gap:6px;
   font-family:var(--font-display);font-size:var(--fs-xs);font-weight:800;

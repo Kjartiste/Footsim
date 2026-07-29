@@ -468,10 +468,10 @@ function renderLeague(){
       '<div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;overflow:hidden;margin-bottom:8px">'+
       rec.map(f=>{const hT=leagueState.teams.find(t=>t.id===f.home),aT=leagueState.teams.find(t=>t.id===f.away);
         if(!hT||!aT)return '';
-        return '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:3px;padding:3px 7px;border-bottom:1px solid var(--b1);align-items:center">'+
-          '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+(f.sh>f.sa?hT.color:'var(--muted)')+';text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+hT.name+'</span>'+
-          '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:900;padding:0 6px">'+f.sh+'–'+f.sa+'</span>'+
-          '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;color:'+(f.sa>f.sh?aT.color:'var(--muted)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+aT.name+'</span></div>';
+        return '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;padding:5px 7px;border-bottom:1px solid var(--b1);align-items:center">'+
+          '<span class="fm-team-name'+(f.sh>f.sa?'':' fm-team-name--dim')+'" style="color:'+(f.sh>f.sa?hT.color:'var(--muted)')+';text-align:right">'+hT.name+'</span>'+
+          '<span class="fm-score">'+f.sh+'<span class="fm-score__sep">–</span>'+f.sa+'</span>'+
+          '<span class="fm-team-name'+(f.sa>f.sh?'':' fm-team-name--dim')+'" style="color:'+(f.sa>f.sh?aT.color:'var(--muted)')+'">'+aT.name+'</span></div>';
       }).join('')+'</div>';
   }
   h+='</div>';el.innerHTML=h;
@@ -1747,11 +1747,24 @@ function renderCupGroupHTML(g){
   const sorted=sortStd(g.standings);
   const adv=cupState.groupCfg?.advance||2;
   const gi=cupState.groups.indexOf(g);
-  let h=`<div style="margin-bottom:10px">
-  <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:3px">${g.name}</div>
+  // ── Header de groupe premium : lettre en pastille, titre net, sous-titre
+  //    "N qualifiés", filet d'accent. Donne une vraie hiérarchie de section.
+  const _gLetter=(g.name||'').replace(/[^A-Z0-9]/gi,'').slice(-1)||'?';
+  let h=`<div style="margin-bottom:14px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="width:30px;height:30px;flex-shrink:0;border-radius:8px;background:var(--gold);color:#0a0f16;
+      font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;
+      display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(240,192,40,.35)">${_gLetter}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;letter-spacing:1px;
+        color:var(--fg);text-transform:uppercase;line-height:1">${g.name}</div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:.5px;color:var(--green);text-transform:uppercase;margin-top:2px">${adv} qualifié${adv>1?'s':''}</div>
+    </div>
+    <div style="flex:1;height:2px;background:linear-gradient(90deg,var(--b2),transparent);border-radius:2px"></div>
+  </div>
   <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;overflow:hidden;margin-bottom:5px">
     <div style="display:grid;grid-template-columns:1fr 18px 18px 18px 18px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1)">
-      ${['Équipe','J','V','N','D','Pts'].map((l,i)=>`<span style="font-size:8px;color:var(--muted);text-align:${i>0?'center':'left'}">${l}</span>`).join('')}
+      ${['Équipe','J','V','N','D','Pts'].map((l,i)=>`<span style="font-size:8px;color:var(--muted);text-align:${i>0?'center':'left'};${l==='Pts'?'font-weight:900;color:var(--gold)':''}">${l}</span>`).join('')}
     </div>
     ${sorted.map((s,rank)=>{
       const t=cupState.teams.find(x=>x.id===s.id),q=rank<adv&&allPlayed;
@@ -1759,7 +1772,7 @@ function renderCupGroupHTML(g){
         <span style="display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${t?.color||'#888'};flex-shrink:0"></span>
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;color:${q?'var(--green)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t?.name||'?'}${q?'<span style="font-size:8px;color:var(--green);margin-left:2px">✓</span>':''}</span></span>
         ${[s.P,s.W,s.D,s.L].map(v=>`<span style="font-size:9px;text-align:center">${v}</span>`).join('')}
-        <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;text-align:center">${s.Pts}</span>
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;text-align:center;color:${q?'var(--green)':'var(--gold)'}">${s.Pts}</span>
       </div>`;
     }).join('')}
   </div>`;
@@ -1827,10 +1840,10 @@ function renderCupRoundHTML(round,nextCm,phase,roundIdx){
     if(m.played){
       const hw=m.winner===m.home;
       h+=`<div style="border-bottom:1px solid var(--b1)">
-        <div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:4px;padding:5px 8px ${legDetail?'2px':'5px'} 8px;align-items:center">
-          <span style="font-size:10px;font-weight:700;color:${hw?hT?.color:'var(--muted)'};text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${hT?.name||'?'}</span>
-          <span style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;padding:0 6px;color:var(--text)">${m.sh}–${m.sa}</span>
-          <span style="font-size:10px;font-weight:700;color:${!hw?aT?.color:'var(--muted)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${aT?.name||'?'}</span>
+        <div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;padding:6px 8px ${legDetail?'2px':'6px'} 8px;align-items:center">
+          <span class="fm-team-name${hw?'':' fm-team-name--dim'}" style="color:${hw?hT?.color:'var(--muted)'};text-align:right">${hT?.name||'?'}</span>
+          <span class="fm-score">${m.sh}<span class="fm-score__sep">–</span>${m.sa}</span>
+          <span class="fm-team-name${!hw?'':' fm-team-name--dim'}" style="color:${!hw?aT?.color:'var(--muted)'}">${aT?.name||'?'}</span>
           <button class="btn" style="padding:2px 4px;font-size:9px;color:var(--muted);border-color:var(--b1)" onclick='openCupEditModal(${cmRef})' title='Modifier manuellement'>✎</button>
         </div>${legDetail}</div>`;
     } else {
@@ -3394,10 +3407,11 @@ function renderCareerDirector(el){
   // Un MANAGER (entraîneur) n'a pas accès aux leviers de club (infra, sponsors,
   // finances d'investissement) : on filtre selon le rôle de carrière.
   if(typeof _tabAllowed === 'function') tabs = tabs.filter(function(t){ return _tabAllowed(t); });
+  const _ic = function(n,fallback){ return (typeof ICON!=='undefined'&&ICON.has(n)) ? ICON(n,{size:13})+' ' : fallback; };
   const tabLabels = {
-    overview:'🏠 Vue', squad:'👥 Effectif', mercato:'🔄 Mercato', academy:'🌱 Académie',
-    finances:'💰 Finances', sponsors:'🤝 Sponsors', infra:'🏗 Infra', staff:'👔 Staff', calendar:'📅 Calendrier',
-    affiliates:'🏛 Réserves', history:'📜 Historique', scorers:'⚽ Buteurs', competitions:'🏆 Compétitions', social:'💬 Z', futsal:'⚽ Futsal'
+    overview:_ic('home','🏠 ')+'Vue', squad:_ic('squad','👥 ')+'Effectif', mercato:_ic('transfer','🔄 ')+'Mercato', academy:_ic('academy','🌱 ')+'Académie',
+    finances:_ic('finances','💰 ')+'Finances', sponsors:_ic('sponsors','🤝 ')+'Sponsors', infra:_ic('infra','🏗 ')+'Infra', staff:_ic('staff','👔 ')+'Staff', calendar:_ic('calendar','📅 ')+'Calendrier',
+    affiliates:_ic('reserves','🏛 ')+'Réserves', history:_ic('history','📜 ')+'Historique', scorers:_ic('scorers','⚽ ')+'Buteurs', competitions:_ic('trophy','🏆 ')+'Compétitions', social:_ic('social','💬 ')+'Z', futsal:_ic('ball','⚽ ')+'Futsal'
   };
 
   let tabBtns = '';
@@ -3448,13 +3462,13 @@ function renderCareerDirector(el){
   html += '</div></div>';
   // Budget
   html += '<div style="text-align:right;flex-shrink:0">';
-  html += '<div style="font-size:24px;font-weight:900;color:'+budgetCol+'">🪙 '+_fmtMoney(budget)+'</div>';
+  html += '<div style="font-size:24px;font-weight:900;color:'+budgetCol+'">'+((typeof ICON!=='undefined')?ICON('coin',{size:20}):'🪙')+' '+_fmtMoney(budget)+'</div>';
   html += '<div style="font-size:10px;color:var(--muted)">Mercato : '+_fmtMoney(club.transferBudget)+'</div>';
   html += '</div>';
   html += '</div>';
 
   // Stats rapides sous le header
-  html += '<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">';
+  html += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">';
   const statItems = [
     {label:'Points', val:ss.points, col:'#18c860'},
     {label:'Victoires', val:ss.wins, col:'#18c860'},
@@ -3464,9 +3478,10 @@ function renderCareerDirector(el){
     {label:'Réputation', val:club.reputation+'/100', col:(region?region.color:'var(--gold)')},
   ];
   statItems.forEach(function(s){
-    html += '<div style="text-align:center">';
-    html += '<div style="font-size:18px;font-weight:900;color:'+s.col+'">'+s.val+'</div>';
-    html += '<div style="font-size:9px;color:var(--muted)">'+s.label+'</div>';
+    html += '<div style="flex:1;min-width:76px;text-align:center;background:rgba(255,255,255,.04);'
+      + 'border:1px solid var(--b1);border-radius:10px;padding:8px 6px">';
+    html += '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:22px;font-weight:900;line-height:1;color:'+s.col+';font-variant-numeric:tabular-nums">'+s.val+'</div>';
+    html += '<div style="font-size:8px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:4px">'+s.label+'</div>';
     html += '</div>';
   });
   html += '</div>';
@@ -3480,9 +3495,10 @@ function renderCareerDirector(el){
 
   // ── Footer ──────────────────────────────────────────────────────────
   html += '<div style="padding:12px 20px;border-top:1px solid var(--b1);background:var(--dark);display:flex;gap:8px;align-items:center">';
-  html += '<button class="btn" onclick="nav(\'setup\')" style="font-size:11px;padding:6px 14px">← Jeu</button>';
-  html += '<button class="btn btng" onclick="_advanceOneDay()" style="flex:1;font-size:13px;padding:10px;font-weight:900">▶ Jour suivant</button>';
-  html += '<button class="btn" onclick="abandonCareerV2()" style="font-size:11px;padding:6px 12px;color:#e06060;border-color:#e06060">✕</button>';
+  const _fic=function(n,fb){ return (typeof ICON!=='undefined'&&ICON.has(n))?ICON(n,{size:13}):fb; };
+  html += '<button class="btn" onclick="nav(\'setup\')" style="font-size:11px;padding:6px 14px">'+_fic('arrowLeft','←')+' Jeu</button>';
+  html += '<button class="btn btng" onclick="_advanceOneDay()" style="flex:1;font-size:13px;padding:10px;font-weight:900">'+_fic('play','▶')+' Jour suivant</button>';
+  html += '<button class="btn" onclick="abandonCareerV2()" style="font-size:11px;padding:6px 12px;color:#e06060;border-color:#e06060">'+_fic('close','✕')+'</button>';
   html += '</div>';
   html += '</div>';
 
@@ -4109,9 +4125,9 @@ function _renderDirectorOverview(){
 
   if(standings.length > 0){
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px;margin-bottom:12px">';
-    h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏆 Classement</div>';
+    h += '<div style="font-size:11px;font-weight:900;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">'+((typeof ICON!=='undefined')?ICON('trophy',{size:13})+' ':'🏆 ')+'Classement</div>';
     h += '<div style="display:grid;grid-template-columns:22px 1fr 22px 22px 22px 22px 34px 30px;gap:0;font-size:9px;color:var(--muted);padding:0 4px 6px;border-bottom:1px solid var(--b1);font-weight:700">';
-    h += '<div>#</div><div>Club</div><div style="text-align:center">J</div><div style="text-align:center;color:#18c860">V</div><div style="text-align:center;color:#f0c028">N</div><div style="text-align:center;color:#e06060">D</div><div style="text-align:center" title="Buts pour / contre">BP:BC</div><div style="text-align:center">Pts</div>';
+    h += '<div>#</div><div>Club</div><div style="text-align:center">J</div><div style="text-align:center;color:#18c860">V</div><div style="text-align:center;color:#f0c028">N</div><div style="text-align:center;color:#e06060">D</div><div style="text-align:center" title="Buts pour / contre">BP:BC</div><div style="text-align:center;color:#f0c028;font-weight:900">Pts</div>';
     h += '</div>';
     standings.forEach(function(s, i){
       const isMe = s.isPlayer;
@@ -4138,7 +4154,7 @@ function _renderDirectorOverview(){
       h += '<div style="font-size:10px;text-align:center;color:#f0c028">'+(s.D||0)+'</div>';
       h += '<div style="font-size:10px;text-align:center;color:#e06060">'+(s.L||0)+'</div>';
       h += '<div style="font-size:9px;text-align:center;color:'+gdCol+'">'+(s.GF||0)+':'+(s.GA||0)+'</div>';
-      h += '<div style="font-size:13px;font-weight:900;text-align:center;color:'+(isMe?accentCol:'var(--fg)')+'">'+s.Pts+'</div>';
+      h += '<div style="text-align:center"><span style="display:inline-block;min-width:24px;font-size:13px;font-weight:900;color:'+(isMe?accentCol:(i===0?'#f0c028':'var(--fg)'))+';background:'+(i===0?'rgba(240,192,40,.14)':'transparent')+';border-radius:5px;padding:2px 4px;font-variant-numeric:tabular-nums">'+s.Pts+'</span></div>';
       h += '</div>';
     });
     // Légende des zones.
@@ -4154,7 +4170,7 @@ function _renderDirectorOverview(){
   const recentLog = (C.finances&&C.finances.log||[]).slice(-3).reverse();
   if(recentLog.length > 0){
     h += '<div style="background:var(--panel);border:1px solid var(--b1);border-radius:10px;padding:14px">';
-    h += '<div style="font-size:11px;font-weight:900;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📋 Activité récente</div>';
+    h += '<div style="font-size:11px;font-weight:900;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">'+((typeof ICON!=='undefined')?ICON('doc',{size:13})+' ':'📋 ')+'Activité récente</div>';
     recentLog.forEach(function(e){
       h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--b1)10;font-size:11px">';
       h += '<span style="color:var(--muted)">'+e.desc+'</span>';
