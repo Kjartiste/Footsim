@@ -1124,7 +1124,7 @@ function renderTB(ti){
         <div style="font-size:8px;color:var(--muted);text-align:center;margin-top:3px;letter-spacing:.5px;cursor:pointer" onclick="openBadgeEditor(${ti})">BLASON</div>
       </div>
       <div style="flex:1">
-        <div style="font-size:9px;color:var(--muted);margin-bottom:4px">Logo / blason de l'équipe<br><span style="color:#333">Affiché partout : pré-match, calendrier, classement…</span></div>
+        <div style="font-size:9px;color:var(--muted);margin-bottom:4px">Logo / blason de l'équipe<br><span style="color:#333">Affiché en pré-match, calendrier et classement.</span></div>
         <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:2px" onclick="openBadgeEditor(${ti})" title="Créer un blason vectoriel">🛡️ Éditeur de blason</button>
         <button class="btn" style="padding:3px 9px;font-size:9px;margin-top:2px" onclick="document.getElementById('tfup${ti}').click()" title="Importer une image">🖼️ Importer</button>
         ${(T.img||T.badge)?`<button class="btn" style="padding:2px 8px;font-size:9px;margin-top:2px" onclick="teams[${ti}].img='';teams[${ti}]._img=null;teams[${ti}].badge=null;renderTB(${ti});syncHUD()">✕ Retirer</button>`:''}

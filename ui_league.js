@@ -745,7 +745,7 @@ const CUP_FORMATS=[
   {id:'ar_fin',  name:'Aller-retour, finale sur un match',desc:"Aller-retour jusqu'en demi-finales, puis une grande finale disputée sur un seul match. Ce format a été longtemps utilisé en Copa Libertadores.",                  type:'knockout',    legs:2, singleFinal:true, thirdPlace:false},
   {id:'gr_elim', name:'Phase de groupes + K.O. direct',   desc:"D'abord tout le monde joue en poule pour se jauger, puis les meilleurs s'éliminent directement. C'est le format de la Coupe du Monde et de l'Euro.",             type:'groups_ko',   legs:1, thirdPlace:true},
   {id:'gr_ar',   name:'Phase de groupes + aller-retour',  desc:"Une poule pour commencer, puis chaque confrontation en phase éliminatoire se joue sur deux matchs. C'est le vrai format de la Ligue des Champions.",             type:'groups_ko',   legs:2, thirdPlace:false},
-  {id:'double',  name:'Double élimination',               desc:"Une défaite ne t'élimine pas tout de suite — tu passes dans le tableau des perdants et tu peux encore remporter le titre. Deux défaites et c'est terminé.",       type:'double_elim', legs:1, thirdPlace:false},
+  {id:'double',  name:'Double élimination',               desc:"Une défaite ne t'élimine pas tout de suite. Tu passes dans le tableau des perdants et tu peux encore remporter le titre. Deux défaites et c'est terminé.",       type:'double_elim', legs:1, thirdPlace:false},
   {id:'gr_final',name:'Play-offs (poule finale)',          desc:"Deux poules initiales, puis les deux premiers de chaque groupe se retrouvent dans une poule finale de 4. Le classement de cette poule décide du vainqueur et de l'ordre des montées.",  type:'groups_final', legs:1, thirdPlace:false},
 ];
 
@@ -3716,7 +3716,7 @@ function _renderDirectorHistory(){
   h += '<div style="font-size:15px;font-weight:900;color:var(--gold);margin-bottom:4px">📜 Historique de carrière</div>';
   h += '<div style="font-size:10px;color:var(--muted);margin-bottom:14px">Le résumé de chaque saison jouée, de la plus récente à la plus ancienne.</div>';
   if(!hist.length){
-    h += '<div style="font-size:11px;color:var(--muted);text-align:center;padding:24px">Aucune saison archivée pour le moment — terminez votre première saison !</div>';
+    h += '<div style="font-size:11px;color:var(--muted);text-align:center;padding:24px">Aucune saison archivée pour le moment.</div>';
     h += '</div>'; return h;
   }
 
@@ -4047,7 +4047,7 @@ function _renderDirectorOverview(){
       h += '<div style="background:linear-gradient(135deg,#00bcd422,var(--panel));border:2px solid #00bcd4;border-radius:10px;padding:14px;margin-bottom:12px">';
       h += '<div style="font-size:12px;font-weight:900;color:#00bcd4;margin-bottom:6px">🤝 Match amical aujourd\'hui !</div>';
       h += '<div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:6px">'+club.name+' <span style="color:var(--muted)">vs</span> <b>'+opp+'</b></div>';
-      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Match sans enjeu de classement — entretient forme et moral.</div>';
+      h += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px">Match sans enjeu de classement. Entretient forme et moral.</div>';
       h += '<div style="display:flex;gap:8px">';
       h += '<button class="btn btng" onclick="playCareerFriendlyMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">▶ Jouer le match</button>';
       h += '<button class="btn" onclick="simCareerFriendlyMatch()" style="flex:1;font-size:12px;padding:10px;font-weight:900">⚡ Simuler</button>';
@@ -4193,7 +4193,7 @@ function _renderDirectorOverview(){
       const lcWk = lc.playoffWeeks && lc.playoffWeeks[lc.round];
       const lcDateStr = (lcWk!=null && typeof _cupWeekDate==='function') ? _fmtDateFrLong(_cupWeekDate(lcWk)) : null;
       h += '<div style="font-size:13px;font-weight:700;color:var(--fg)">Play-offs : '+rn+'</div>';
-      h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">'+(lcDateStr?'🗓️ '+lcDateStr+' — ':'')+'Qualifié pour les play-offs — matchs à élimination directe.</div>';
+      h += '<div style="font-size:9px;color:var(--muted);margin-top:6px">'+(lcDateStr?'🗓️ '+lcDateStr+' — ':'')+'Qualifié pour les play-offs.</div>';
     }
     h += '</div>';
   }
@@ -5002,7 +5002,7 @@ function _renderDirectorAcademy(){
   h += '<div style="height:100%;width:' + quality + '%;background:linear-gradient(90deg,#18c860,#f0c028);border-radius:3px"></div></div>';
   h += '<div style="font-size:9px;color:var(--muted);line-height:1.5">';
   if(acadLvl <= 0){
-    h += 'Pas encore de centre de formation construit — vos jeunes arrivent quand même (bénévolat local), mais en petit nombre et avec un potentiel limité. <b style="color:var(--gold)">Construisez-en un depuis Infrastructures</b> pour en accueillir plus, et de meilleure qualité.';
+    h += 'Pas de centre de formation. Tes jeunes arrivent quand même, mais peu nombreux et au potentiel limité. <b style="color:var(--gold)">Construis-en un depuis Infrastructures.</b>';
   } else {
     h += 'Chaque niveau améliore <b>la quantité</b> (+1 jeune tous les 2 niveaux) <b>et la qualité</b> (+4 de potentiel de base par niveau) des jeunes recrutés, ainsi que vos chances de tomber sur un talent régional ou une <b>pépite</b> professionnelle.';
   }
@@ -5108,9 +5108,9 @@ function _renderDirectorSponsors(){
   try{
     const reg = WORLDS.getRegion(club.nation || C.nation, club.region);
     if(reg){
-      const wLbl = (reg.wealth>=3) ? 'région riche — grandes marques nationales'
-                 : (reg.wealth===2) ? 'région intermédiaire — marques mixtes'
-                 : 'région modeste — surtout des sponsors locaux';
+      const wLbl = (reg.wealth>=3) ? 'région riche, grandes marques nationales'
+                 : (reg.wealth===2) ? 'région intermédiaire, marques mixtes'
+                 : 'région modeste, sponsors locaux';
       h += '<div style="font-size:8px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--b1)">📍 '+reg.name+' · '+wLbl+' · division <b>'+String(club.level).toUpperCase()+'</b></div>';
     }
   }catch(e){}
@@ -5209,7 +5209,7 @@ function _renderDirectorInfra(){
   h += '<div style="font-size:15px;font-weight:900;color:var(--gold)">🏗 Infrastructures</div>';
   h += '<div style="font-size:10px;color:var(--muted)">Budget : <b style="color:'+(club.budget<0?'#e06060':'#18c860')+'">'+_fmtMoney(club.budget)+'</b></div>';
   h += '</div>';
-  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px">Les travaux prennent du temps : permis, construction, paiement en tranches. Un chantier peut être retardé ou dépasser son budget.</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px">Les travaux prennent du temps. Un chantier peut être retardé ou dépasser son budget.</div>';
 
   Object.keys(defs).forEach(function(key){
     const def = defs[key];

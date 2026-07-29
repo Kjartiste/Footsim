@@ -43,21 +43,21 @@ const STAFF = (function(){
 
   // ── Définition des postes ──────────────────────────────────────────
   const ROLES = {
-    manager:    { key:'manager',    label:'Manager',              icon:'🧑',   desc:'Motive le vestiaire les jours de match (moral + cohésion) et pèse sur la réputation du club.' },
-    assistant:  { key:'assistant',  label:'Entraîneur adjoint',   icon:'🤝',   desc:'Seconde le manager : petit bonus de cohésion de match et soutient la mise en place tactique.' },
-    coach_phys: { key:'coach_phys', label:'Entraîneur physique',  icon:'🏃',   desc:'Spécialiste athlétique : accélère la progression lors des séances physiques (vitesse, endurance, puissance).' },
-    coach_tech: { key:'coach_tech', label:'Entraîneur technique', icon:'🎯',   desc:'Travaille le geste : accélère la progression lors des séances techniques (passe, contrôle, finition, dribble).' },
-    coach_gk:   { key:'coach_gk',   label:'Entraîneur des gardiens', icon:'🧤',desc:'Spécialiste du poste : accélère la progression des gardiens (réflexes, sorties, jeu au pied).' },
-    coach_setp: { key:'coach_setp', label:'Coach coups de pied arrêtés', icon:'🥅', desc:'Travaille les phases arrêtées : améliore vos corners/coups francs et réduit ceux concédés.' },
-    coach_att:  { key:'coach_att',  label:'Entraîneur des attaquants', icon:'⚔️', desc:'Spécialiste offensif : accélère la progression de vos attaquants et milieux offensifs.' },
-    coach_mid:  { key:'coach_mid',  label:'Entraîneur des milieux',    icon:'🎩', desc:'Travaille l\'entrejeu : accélère la progression de vos milieux.' },
-    coach_def:  { key:'coach_def',  label:'Entraîneur des défenseurs', icon:'🛡️', desc:'Spécialiste défensif : accélère la progression de vos défenseurs.' },
-    analyst:    { key:'analyst',    label:'Analyste vidéo',       icon:'🎥',   desc:'Décortique l\'adversaire avant le match : vos joueurs démarrent plus concentrés (bonus de première mi-temps).' },
+    manager:    { key:'manager',    label:'Manager',              icon:'🧑',   desc:'Motive le vestiaire les jours de match et pèse sur la réputation du club.' },
+    assistant:  { key:'assistant',  label:'Entraîneur adjoint',   icon:'🤝',   desc:'Renforce la cohésion en match et aide à la mise en place tactique.' },
+    coach_phys: { key:'coach_phys', label:'Entraîneur physique',  icon:'🏃',   desc:'Accélère les progrès physiques (vitesse, endurance, puissance).' },
+    coach_tech: { key:'coach_tech', label:'Entraîneur technique', icon:'🎯',   desc:'Accélère les progrès techniques (passe, contrôle, finition, dribble).' },
+    coach_gk:   { key:'coach_gk',   label:'Entraîneur des gardiens', icon:'🧤',desc:'Accélère les progrès des gardiens (réflexes, sorties, jeu au pied).' },
+    coach_setp: { key:'coach_setp', label:'Coach coups de pied arrêtés', icon:'🥅', desc:'Améliore vos coups de pied arrêtés et réduit ceux concédés.' },
+    coach_att:  { key:'coach_att',  label:'Entraîneur des attaquants', icon:'⚔️', desc:'Accélère les progrès de vos attaquants et milieux offensifs.' },
+    coach_mid:  { key:'coach_mid',  label:'Entraîneur des milieux',    icon:'🎩', desc:'Accélère les progrès de vos milieux.' },
+    coach_def:  { key:'coach_def',  label:'Entraîneur des défenseurs', icon:'🛡️', desc:'Accélère les progrès de vos défenseurs.' },
+    analyst:    { key:'analyst',    label:'Analyste vidéo',       icon:'🎥',   desc:'Vos joueurs démarrent plus concentrés (bonus de première mi-temps).' },
     scout:      { key:'scout',      label:'Recruteur',            icon:'🔭',   desc:'Déniche de meilleurs agents libres et augmente les chances de découvrir une pépite.' },
-    data:       { key:'data',       label:'Analyste data',        icon:'📊',   desc:'Modélise les profils : révèle plus fidèlement le potentiel des recrues et jeunes repérés.' },
+    data:       { key:'data',       label:'Analyste data',        icon:'📊',   desc:'Révèle plus fidèlement le potentiel des recrues et des jeunes.' },
     physio:     { key:'physio',     label:'Kiné',                 icon:'🏥',   desc:'Réduit le risque de blessure à l\'entraînement et raccourcit les convalescences.' },
-    fitness:    { key:'fitness',    label:'Préparateur physique', icon:'💪',   desc:'Optimise la charge : les joueurs récupèrent mieux leur forme entre les matchs.' },
-    psycho:     { key:'psycho',     label:'Préparateur mental',   icon:'🧠',   desc:'Stabilise le vestiaire : limite les chutes de moral et soutient la cohésion sur la durée.' },
+    fitness:    { key:'fitness',    label:'Préparateur physique', icon:'💪',   desc:'Vos joueurs récupèrent mieux leur forme entre les matchs.' },
+    psycho:     { key:'psycho',     label:'Préparateur mental',   icon:'🧠',   desc:'Limite les chutes de moral et soutient la cohésion sur la durée.' },
   };
   // Ordre à plat (dérivé des départements) pour les itérations globales.
   const ROLE_ORDER = DEPARTMENTS.reduce(function(acc,d){ return acc.concat(d.roles); }, []);

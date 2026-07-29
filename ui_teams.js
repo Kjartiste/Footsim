@@ -87,7 +87,7 @@ function renderTeamSelectPage(){
         body += soon(TIER_LABELS[tr]);
         return;
       }
-      const sub = tr==='pro' ? 'Ligue nationale — toutes régions' : tr==='regional' ? 'Championnats régionaux, par région' : 'Divisions de district';
+      const sub = tr==='pro' ? 'Ligue nationale, toutes régions' : tr==='regional' ? 'Championnats régionaux, par région' : 'Divisions de district';
       body += bigBtn(TIER_LABELS[tr]||tr, sub+' · '+n+' équipe'+(n>1?'s':''), `teamSelPick('tier','${tr}')`);
     });
   }

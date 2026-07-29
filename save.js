@@ -32,8 +32,8 @@ let activeProfileId = null; // profil actif
 // (voir _AI_SKILL dans ia.js) ; le multiplicateur d'OVR ci-dessous n'est plus
 // qu'un léger complément, pour éviter une IA qui « triche » par les stats.
 const DIFFICULTY_LEVELS = {
-  easy:   { id:'easy',   label:'🟢 Facile',     mult:0.94, desc:"Adversaires un peu plus tendres et moins inspirés dans leurs choix. Idéal pour découvrir." },
-  normal: { id:'normal', label:'🟡 Normal',     mult:1.00, desc:'Niveau et intelligence de jeu fidèles à la division adverse.' },
+  easy:   { id:'easy',   label:'🟢 Facile',     mult:0.94, desc:"Des adversaires plus tendres, qui se trompent plus souvent." },
+  normal: { id:'normal', label:'🟡 Normal',     mult:1.00, desc:"L'IA joue à son vrai niveau, celui de sa division." },
   hard:   { id:'hard',   label:'🟠 Difficile',  mult:1.04, desc:'L\'IA lit mieux le jeu, presse plus fort et gâche moins. Il faut une vraie tactique.' },
   legend: { id:'legend', label:'🔴 Légendaire', mult:1.08, desc:'IA au sommet : décisions tranchantes, pressing constant, conservation soignée.' },
 };
@@ -2810,7 +2810,7 @@ function setTacMode(ti,mode){
   if(lbl) lbl.textContent={
     'press':'Pressing — tu montes haut, tu perds en défense.',
     'defend':'Bloc défensif — tu encaisses moins mais tu attaques peu.',
-    'attack':'Tout en attaque — risqué mais efficace pour renverser.',
+    'attack':'Tout en attaque. Risqué mais efficace pour renverser.',
     null:''
   }[mode]||'';
 }
@@ -3156,8 +3156,8 @@ function _syncAiCtrlBar(){
     const label = T ? (T.name||'').slice(0,10) : ('Éq. '+(ti===0?'A':'B'));
     const isAi = G._humanTeams[ti]===false;
     btn.innerHTML = (isAi?'🤖 ':'👤 ')+label;
-    btn.title = isAi ? 'Équipe gérée par le coach IA — clique pour reprendre la main'
-                     : 'Tu gères cette équipe — clique pour la confier au coach IA';
+    btn.title = isAi ? 'Équipe gérée par le coach IA. Clique pour reprendre la main.'
+                     : 'Tu gères cette équipe. Clique pour la confier au coach IA.';
     btn.style.borderColor = isAi ? '#8840e0' : ((T&&T.color)||'var(--gold)');
     btn.style.color       = isAi ? '#b388ff' : ((T&&T.color)||'var(--gold)');
     btn.style.background   = isAi ? 'rgba(136,64,224,.15)' : 'var(--dark)';

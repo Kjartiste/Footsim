@@ -1882,7 +1882,7 @@ function endCareerSeasonDirector(){
       return;
     }
   } else if(myPos >= total-1){
-    seasonOutcomeMsg = 'Saison difficile — attention la prochaine fois.';
+    seasonOutcomeMsg = 'Saison difficile.';
     logEvent(seasonOutcomeMsg,'#e06060');
   }
 
@@ -2544,7 +2544,7 @@ function _renderDirectorSocial(){
     h += '<div style="padding:40px 20px;text-align:center;color:var(--muted)">';
     h += '<div style="font-size:32px;margin-bottom:8px">💬</div>';
     h += '<div style="font-size:12px">Aucun post pour l\'instant.</div>';
-    h += '<div style="font-size:10px;margin-top:4px">Jouez des matchs : supporters et médias réagiront ici.</div>';
+    h += '<div style="font-size:10px;margin-top:4px">Joue des matchs. Supporters et médias réagiront ici.</div>';
     h += '</div></div>';
     return h;
   }
