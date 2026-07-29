@@ -72,7 +72,10 @@ window.tickWalkout = function(dt){
   const W = G._walkout; if(!W) return;
   W.t += (dt||0.016);
 
-  const speed = 0.55; // vitesse de marche (lissée)
+  // Vitesse en unités-terrain PAR SECONDE (proportionnelle à dt), pour une
+  // durée d'entrée constante (~2-3 s) quel que soit le framerate.
+  const speedPerSec = 38;
+  const step0 = Math.min(3, speedPerSec * (dt||0.016)); // borné pour éviter les sauts
   let allArrived = true;
 
   W.list.forEach(fp=>{
@@ -84,7 +87,7 @@ window.tickWalkout = function(dt){
     const dx=tx-fp.p.x, dy=ty-fp.p.y, d=Math.hypot(dx,dy);
     if(d>0.4){
       allArrived=false;
-      const step=Math.min(d, speed);
+      const step=Math.min(d, step0);
       fp.p.vx = (dx/d)*step;
       fp.p.vy = (dy/d)*step;
       fp.p.x += fp.p.vx;
@@ -96,7 +99,7 @@ window.tickWalkout = function(dt){
 
   // Transitions de stage.
   if(W.stage===0 && allArrived){ W.stage=1; W.t=0; }
-  else if(W.stage===1 && W.t>0.9){ W.stage=2; W.t=0; } // ~0,9 s de présentation
+  else if(W.stage===1 && W.t>0.5){ W.stage=2; W.t=0; } // ~0,5 s de présentation
   else if(W.stage===2 && allArrived){
     // Tout le monde est placé : fin de l'entrée, on lance le vrai coup d'envoi.
     const done=W.onDone; const atkTi=W.atkTi;
