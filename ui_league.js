@@ -1763,15 +1763,17 @@ function renderCupGroupHTML(g){
     <div style="flex:1;height:2px;background:linear-gradient(90deg,var(--b2),transparent);border-radius:2px"></div>
   </div>
   <div style="background:var(--card);border:1px solid var(--b1);border-radius:8px;overflow:hidden;margin-bottom:5px">
-    <div style="display:grid;grid-template-columns:1fr 18px 18px 18px 18px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1)">
-      ${['Équipe','J','V','N','D','Pts'].map((l,i)=>`<span style="font-size:8px;color:var(--muted);text-align:${i>0?'center':'left'};${l==='Pts'?'font-weight:900;color:var(--gold)':''}">${l}</span>`).join('')}
+    <div style="display:grid;grid-template-columns:1fr 16px 16px 16px 16px 20px 20px 22px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1)">
+      ${['Équipe','J','V','N','D','BP','BC','Dif','Pts'].map((l,i)=>`<span style="font-size:8px;color:var(--muted);text-align:${i>0?'center':'left'};${l==='Pts'?'font-weight:900;color:var(--gold)':''}">${l}</span>`).join('')}
     </div>
     ${sorted.map((s,rank)=>{
       const t=cupState.teams.find(x=>x.id===s.id),q=rank<adv&&allPlayed;
-      return `<div style="display:grid;grid-template-columns:1fr 18px 18px 18px 18px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1);align-items:center;cursor:pointer;background:${q?'rgba(24,200,96,.05)':'transparent'}" onclick='showStandingDetail("cup",${s.id},${gi})' title="Voir les détails">
+      const gd=(s.GF||0)-(s.GA||0);
+      return `<div style="display:grid;grid-template-columns:1fr 16px 16px 16px 16px 20px 20px 22px 22px;gap:0 2px;padding:3px 6px;border-bottom:1px solid var(--b1);align-items:center;cursor:pointer;background:${q?'rgba(24,200,96,.05)':'transparent'}" onclick='showStandingDetail("cup",${s.id},${gi})' title="Voir les détails">
         <span style="display:flex;align-items:center;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:${t?.color||'#888'};flex-shrink:0"></span>
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;color:${q?'var(--green)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t?.name||'?'}${q?'<span style="font-size:8px;color:var(--green);margin-left:2px">✓</span>':''}</span></span>
-        ${[s.P,s.W,s.D,s.L].map(v=>`<span style="font-size:9px;text-align:center">${v}</span>`).join('')}
+        ${[s.P,s.W,s.D,s.L,s.GF||0,s.GA||0].map(v=>`<span style="font-size:9px;text-align:center">${v}</span>`).join('')}
+        <span style="font-size:9px;text-align:center;color:${gd>0?'var(--green)':gd<0?'var(--red)':'var(--muted)'}">${gd>0?'+':''}${gd}</span>
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;text-align:center;color:${q?'var(--green)':'var(--gold)'}">${s.Pts}</span>
       </div>`;
     }).join('')}
@@ -1799,14 +1801,16 @@ function renderCupGroupHTML(g){
     </div>`;
   });
   if(played.length){
-    h+=`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">`;
+    h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:3px">`;
     played.slice(-4).forEach(f=>{
       const hT=cupState.teams.find(t=>t.id===f.home),aT=cupState.teams.find(t=>t.id===f.away);
       const fi=g.fixtures.indexOf(f);
       const cmRefP=JSON.stringify({phase:'groups',groupIdx:gi,fixtureIdx:fi});
-      h+=`<div style="font-size:9px;background:var(--panel);border:1px solid var(--b1);border-radius:4px;padding:2px 5px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer" onclick='openCupEditModal(${cmRefP})' title="Modifier ce résultat">
-        <span><span style="color:${f.sh>f.sa?hT?.color:'inherit'}">${hT?.name?.slice(0,6)||'?'}</span> ${f.sh}–${f.sa} <span style="color:${f.sa>f.sh?aT?.color:'inherit'}">${aT?.name?.slice(0,6)||'?'}</span></span>
-        <span style="opacity:.6">✎</span>
+      h+=`<div style="font-size:9px;background:var(--panel);border:1px solid var(--b1);border-radius:4px;padding:3px 6px;color:var(--muted);display:grid;grid-template-columns:1fr auto 1fr auto;align-items:center;gap:4px;cursor:pointer" onclick='openCupEditModal(${cmRefP})' title="Modifier ce résultat">
+        <span style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${f.sh>f.sa?hT?.color:'inherit'};font-weight:${f.sh>f.sa?'700':'400'}">${hT?.name||'?'}</span>
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;color:var(--text);padding:0 2px">${f.sh}–${f.sa}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${f.sa>f.sh?aT?.color:'inherit'};font-weight:${f.sa>f.sh?'700':'400'}">${aT?.name||'?'}</span>
+        <span style="opacity:.5">✎</span>
       </div>`;
     });
     h+=`</div>`;
