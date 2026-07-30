@@ -591,6 +591,15 @@ function startCareerDirector(regionId, clubId, nationId){
     pending_events: [],
     director_reputation: 30,
     director_name: 'Vous',
+    // ── PALMARÈS DU MANAGER (cumulé sur toute la carrière, pas la saison) ──
+    // Alimenté à chaque fin de match et de saison. Sert au tableau de bord et
+    // à la future page « Records personnels » (point 14 du plan carrière).
+    managerCareer: {
+      seasons: 0, matches: 0, wins: 0, draws: 0, losses: 0,
+      goals_for: 0, goals_against: 0,
+      titles: 0, cups: 0, promotions: 0, relegations: 0,
+      best_finish: null, clubs: [], youth_promoted: 0,
+    },
     // Équipes réserves affiliées (générique, réutilisable pour toute nation).
     // Chaque affiliée : {id,name,color,badge,level,division,delegated,players,
     // bench,fixtures,standings,...}. Pré-remplies pour le Pilier (branches de la

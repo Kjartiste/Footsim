@@ -3954,6 +3954,95 @@ function _sendToAffiliateHTML(affIdx){
   return h;
 }
 
+// ── TABLEAU DE BORD CARRIÈRE ───────────────────────────────────────────
+// Résumé en tête de la Vue : prochain match, objectif du board + progression,
+// réputation, finances, palmarès du manager. Agrège des données déjà
+// présentes (careerV2) ; aucune logique de jeu modifiée, purement de l'affichage.
+function _renderCareerDashboard(C, club, region, nextFix, standings, myPos){
+  const accent = club.color || (region && region.color) || '#f0c028';
+  const total = standings.length;
+  const mc = C.club.managerCareer || {};
+  const ss = C.season_stats || {};
+  const played = (ss.wins||0)+(ss.draws||0)+(ss.losses||0);
+
+  // Petit utilitaire carte-stat.
+  const stat = (val, label, col) =>
+    '<div style="flex:1;min-width:70px;text-align:center;background:rgba(255,255,255,.03);'
+    +'border:1px solid var(--b1);border-radius:9px;padding:8px 6px">'
+    +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:20px;font-weight:900;line-height:1;color:'+(col||'var(--fg)')+';font-variant-numeric:tabular-nums">'+val+'</div>'
+    +'<div style="font-size:8px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-top:4px">'+label+'</div></div>';
+
+  let h = '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:12px">';
+
+  // En-tête : nom du club + place au classement + réputation.
+  const repLabel = _repLabel(club.reputation);
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+    +'<span style="width:4px;height:18px;border-radius:2px;background:'+accent+'"></span>'
+    +'<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:1px;color:var(--fg);text-transform:uppercase">Tableau de bord</span>'
+    +'<span style="margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.5px;color:'+accent+';text-transform:uppercase">'+repLabel+'</span>'
+    +'</div>';
+
+  // Ligne 1 : prochain match (large) + objectif board.
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">';
+
+  // Prochain match.
+  if(nextFix){
+    const opp = nextFix.oppName || '?';
+    const where = nextFix.isHome ? 'Domicile' : 'Extérieur';
+    h += '<div style="background:rgba(255,255,255,.03);border:1px solid var(--b1);border-radius:9px;padding:9px 11px">'
+      +'<div style="font-size:8px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Prochain match</div>'
+      +'<div style="font-size:13px;font-weight:800;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+opp+'</div>'
+      +'<div style="font-size:9px;color:var(--muted);margin-top:2px">'+where+'</div></div>';
+  } else {
+    h += '<div style="background:rgba(255,255,255,.03);border:1px solid var(--b1);border-radius:9px;padding:9px 11px">'
+      +'<div style="font-size:8px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Prochain match</div>'
+      +'<div style="font-size:11px;color:var(--muted)">Aucun programmé</div></div>';
+  }
+
+  // Objectif du board (le premier) + position vs attente.
+  const obj = club.board_objectives && club.board_objectives[0];
+  const posTxt = myPos>0 ? (myPos+'ᵉ/'+total) : '—';
+  h += '<div style="background:rgba(255,255,255,.03);border:1px solid var(--b1);border-radius:9px;padding:9px 11px">'
+    +'<div style="font-size:8px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Objectif du board</div>'
+    +'<div style="font-size:11px;font-weight:700;color:var(--fg);line-height:1.3">'+(obj?(obj.label||obj.text||obj.desc||'Se maintenir'):'Se maintenir')+'</div>'
+    +'<div style="font-size:9px;color:var(--muted);margin-top:2px">Actuel : <b style="color:'+accent+'">'+posTxt+'</b></div></div>';
+
+  h += '</div>';
+
+  // Ligne 2 : stats de saison en cartes.
+  h += '<div style="display:flex;gap:6px;margin-bottom:8px">';
+  h += stat(played, 'Joués');
+  h += stat(ss.wins||0, 'Victoires', 'var(--green)');
+  h += stat(ss.draws||0, 'Nuls', '#f0c028');
+  h += stat(ss.losses||0, 'Défaites', 'var(--red)');
+  const gd = (ss.goals_for||0)-(ss.goals_against||0);
+  h += stat((gd>0?'+':'')+gd, 'Diff.', gd>0?'var(--green)':gd<0?'var(--red)':'var(--muted)');
+  h += '</div>';
+
+  // Ligne 3 : finances + palmarès manager.
+  h += '<div style="display:flex;gap:6px">';
+  const budCol = club.budget<0?'var(--red)':club.budget<500?'#f0c028':'var(--green)';
+  h += stat((typeof _fmtMoney==='function'?_fmtMoney(club.budget):club.budget), 'Budget', budCol);
+  h += stat(mc.matches||0, 'Matchs (carr.)');
+  h += stat(mc.wins||0, 'Victoires (carr.)', 'var(--green)');
+  h += stat(mc.titles||0, 'Titres', '#f0c028');
+  h += stat(mc.seasons||0, 'Saisons');
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+// Palier de réputation (locale → mondiale) à partir d'une valeur 0-100.
+function _repLabel(rep){
+  const r = rep||0;
+  if(r>=85) return 'Réputation mondiale';
+  if(r>=65) return 'Réputation continentale';
+  if(r>=45) return 'Réputation nationale';
+  if(r>=25) return 'Réputation régionale';
+  return 'Réputation locale';
+}
+
 function _renderDirectorOverview(){
   const C = careerV2; const club = C.club;
   const region = WORLDS.getRegion(C.nation||'panthalassa', club.region);
@@ -3973,6 +4062,9 @@ function _renderDirectorOverview(){
   const accentCol = region ? region.color : 'var(--gold)';
 
   let h = '';
+
+  // ── TABLEAU DE BORD (résumé en tête de la Vue) ───────────────────────
+  try{ h += _renderCareerDashboard(C, club, region, nextFix, standings, myPos); }catch(e){ console.error('dashboard:',e); }
 
   // ── Offre d'un autre club (prioritaire : décision à prendre) ─────────
   try{ if(typeof _renderInterviewCard==='function') h += _renderInterviewCard(); }catch(e){ console.error('interview card:',e); }

@@ -3,6 +3,31 @@
 // Lignes 9511–12331 de l'ui.js d'origine.
 // ============================================================
 
+// ── PALMARÈS DU MANAGER : mise à jour cumulée ──────────────────────────
+// Appelé à chaque match de championnat du joueur. Alimente careerV2.club
+// .managerCareer, affiché dans le tableau de bord et la page Records.
+function _recordManagerMatch(C, myG, aiG){
+  if(!C || !C.club) return;
+  const mc = C.club.managerCareer || (C.club.managerCareer = {
+    seasons:0,matches:0,wins:0,draws:0,losses:0,goals_for:0,goals_against:0,
+    titles:0,cups:0,promotions:0,relegations:0,best_finish:null,clubs:[],youth_promoted:0 });
+  mc.matches++;
+  mc.goals_for += myG; mc.goals_against += aiG;
+  if(myG>aiG) mc.wins++; else if(myG===aiG) mc.draws++; else mc.losses++;
+  // Enregistrer le club dirigé (une fois).
+  if(C.club.name && mc.clubs.indexOf(C.club.name)===-1) mc.clubs.push(C.club.name);
+}
+
+// Fin de saison : incrémente le compteur de saisons et met à jour le meilleur
+// classement. À appeler depuis la routine de fin de saison existante.
+function _recordManagerSeason(C, finishPos){
+  if(!C || !C.club) return;
+  const mc = C.club.managerCareer; if(!mc) return;
+  mc.seasons++;
+  if(finishPos && (mc.best_finish==null || finishPos<mc.best_finish)) mc.best_finish=finishPos;
+  if(finishPos===1) mc.titles++;
+}
+
 function _calSetFamily(dateKey, familyKey){
   window._calPlannerFamily = familyKey;
   renderCareerDirectorTab('calendar');
@@ -857,6 +882,7 @@ function _recordCareerV2MatchResult(){
   if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
   else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
   else { C.season_stats.losses++; }
+  try{ if(typeof _recordManagerMatch==='function') _recordManagerMatch(C, myG, aiG); }catch(e){}
   try{ if(typeof _trackUnbeaten==='function') _trackUnbeaten(myG>aiG, myG===aiG); }catch(e){}
   // Derby : enjeu accru si l'adversaire est le rival.
   try{ if(typeof isRivalFixture==='function' && isRivalFixture(fix) && typeof _resolveRivalResult==='function') _resolveRivalResult(myG, aiG); }catch(e){ console.error('derby:',e); }
@@ -1298,6 +1324,7 @@ function simCareerMatchDirector(){
   if(myG > aiG){ C.season_stats.wins++;   C.season_stats.points += 3; }
   else if(myG === aiG){ C.season_stats.draws++; C.season_stats.points++; }
   else { C.season_stats.losses++; }
+  try{ if(typeof _recordManagerMatch==='function') _recordManagerMatch(C, myG, aiG); }catch(e){}
   try{ if(typeof _trackUnbeaten==='function') _trackUnbeaten(myG>aiG, myG===aiG); }catch(e){}
   // Derby : enjeu accru si l'adversaire est le rival.
   try{ if(typeof isRivalFixture==='function' && isRivalFixture(fix) && typeof _resolveRivalResult==='function') _resolveRivalResult(myG, aiG); }catch(e){ console.error('derby:',e); }
@@ -2017,9 +2044,16 @@ function endCareerSeasonDirector(){
     if(typeof _boardMaybeJobOffer==='function') _boardMaybeJobOffer(ctx);
   }catch(e){ console.error('board season end:', e); }
 
+  // Palmarès manager : clôturer la saison (position finale + titre éventuel).
+  try{
+    if(typeof _recordManagerSeason==='function'){
+      const st=(C.standings||[]).slice().sort((a,b)=>b.Pts-a.Pts||(b.GF-b.GA)-(a.GF-a.GA));
+      const fin=st.findIndex(s=>s.isPlayer)+1;
+      _recordManagerSeason(C, fin>0?fin:null);
+    }
+  }catch(e){ console.error('manager season:',e); }
+
   C.season++; C.week = 1;
-  C.date = {year:(C.date&&C.date.year||1)+1, month:8, day:1};
-  C.seasonStartDate = null; // ré-ancrée par _generateSeasonFixtures() ci-dessous
   C.dayPlans = {}; // planning de la saison écoulée purgé
   C.season_stats = {wins:0, draws:0, losses:0, goals_for:0, goals_against:0, points:0, scorers:{}};
   // Remise à zéro des compteurs d'objectifs secondaires.
