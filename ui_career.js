@@ -3,6 +3,33 @@
 // Lignes 9511–12331 de l'ui.js d'origine.
 // ============================================================
 
+// ── CLASSEMENT : COMPARATEUR CANONIQUE UNIQUE ─────────────────────────────
+// BUG CORRIGÉ (résultats de carrière ET de barrage incohérents) : le tri du
+// classement était réimplémenté à ~5 endroits avec des critères DIFFÉRENTS —
+// certains à 1 clé (Pts seul), d'autres à 2 clés (Pts, diff. de buts), et le
+// tableau AFFICHÉ au joueur (sortStd, ui_league.js) à 3 clés (Pts, diff., BP).
+// Conséquence : quand deux clubs étaient à égalité de points (voire de points
+// ET de différence de buts) — fréquent sur une saison courte — l'ordre variait
+// selon la fonction. La POSITION FINALE (`myPos`) qui décide montée / descente
+// / qualification en barrage était calculée avec le tri à 2 clés, alors que le
+// joueur voyait un classement trié à 3 clés : le rang décisif ne correspondait
+// donc pas au rang affiché, et le mauvais adversaire / la mauvaise issue de
+// barrage en découlaient.
+// Désormais TOUT rang de carrière passe par ce seul comparateur, aligné sur le
+// tri le plus complet (Pts → différence de buts → buts pour). Départage final
+// stable et déterministe par nom pour ne jamais dépendre de l'ordre d'insertion.
+function careerStandingCmp(a, b){
+  const pa=a.Pts||0, pb=b.Pts||0;
+  if(pb!==pa) return pb-pa;
+  const gda=(a.GF||0)-(a.GA||0), gdb=(b.GF||0)-(b.GA||0);
+  if(gdb!==gda) return gdb-gda;
+  const gfa=a.GF||0, gfb=b.GF||0;
+  if(gfb!==gfa) return gfb-gfa;
+  return String(a.name||'').localeCompare(String(b.name||''));
+}
+function sortCareerStandings(list){ return (list||[]).slice().sort(careerStandingCmp); }
+if(typeof window!=='undefined'){ window.careerStandingCmp=careerStandingCmp; window.sortCareerStandings=sortCareerStandings; }
+
 // ── PALMARÈS DU MANAGER : mise à jour cumulée ──────────────────────────
 // Appelé à chaque match de championnat du joueur. Alimente careerV2.club
 // .managerCareer, affiché dans le tableau de bord et la page Records.
@@ -1384,7 +1411,7 @@ function _careerOppStrength(fix, myStr){
 
   // 2) Sinon, dérivée du rang au classement : un club haut placé est plus fort.
   var st = C.standings || [];
-  var sorted = st.slice().sort(function(a,b){ return (b.Pts||0)-(a.Pts||0); });
+  var sorted = sortCareerStandings(st);
   var idx = sorted.findIndex(function(x){ return x.id===oppId || x.name===oppName; });
   if(idx >= 0 && sorted.length > 1){
     // Meilleur rang (idx petit) → force plus haute, autour de myStr ±25%.
@@ -1706,8 +1733,15 @@ function _recordBarrageLegResult(myG, oppG){
 
   if(myG > oppG) br.wins++;
   else if(myG < oppG) br.losses++;
-  // Un nul ne compte ni pour ni contre — il faut trancher lors d'une manche
-  // suivante (le barrage se joue jusqu'à ce qu'un camp atteigne 3 victoires).
+  // Un nul ne compte ni pour ni contre en victoires — MAIS il n'est plus perdu :
+  // on cumule le score sur l'ENSEMBLE de la série pour pouvoir départager au
+  // score cumulé si les victoires sont à égalité une fois toutes les manches
+  // jouées (voir plus bas). Avant, un nul laissait la série indécise puis le
+  // filet de sécurité tranchait par `wins > losses` (strict) : toute série
+  // finissant à égalité de victoires (p. ex. 1-1 avec un nul) comptait alors
+  // comme une DÉFAITE du joueur, sans aucun départage — verdict faux.
+  br.aggMe  = (br.aggMe||0)  + myG;
+  br.aggOpp = (br.aggOpp||0) + oppG;
 
   const res = myG > oppG ? '✅ Victoire' : myG === oppG ? '🟡 Nul' : '❌ Défaite';
   const col = myG > oppG ? '#18c860' : myG === oppG ? '#f0c028' : '#e06060';
@@ -1735,13 +1769,34 @@ function _recordBarrageLegResult(myG, oppG){
   if(decided){
     logEvent(br.message, C.club.color||'#f0c028');
   } else if(br.idx >= br.games.length){
-    // Filet de sécurité : 5 manches jouées sans qu'un camp atteigne 3 victoires
-    // (ne devrait pas arriver puisqu'on ne compte que gagne/perd) — on tranche
-    // au nombre de victoires acquises.
+    // Toutes les manches jouées sans qu'un camp atteigne `winsNeeded` (arrive
+    // dès qu'il y a eu des nuls). On DÉPARTAGE proprement, dans l'ordre :
+    //   1) plus grand nombre de victoires ;
+    //   2) à égalité de victoires → meilleur SCORE CUMULÉ sur la série ;
+    //   3) toujours à égalité → le club qui montait (joueur, qui a l'avantage
+    //      du barrage en tant que mieux classé) l'emporte.
+    // Le joueur n'est donc plus jamais éliminé par un simple match nul non joué.
     br.done = true; br.active = false;
-    br.promoted = br.wins > br.losses;
-    br.message = br.promoted ? '🏆 Barrage remporté aux points !' : '⚔️ Barrage perdu aux points.';
-    if(br.promoted){ br.newLevel = PILIER_DIVISIONS[br.targetDiv].level; br.newDivId = br.targetDiv; }
+    br.promoted =
+      (br.wins > br.losses) ? true :
+      (br.wins < br.losses) ? false :
+      (br.aggMe > br.aggOpp) ? true :
+      (br.aggMe < br.aggOpp) ? false :
+      true; // égalité parfaite : avantage au mieux classé (le joueur)
+    if(br.promoted){
+      br.message = '🏆 Barrage remporté'
+        + (br.wins===br.losses ? (br.aggMe===br.aggOpp ? ' (avantage au classement) !' : ' au score cumulé !') : ' aux points !');
+      // Générique : br.newLevel a déjà été calculé à la création. Pilier : on
+      // dérive le niveau cible comme avant.
+      if(!br.generic && typeof PILIER_DIVISIONS!=='undefined' && br.targetDiv && PILIER_DIVISIONS[br.targetDiv]){
+        br.newLevel = PILIER_DIVISIONS[br.targetDiv].level; br.newDivId = br.targetDiv;
+      }
+      if(br.newLevel!=null) C.club.level = br.newLevel;
+    } else {
+      br.message = (br.wins===br.losses)
+        ? (br.aggMe===br.aggOpp ? '⚔️ Barrage perdu (départage).' : '⚔️ Barrage perdu au score cumulé.')
+        : '⚔️ Barrage perdu aux points.';
+    }
     logEvent(br.message, C.club.color||'#f0c028');
   }
   if(C._pendingMatch) C._pendingMatch = null;
@@ -1802,9 +1857,7 @@ function endCareerSeasonDirector(){
   const _histDivisionStart = C.divisionName || (C.club && C.club.divisionName) || (C.club && C.club.level) || '?';
   const _histLevelStart = C.club && C.club.level;
   let seasonOutcomeMsg = null;
-  const sorted = (C.standings||[]).slice().sort(function(a,b){
-    return b.Pts - a.Pts || (b.GF-b.GA)-(a.GF-a.GA);
-  });
+  const sorted = sortCareerStandings(C.standings);
   const myPos = sorted.findIndex(function(s){ return s.isPlayer; }) + 1;
   const total = sorted.length;
   // ── RÈGLES VALORIA (promo/relégation détaillées) ───────────────────────
@@ -2047,7 +2100,7 @@ function endCareerSeasonDirector(){
   // Palmarès manager : clôturer la saison (position finale + titre éventuel).
   try{
     if(typeof _recordManagerSeason==='function'){
-      const st=(C.standings||[]).slice().sort((a,b)=>b.Pts-a.Pts||(b.GF-b.GA)-(a.GF-a.GA));
+      const st=sortCareerStandings(C.standings);
       const fin=st.findIndex(s=>s.isPlayer)+1;
       _recordManagerSeason(C, fin>0?fin:null);
     }
@@ -2311,7 +2364,7 @@ function _renderLeagueCupBlock(lc, accent){
     const mine = lc.pools.find(function(pl){ return (pl.standings||[]).some(function(s){ return s.isPlayer; }); });
     if(mine){
       h += '<div class="ctxt-xs" style="margin-bottom:4px;color:var(--muted)">Votre poule :</div>';
-      const sorted = (mine.standings||[]).slice().sort(function(a,b){ return (b.Pts||0)-(a.Pts||0); });
+      const sorted = sortCareerStandings(mine.standings);
       sorted.forEach(function(s, i){
         h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 6px;border-bottom:1px solid var(--b1);'+(s.isPlayer?'background:'+accent+'18;border-radius:4px':'')+'">';
         h += '<span style="color:'+(s.isPlayer?accent:'var(--fg)')+';font-weight:'+(s.isPlayer?'900':'400')+'">'+(i+1)+'. '+s.name+'</span><span style="font-weight:900">'+(s.Pts||0)+' pts</span>';
@@ -2787,7 +2840,7 @@ function _renderDirectorFutsal(){
   }
 
   // ── CLASSEMENT (saison régulière ou terminée) ──────────────────────────
-  const table = (F.finalTable) ? F.finalTable : (F.opps||[]).concat([F.myStats]).sort(function(a,b){ return (b.Pts-a.Pts)||((b.GF-b.GA)-(a.GF-a.GA)); });
+  const table = (F.finalTable) ? F.finalTable : sortCareerStandings((F.opps||[]).concat([F.myStats]));
   h += '<div class="ccard"><div class="ccard-title">Classement</div>';
   table.forEach(function(t, i){
     const me = t.isPlayer;
