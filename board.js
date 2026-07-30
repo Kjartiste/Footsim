@@ -1983,6 +1983,35 @@ const MANAGER_LICENSES = {
 };
 const _LICENSE_ORDER = ['C','B','A','PRO'];
 
+// ── IDENTITÉ DU MANAGER (fiche coach) ──────────────────────────────────
+// Traits générés à la création d'une carrière. Purement identitaires/narratifs
+// pour l'instant (fiche + presse) ; n'altèrent pas la logique de match.
+const MANAGER_PERSONALITIES = [
+  { id:'calme',     label:'Calme',       desc:'Garde la tête froide sous pression.' },
+  { id:'passionne', label:'Passionné',   desc:'Vit chaque match avec intensité.' },
+  { id:'meticuleux',label:'Méticuleux',  desc:'Prépare tout dans le détail.' },
+  { id:'charismati',label:'Charismatique',desc:'Fédère le vestiaire et les médias.' },
+  { id:'autoritai', label:'Autoritaire', desc:'Impose sa discipline sans compromis.' },
+  { id:'joueur',    label:'Joueur',      desc:'Aime le risque et le beau jeu.' },
+  { id:'pragmati',  label:'Pragmatique', desc:'Le résultat avant la manière.' },
+];
+const MANAGER_PHILOSOPHIES = [
+  { id:'offensif',  label:'Football offensif',   desc:'Attaquer, toujours.' },
+  { id:'possession',label:'Jeu de possession',   desc:'Le ballon comme arme.' },
+  { id:'contre',    label:'Contre-attaque',       desc:'Frapper vite et fort.' },
+  { id:'bloc',      label:'Bloc solide',          desc:"D'abord ne pas encaisser." },
+  { id:'formation', label:'Former la jeunesse',   desc:'Faire grandir les jeunes.' },
+  { id:'equilibre', label:'Équilibre',            desc:'Ni tout offensif ni tout défensif.' },
+];
+const MANAGER_TACTICAL_STYLES = ['4-3-3 offensif','4-4-2 classique','3-5-2 pistons','5-3-2 verrou','4-2-3-1 moderne','Losange au milieu'];
+
+function _pickFrom(arr, seed){
+  let h=0; const s=String(seed||Math.random());
+  for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0;
+  return arr[h%arr.length];
+}
+
+
 // Nom court et lisible d'une division, pour le palmarès.
 function _divShortName(level){
   const base = String(level||'').split('_')[0];
@@ -2022,9 +2051,19 @@ function _mgr(){
   if(C.manager.xp == null) C.manager.xp = 0;
   if(!C.manager.license) C.manager.license = 'C';
   if(!Array.isArray(C.manager.achievements)) C.manager.achievements = [];
-  // Une SEULE réputation : `manager.reputation` reflète `director_reputation`
-  // (la confiance réellement utilisée par le jeu). Avant, les deux existaient
-  // et seule celle du director vivait — l'écran manager affichait un 20 figé.
+  // Identité (générée une fois, seedée sur le nom du coach). Rétro-compatible :
+  // les carrières existantes se voient attribuer ces traits au premier accès.
+  const m = C.manager;
+  const seed = (m.name||'coach') + (C.nation||'');
+  if(!m.personality) m.personality = _pickFrom(MANAGER_PERSONALITIES, seed+'p').id;
+  if(!m.philosophy)  m.philosophy  = _pickFrom(MANAGER_PHILOSOPHIES, seed+'ph').id;
+  if(!m.tactic)      m.tactic      = _pickFrom(MANAGER_TACTICAL_STYLES, seed+'t');
+  if(!m.nationality) m.nationality = C.nation || 'Panthalassa';
+  if(!m.race && typeof pickRaceForRegion==='function'){
+    try{ m.race = pickRaceForRegion(m.nationality, seed+'r'); }catch(e){ m.race='human'; }
+  }
+  if(m.race==null) m.race = 'human';
+  // Une SEULE réputation : `manager.reputation` reflète `director_reputation`.
   if(typeof C.director_reputation === 'number') C.manager.reputation = Math.round(C.director_reputation);
   return C.manager;
 }
@@ -2269,6 +2308,18 @@ function _renderManagerCard(){
   h += '<span>🎓 Votre carrière</span>';
   h += '<div style="font-size:11px;font-weight:900;color:#f0c028">' + lic.label + '</div>';
   h += '</div>';
+
+  // ── Identité du coach (personnalité, philosophie, style, réputation) ──
+  const perso = (MANAGER_PERSONALITIES.find(x=>x.id===m.personality)||{}).label || '—';
+  const philo = (MANAGER_PHILOSOPHIES.find(x=>x.id===m.philosophy)||{}).label || '—';
+  const repL = (typeof _repLabel==='function') ? _repLabel(m.reputation) : ('Réputation '+m.reputation);
+  h += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">';
+  [['Personnalité',perso],['Philosophie',philo],['Style',m.tactic||'—'],['Réputation',repL.replace('Réputation ','')]].forEach(function(pair){
+    h += '<span style="font-size:7px;background:var(--panel);border:1px solid var(--b1);border-radius:4px;padding:2px 6px">'
+      + '<span style="color:var(--muted)">'+pair[0]+'</span> <b style="color:var(--fg)">'+pair[1]+'</b></span>';
+  });
+  h += '</div>';
+
   h += '<div style="font-size:8px;color:var(--muted);margin-bottom:6px">' + lic.desc + '</div>';
 
   if(next){

@@ -3974,8 +3974,9 @@ function _renderCareerDashboard(C, club, region, nextFix, standings, myPos){
 
   let h = '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:12px;margin-bottom:12px">';
 
-  // En-tête : nom du club + place au classement + réputation.
-  const repLabel = _repLabel(club.reputation);
+  // En-tête : nom du club + place au classement + réputation MANAGER.
+  const mgrRep = (typeof C.director_reputation==='number') ? C.director_reputation : (club.reputation||0);
+  const repLabel = _repLabel(mgrRep);
   h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
     +'<span style="width:4px;height:18px;border-radius:2px;background:'+accent+'"></span>'
     +'<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:900;letter-spacing:1px;color:var(--fg);text-transform:uppercase">Tableau de bord</span>'
